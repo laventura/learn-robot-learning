@@ -92,6 +92,52 @@
     - "Releases Ravens, a simulated benchmark for these tasks (Sec. 1)."
   connects_to: "A score map over pixels is a discretized action distribution, like the binned policy on this page: it can keep several good options as separate peaks instead of averaging them."
 
+- id: dagger
+  role: lecture
+  weeks: [3]
+  title: "A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning"
+  authors: "Ross, Gordon & Bagnell"
+  year: 2011
+  venue: "AISTATS"
+  url: https://arxiv.org/abs/1011.0686
+  summary: "Explains why copying an expert's actions can go badly wrong (a learner's mistakes take it to states the expert never showed, so errors compound) and introduces DAgger: repeatedly run the current policy, have the expert label the states it visits, add them to the data, and retrain. The result is a single deterministic policy with guarantees under the states it actually encounters."
+  contributions:
+    - "Recalls that a classifier with mistake rate ε on the expert's states can make on the order of εT² mistakes over T steps on its own states (Sec. 1)."
+    - "DAgger (Dataset Aggregation), an iterative algorithm that trains one stationary, deterministic policy on the aggregated data from all rounds (Sec. 3)."
+    - "Casts imitation as no-regret online learning and shows that any no-regret learner, under reduction assumptions, finds a policy that performs well on the states it induces (Abstract, Sec. 4)."
+    - "Experiments on steering in the Super Tux Kart racing game, playing Super Mario Bros., and a sequence-labelling benchmark (Sec. 1, Sec. 5)."
+  connects_to: "The εT² bound and the DAgger loop on this page; the road toy measures both."
+
+- id: end-to-end-driving
+  role: lecture
+  weeks: [3]
+  title: "End to End Learning for Self-Driving Cars"
+  authors: "Bojarski et al."
+  year: 2016
+  venue: "arXiv"
+  url: https://arxiv.org/abs/1604.07316
+  summary: "NVIDIA trained a convolutional network to map the image from a front-facing camera straight to a steering command, using only human driving as supervision. To teach recovery, the training images include views shifted off the lane centre and rotated, each labelled with a corrective steering command."
+  contributions:
+    - "An end-to-end behavioral cloning system (DAVE-2), with no hand-designed lane detection or path planning, running at 30 frames per second (Abstract)."
+    - "Recovery data without crashing: two off-centre views come from left and right cameras, and further shifts and rotations are synthesised by viewpoint transformation (Sec. 2, Sec. 5.2)."
+    - "Reports driving autonomously about 98% of the time on a route in New Jersey, measured by counting interventions (Sec. 7.2)."
+  connects_to: "The side-camera trick in the Intuition section and solved problem 3: synthetic recovery data instead of an expert in the loop."
+
+- id: play-lmp
+  role: lecture
+  weeks: [3]
+  title: "Learning Latent Plans from Play"
+  authors: "Lynch et al."
+  year: 2019
+  venue: "CoRL"
+  url: https://arxiv.org/abs/1903.01973
+  summary: "Instead of recording demonstrations of specific tasks, operators teleoperate a robot freely (play). Play-LMP learns from windows of this data relabelled with their own final state as the goal, and organizes the different ways of reaching a goal in a latent plan space, which it samples from at test time."
+  contributions:
+    - "Argues that play data are cheap (no task segmentation, labels or resets) and rich, covering about 4 times more interaction space than task demonstrations collected in the same time (Abstract)."
+    - "Play-LMP: a goal-conditioned latent-variable policy trained with a plan-recognition posterior, a plan-proposal prior and an action decoder (Abstract, Sec. 1)."
+    - "On 18 simulated visual manipulation tasks, a single play-trained policy substantially outperforms individual expert-trained policies, and it is more robust to perturbations (Abstract)."
+  connects_to: "The goal-conditioned, latent-variable policy behind the ELBO equation on this page, and the lecture's play-data case study."
+
 # --- Week 4 · Reinforcement Learning I ------------------------------------
 - id: evolution-strategies
   role: discussion

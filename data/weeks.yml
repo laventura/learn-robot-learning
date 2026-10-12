@@ -55,7 +55,8 @@
     youtube: qvTP6T5oq1w
     duration_s: 2208
   homework: {name: "hw3: Imitation learning", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw3_imitation_learning"}
-  papers: [causal-confusion, visual-imitation-representations, transporter-networks]
+  papers: [causal-confusion, visual-imitation-representations, transporter-networks,
+           dagger, end-to-end-driving, play-lmp]
 
 - week: 4
   date: 2026-03-09
