@@ -43,3 +43,25 @@ figcaption {
 .key-equation.famous::before {
   content: "★ " attr(data-name);
 }
+
+// Graphviz figures: Quarto gives the SVG a fixed pixel width and an inline
+// `max-width: none`, so a 7-inch diagram overflows a phone screen. Let it
+// shrink with the column; the viewBox keeps the proportions.
+.quarto-figure svg[viewBox] {
+  max-width: 100% !important;
+  height: auto;
+}
+
+// Matplotlib figures come as <img width="540" class="figure-img">, which does
+// not shrink on narrow screens either.
+.quarto-figure img.figure-img {
+  max-width: 100%;
+  height: auto;
+}
+
+// Course map (_includes/course-map.qmd): its nodes are links, but underlined
+// SVG text is hard to read at diagram size.
+.course-map svg a,
+.course-map svg text {
+  text-decoration: none;
+}
