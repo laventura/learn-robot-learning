@@ -174,13 +174,17 @@ def experiment1(seeds=16, n_cars=200, T=400, n_demos=10, T_demo=200,
     """BC and DAgger trained with each seed, then driven by n_cars cars for
     T steps with gusts. Both policies of a seed face the same gusts (same
     random stream). Returns a dict of arrays; J_* are mean cumulative
-    off-road steps per car, (seeds, T)."""
+    off-road steps per car, (seeds, T). The trained policies come back
+    too, as lists under "bc" and "dagger"."""
     out = {"J_bc": [], "J_dagger": [], "rounds_left": [], "nogust_left": [],
            "bc_at_risk": 0, "bc_departures": 0, "bc_returned": 0}
+    policies = {"bc": [], "dagger": []}
     for seed in range(seeds):
         rng = np.random.default_rng(seed)
         bc = behavior_cloning(n_demos, T_demo, rng)
         rounds = dagger(n_demos, T_demo, rng, iters=iters, history=True)
+        policies["bc"].append(bc)
+        policies["dagger"].append(rounds[-1])
         x0 = np.random.default_rng(10_000 + seed).uniform(0, WAVELEN, n_cars)
         gusts = lambda: np.random.default_rng(20_000 + seed)   # same gusts
         for name, policy in (("bc", bc), ("dagger", rounds[-1])):
@@ -201,7 +205,7 @@ def experiment1(seeds=16, n_cars=200, T=400, n_demos=10, T_demo=200,
         calm = np.random.default_rng(30_000 + seed)
         s, _ = rollout(bc, T, 0.0, calm, x0)
         out["nogust_left"].append(off_road(s).any(axis=1).mean())
-    return {k: np.array(v) for k, v in out.items()}
+    return {**{k: np.array(v) for k, v in out.items()}, **policies}
 
 
 def single_gust(policies, x0=12.0, t_gust=10, T=60, kick=GUST):
