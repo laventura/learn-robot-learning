@@ -1,0 +1,58 @@
+project:
+  type: website
+  # Explicit list: otherwise Quarto would also publish CLAUDE.md, README.md, and templates/.
+  render:
+    - index.qmd
+    - glossary.qmd
+    - papers.qmd
+    - cheatsheets.qmd
+    - "weeks/*.qmd"
+  resources:
+    - "weeks/data/*.json"
+    - "weeks/media/*.mp4"
+    - "weeks/media/*.png"
+
+execute:
+  freeze: auto
+
+website:
+  title: "Learning Robot Learning"
+  description: "An independent, unofficial companion to ETH Zürich's Robot Learning course (Spring 2026)."
+  site-url: "https://laventura.github.io/robot-learning-companion/"
+  page-navigation: true
+  sidebar:
+    style: docked
+    search: true
+    collapse-level: 1
+    contents:
+      - index.qmd
+      - section: "Weeks"
+        contents: "weeks/*.qmd"
+      - papers.qmd
+      - glossary.qmd
+      - cheatsheets.qmd
+  page-footer:
+    center: >-
+      An independent, unofficial companion to ETH Zürich's
+      *Robot Learning: From Fundamentals to Foundation Models*
+      (Oier Mees, Spring 2026). See the
+      [course page](https://cvg.ethz.ch/lectures/Robot-Learning/).
+      Site text and figures © Atul Acharya,
+      [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/);
+      code [MIT](https://opensource.org/license/mit).
+
+format:
+  html:
+    theme:
+      light: [cosmo, theme.scss]
+      dark: [darkly, theme.scss]
+    toc: true
+    # Phase 2b: uncomment once _includes/reduced-motion.html exists (a missing include fails the render)
+    # include-after-body: _includes/reduced-motion.html
+    code-copy: hover              # `true` also put copy buttons next to OJS controls
+    syntax-highlighting: github   # Quarto picks github-light / github-dark to match the theme
+    syntax-definitions:
+      - _syntax/python.xml        # Pandoc's Python grammar plus function-name highlighting
+    code-overflow: wrap
+    code-block-border-left: true
+    lang: en

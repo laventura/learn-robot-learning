@@ -1,0 +1,82 @@
+---
+title: "Week N · Lecture Title"
+subtitle: "Lecture of D Month 2026 · guest: Name"
+jupyter: python3
+execute:
+  echo: false
+---
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week N · **Lecture:** [video](URL) · **Go deeper:** [ADM Ch X]({{< var adm_url >}}/...)
+:::
+
+## Big picture
+<!-- SELF-SUFFICIENT (CLAUDE.md §6.8): a reader who stops after Big picture + Intuition should
+understand the whole lecture. In order:
+1. Course map: the shared Graphviz map with this week highlighted in orange (§6.3).
+2. Where this week fits: what earlier weeks gave us, the gap, which weeks build on this.
+3. The question it answers, in one plain sentence.
+4. ### The key ideas at a glance: one short paragraph per key idea (4–7): what it is,
+   why it's needed, its formula in words. No symbol is used before it is explained.
+5. ### Vocabulary: a small left-aligned table (|:---|:---|), term → plain meaning.
+6. ### After this week you can: 3–5 bullets.
+{{< video URL >}} -->
+
+## Intuition
+<!-- 1. One opening analogy for the whole lecture (.callout-tip titled "Analogy").
+2. Then one ### subsection per key idea: a concrete, small-numbers picture, a ▶ timestamp
+   link (§6.6), and a pointer to its formal treatment. Show the picture change before
+   naming the symbol that describes it.
+3. Hero animation (§6.3a), if any, with the key idea it shows, then "What to watch for". -->
+
+## Key concepts & formulae
+<!-- Definitions, then every displayed equation (CLAUDE.md §6.4):
+::: {.key-equation data-name="Name of the equation"}     add .famous if well known by name
+$$ ... $$ {#eq-...}
+:::
+**In words.** ...   **Term by term.** ...   **Why it holds.** ... (and a quick numeric check when possible)
+Concept map (Graphviz) if helpful. -->
+
+## Worked examples
+<!-- At least 2 executed NumPy toys from rlc/toys/wNN_*.py, step by step with real numbers;
+small tables of intermediate values. -->
+
+## Interactive
+<!-- At least 2 figures (Tier 1 Plotly or Tier 2 OJS), each with a sentence on what to try
+and what to notice. Usable at 390 px. -->
+
+## Algorithm & code
+<!-- Synced tabs (§6.2). Figures and results outside the tabs.
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(...)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+...
+```
+::: -->
+
+## Papers
+<!-- paper_cards(week=N): discussion papers, then key papers from the lecture (§6.5). -->
+
+## Guest spotlight
+<!-- 2–4 paragraphs from the guest talk's transcript: the thesis, 2–3 key ideas with ▶ links,
+and how it connects to this week. Omit the section if the week has no guest. -->
+
+## Solved problems
+<!-- 3–5 original problems, each with its solution in:
+::: {.callout-tip collapse="true" title="Solution"} ... ::: -->
+
+## Recap
+<!-- 4–6 numbered key points. Each: the point in bold, then "*Why it matters:*" tying it to the course arc. -->
+
+## Cheat sheet & connections
+<!-- Table: Name | Formula | Where (★ marks well-known equations); common pitfalls;
+links to earlier/later weeks and ADM chapters. -->
+
+## Resources
+<!-- resources(week=N): lecture video, slides (official + community, labeled), guest lecture,
+all papers, homework. -->

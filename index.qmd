@@ -1,0 +1,14 @@
+---
+title: "Learning Robot Learning"
+subtitle: "Concepts, pictures, and code for ETH Zürich's *Robot Learning* course"
+---
+
+This site is an independent, unofficial companion to ETH Zürich's *Robot Learning: From Fundamentals to Foundation Models*, taught by Oier Mees in Spring 2026. The [course page]({{< var course_url >}}) has the lecture recordings, slides, and homework.
+
+Each course week gets one page: the big picture, intuitions, the key equations explained term by term, worked NumPy examples, interactive figures, a PyTorch sketch of the core algorithm, and summaries of the papers and the guest talk.
+
+*The site is under construction. The week pages are stubs for now.*
+
+- [Papers](papers.qmd)
+- [Glossary](glossary.qmd)
+- [Cheat sheets](cheatsheets.qmd)

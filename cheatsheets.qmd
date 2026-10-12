@@ -1,0 +1,21 @@
+---
+title: "Cheat sheets"
+subtitle: "Every week's key equations on one page"
+jupyter: python3
+execute:
+  echo: false
+  freeze: false     # rebuilt on every render, so it never lags the week pages
+---
+
+```{python}
+#| output: asis
+from pathlib import Path
+
+from rlc.page import cheat_sheet, page_title
+
+for page in sorted(Path("weeks").glob("w*.qmd")):
+    href = f"weeks/{page.name}"
+    print(f"\n## [{page_title(page)}]({href})\n")
+    print(cheat_sheet(page, href) or "*No cheat sheet yet.*")
+    print()
+```

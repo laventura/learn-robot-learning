@@ -1,0 +1,13 @@
+---
+title: "Glossary"
+subtitle: "Vocabulary and notation, grouped by week"
+---
+
+*To be filled in as the week pages are written.*
+
+## Overloaded symbols
+
+Symbols that mean different things in different weeks.
+
+| Symbol | Meaning | Week |
+|:---|:---|:---|

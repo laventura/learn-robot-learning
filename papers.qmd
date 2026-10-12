@@ -1,0 +1,6 @@
+---
+title: "Papers"
+subtitle: "Every paper discussed in the course, grouped by week"
+---
+
+*This index will be generated from `data/papers.yml`.*
