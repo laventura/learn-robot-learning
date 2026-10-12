@@ -1,6 +1,30 @@
 ---
 title: "Week 3 · Imitation Learning"
 subtitle: "Lecture of 2 March 2026 · guest: Danfei Xu"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+from rlc.page import paper_cards, resources
+```
+
+*This page is a stub. The Papers and Resources sections below already come from `data/`.*
+
+{{< video https://youtu.be/Ef4R5s1LqoQ >}}
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(3))
+```
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(3))
+```

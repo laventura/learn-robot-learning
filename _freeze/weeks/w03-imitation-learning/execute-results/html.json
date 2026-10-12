@@ -1,0 +1,12 @@
+{
+  "hash": "2d97890e93370879ad51811c3166f405",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"Week 3 · Imitation Learning\"\nsubtitle: \"Lecture of 2 March 2026 · guest: Danfei Xu\"\njupyter: python3\nexecute:\n  echo: false\n---\n\n\n*This page is a stub. The Papers and Resources sections below already come from `data/`.*\n\n{{< video https://youtu.be/Ef4R5s1LqoQ >}}\n\n## Papers\n\n### Papers discussed in class\n\n::: {.callout-note appearance=\"simple\" icon=false}\n**[Causal Confusion in Imitation Learning](https://arxiv.org/abs/1905.11979)**<br>\nde Haan, Jayaraman & Levine · *NeurIPS* 2019\n\n*Summary to come.*\n:::\n\n::: {.callout-note appearance=\"simple\" icon=false}\n**[The Surprising Effectiveness of Representation Learning for Visual Imitation](https://arxiv.org/abs/2112.01511)**<br>\nPari, Shafiullah, Arunachalam & Pinto · *RSS* 2022\n\n*Summary to come.*\n:::\n\n::: {.callout-note appearance=\"simple\" icon=false}\n**[Transporter Networks: Rearranging the Visual World for Robotic Manipulation](https://arxiv.org/abs/2010.14406)**<br>\nZeng et al. · *CoRL* 2020\n\n*Summary to come.*\n:::\n\n\n\n## Resources\n\n- **Lecture:** [video](https://youtu.be/Ef4R5s1LqoQ) (50:37)\n- **Slides:** [Official slides (ETH; password-protected)](https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture3_imitation.pdf)\n- **Guest lecture:** [Danfei Xu](https://faculty.cc.gatech.edu/~danfei/) (Georgia Tech), *Human Data as a Foundation for Robot Learning*: [video](https://youtu.be/qvTP6T5oq1w) (36:48)\n- **Papers:**\n    - [Causal Confusion in Imitation Learning](https://arxiv.org/abs/1905.11979) (de Haan, Jayaraman & Levine, 2019)\n    - [The Surprising Effectiveness of Representation Learning for Visual Imitation](https://arxiv.org/abs/2112.01511) (Pari, Shafiullah, Arunachalam & Pinto, 2022)\n    - [Transporter Networks: Rearranging the Visual World for Robotic Manipulation](https://arxiv.org/abs/2010.14406) (Zeng et al., 2020)\n- **Homework:** [hw3: Imitation learning](https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw3_imitation_learning)\n\n\n",
+    "supporting": [
+      "w03-imitation-learning_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}
