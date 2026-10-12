@@ -3,7 +3,29 @@ title: "Glossary"
 subtitle: "Vocabulary and notation, grouped by week"
 ---
 
-*To be filled in as the week pages are written.*
+Symbols follow the lecture slides. Where a week's page uses a symbol, it explains it there too.
+
+## Week 3 · Imitation Learning
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $s_t$, $o_t$, $a_t$ | State, observation and action at time step $t$ |
+| $\pi^*$ | The expert policy being imitated (ADM writes $\pi_E$) |
+| $\pi_\theta$ | The learned policy, a network with parameters $\theta$ |
+| $\mathcal{D}$ | Demonstration data set of (state, expert action) pairs |
+| $c(s, a)$ | Cost of a step: 0 if $a$ matches the expert's action, 1 otherwise |
+| $\varepsilon$ | Probability that the learned policy makes a mistake on a state the expert visits |
+| $T$ | Task length (horizon) in steps |
+| $p_{\text{expert}}(s)$, $p_{\pi_\theta}(s)$ | How often the expert, or the learned policy, visits state $s$ |
+| $w_k, \mu_k, \Sigma_k$ | Weight, mean and covariance of component $k$ of a mixture-of-Gaussians policy |
+| $a_{t,d}$ | Dimension $d$ of the action, predicted as a bin in an autoregressive policy |
+| $z$ | Latent plan: a random input that selects one way of doing the task |
+| $s_c$, $s_g$ | Current state and goal state in a goal-conditioned policy |
+| $q_\phi$, $p(z \mid c)$ | Posterior ("plan recognition") and prior ("plan proposal") of a latent-variable policy |
+| Behavioral cloning (BC) | Supervised learning of a policy from expert (state, action) pairs |
+| DAgger | Dataset Aggregation: label the learner's own states with expert actions, add them, retrain |
+| Distribution shift | Test-time states differ from the states in the training data |
+| Causal confusion | A policy relies on a correlate of the expert's action instead of its cause |
 
 ## Overloaded symbols
 
@@ -11,3 +33,4 @@ Symbols that mean different things in different weeks.
 
 | Symbol | Meaning | Week |
 |:---|:---|:---|
+| $\varepsilon$ | Per-step mistake probability of a cloned policy | 3 |
