@@ -36,10 +36,13 @@ ARCS = [
 ]
 # Rows of the top-to-bottom layout.
 ROWS = [[1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]
+# 7 in wide times the rendered SVG's viewBox height/width (CLAUDE.md §6.3);
+# re-measure after changing the layout.
+FIG_HEIGHT = 4.09            # viewBox 835.75 x 488 pt
 
 
 def node(week: dict) -> str:
-    title = "<BR/>".join(textwrap.wrap(week["title"].replace("&", "&amp;"), 18))
+    title = "<BR/>".join(textwrap.wrap(week["title"].replace("&", "&amp;"), 16))
     return (f'  w{week["week"]:02d} [id="w{week["week"]:02d}", '
             f'label=<<B>Week {week["week"]}</B><BR/>{title}>, href="{week["slug"]}.html"];')
 
@@ -51,7 +54,7 @@ def source(weeks: list) -> str:
         "```{dot}",
         "//| label: fig-course-map",
         "//| fig-width: 7",
-        "//| fig-height: 5.6",
+        f"//| fig-height: {FIG_HEIGHT}",
         '//| fig-cap: "The course at a glance. Each box is a week (click to open it); '
         'this page\'s week is orange. Arrows show how one week builds on another."',
         '//| fig-alt: "Diagram of the twelve course weeks as boxes in five rows, top to '
@@ -60,11 +63,11 @@ def source(weeks: list) -> str:
         "policies and embodied reasoning; frontiers and guest lectures. Labeled arrows "
         'connect each week to the ones that build on it."',
         "digraph course {",
-        '  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.45;',
+        '  rankdir=TB; bgcolor="#fcfcfb"; pad=0.15; nodesep=0.2; ranksep=0.35;',
         '  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6",'
-        ' fontname="Helvetica", fontsize=11, width=1.7, target="_top"];',
+        ' fontname="Helvetica", fontsize=15, margin="0.08,0.04", target="_top"];',
         '  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica",'
-        ' fontsize=9, fontcolor="#52514e"];',
+        ' fontsize=13, fontcolor="#52514e"];',
     ]
     lines += [node(w) for w in weeks]
     lines += [f'  w{a:02d} -> w{b:02d} [label=" {label}"];' for a, b, label in ARCS]
