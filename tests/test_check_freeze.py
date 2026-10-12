@@ -60,3 +60,14 @@ def test_ok_outdated_and_stale(tmp_path, monkeypatch):
     data["result"]["markdown"] = "## Big picture\n\nOld prose here.\n"
     stale_cache.write_text(json.dumps(data))
     assert check(page) == ("STALE", ["New prose here."])
+
+
+def test_include_lines_are_expanded(tmp_path, monkeypatch):
+    # Quarto replaces {{< include >}} by the file before freezing, so the
+    # cache holds the included text, not the shortcode line.
+    monkeypatch.setattr(check_freeze, "ROOT", tmp_path)
+    (tmp_path / "_includes").mkdir()
+    (tmp_path / "_includes" / "map.qmd").write_text("Shared map text.\n")
+    source = PAGE + "\n{{< include /_includes/map.qmd >}}\n"
+    page = freeze(tmp_path, source, "## Big picture\n\nNew prose here.\n\nShared map text.\n")
+    assert check(page) == ("OK", [])

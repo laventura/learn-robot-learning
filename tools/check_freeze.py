@@ -19,6 +19,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+INCLUDE = re.compile(r"^\s*\{\{<\s*include\s+(\S+)\s*>\}\}\s*$")
+
+
+def expand_includes(text: str, page: Path) -> str:
+    """Replace each {{< include path >}} line by the included file, as Quarto
+    does before executing: a leading / means the project root, otherwise
+    the path is relative to the page."""
+    def read(match):
+        target = match[1]
+        path = ROOT / target[1:] if target.startswith("/") else page.parent / target
+        return expand_includes(path.read_text(encoding="utf-8"), path)
+    return "\n".join(INCLUDE.sub(read, line) for line in text.splitlines())
 
 
 def prose_lines(text: str) -> list[str]:
@@ -55,7 +67,8 @@ def check(page: Path) -> tuple[str, list[str]]:
     if frozen.get("hash") != hashlib.md5(source.encode("utf-8")).hexdigest():
         return "OUTDATED", []          # the next render re-executes this page anyway
     cached = {line.strip() for line in frozen["result"]["markdown"].splitlines()}
-    missing = [line for line in prose_lines(source) if line not in cached]
+    expected = prose_lines(expand_includes(source, page))
+    missing = [line for line in expected if line not in cached]
     return ("STALE" if missing else "OK"), missing
 
 
