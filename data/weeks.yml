@@ -1,7 +1,8 @@
 # One entry per course week (CLAUDE.md §6.5). Rendered by rlc.page.resources and paper_cards.
 # Source: https://cvg.ethz.ch/lectures/Robot-Learning/ (fetched 2026-10-12).
 # duration_s from `uvx yt-dlp --print duration`; guest talk titles from the YouTube titles.
-# slides.community: TODO, waiting for the owner to name the student repo.
+# slides.community: the student rebuild at https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich
+#   (lectures/weekNN_slides.pdf). Remove these links if the instructor or the student asks (CLAUDE.md §7).
 #
 # Differences from the course page, on purpose:
 # - Week 2: the course page and the video title spell the guest "Abishek"; his own page says Abhishek.
@@ -15,7 +16,7 @@
   lecture: {youtube: X0k14u6pSxw, duration_s: 3875}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture1_intro.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week01_slides.pdf
   guest: null
   homework: {name: "hw1: PyTorch & NumPy tutorial", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw1_pytorch_tutorial"}
   papers: []
@@ -27,7 +28,7 @@
   lecture: {youtube: 5-Bb84eTTqQ, duration_s: 2770}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture2_control_mdp.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week02_slides.pdf
   guest:
     name: "Abhishek Gupta"
     affiliation: "University of Washington"
@@ -45,7 +46,7 @@
   lecture: {youtube: Ef4R5s1LqoQ, duration_s: 3037}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture3_imitation.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week03_slides.pdf
   guest:
     name: "Danfei Xu"
     affiliation: "Georgia Tech"
@@ -63,7 +64,7 @@
   lecture: {youtube: 90raNpc11tQ, duration_s: 3153}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture4_rl_I.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week04_slides.pdf
   guest:
     name: "Aviral Kumar"
     affiliation: "Carnegie Mellon University & Google DeepMind"
@@ -81,7 +82,7 @@
   lecture: {youtube: AdTGz8YnnlE, duration_s: 3143}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture5_rl_II.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week05_slides.pdf
   guest:
     name: "Andrew Wagenmaker"
     affiliation: "UC Berkeley"
@@ -99,7 +100,7 @@
   lecture: {youtube: qd6Ldsuu46I, duration_s: 3064}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture6_generative.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week06_slides.pdf
   guest:
     name: "Cheng Chi"
     affiliation: "Sunday Robotics"
@@ -117,7 +118,7 @@
   lecture: {youtube: imSTfMJjp7M, duration_s: 3312}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture7_sequence_modeling.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week07_slides.pdf
   guest:
     name: "Ted Xiao"
     affiliation: "Prometheus"
@@ -135,7 +136,7 @@
   lecture: {youtube: cTTmUZlOF2s, duration_s: 4308}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture8_world_models.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week08_slides.pdf
   guest:
     name: "Scott Reed"
     affiliation: "NVIDIA GEAR Lab"
@@ -153,7 +154,7 @@
   lecture: {youtube: dtofzDY9zuo, duration_s: 3808}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture9_generalist_policies.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week09_slides.pdf
   guest:
     name: "Quan Vuong"
     affiliation: "Physical Intelligence"
@@ -171,7 +172,7 @@
   lecture: {youtube: CxhrjQuGEuE, duration_s: 3341}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture10_reasoning.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week10_slides.pdf
   guest:
     name: "Archit Sharma"
     affiliation: "Google DeepMind"
@@ -189,7 +190,7 @@
   lecture: {youtube: eL4lcy1KNzE, duration_s: 3725}
   slides:
     official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture11_frontiers.pdf
-    community: null
+    community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week11_slides.pdf
   guest:
     name: "Lucas Beyer"
     affiliation: "Meta Superintelligence Labs"
