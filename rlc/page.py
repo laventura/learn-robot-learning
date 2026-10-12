@@ -150,8 +150,10 @@ def resources(week: int, data_dir=None) -> str:
         items.append("- **Slides:** " + " · ".join(slides))
     if g := w["guest"]:
         name = f"[{g['name']}]({g['url']})" if g["url"] else g["name"]
+        talk = f", *{g['title']}*" if g["title"] else ""
         video = f": [video]({youtube_url(g['youtube'])})" if g["youtube"] else ""
-        items.append(f"- **Guest lecture:** {name} ({g['affiliation']}){video}")
+        length = f" ({timestamp(g['duration_s'])})" if g["youtube"] and g["duration_s"] else ""
+        items.append(f"- **Guest lecture:** {name} ({g['affiliation']}){talk}{video}{length}")
     if w["papers"]:
         items.append("- **Papers:**")
         items += [f"    - [{papers[i]['title']}]({papers[i]['url']}) "
@@ -182,7 +184,7 @@ def papers_index(data_dir=None) -> str:
 
 WEEK_KEYS = {"week", "date", "title", "slug", "lecture", "slides", "guest", "homework", "papers"}
 VIDEO_KEYS = {"youtube", "duration_s"}
-GUEST_KEYS = {"name", "affiliation", "url"} | VIDEO_KEYS
+GUEST_KEYS = {"name", "affiliation", "title", "url"} | VIDEO_KEYS
 PAPER_KEYS = {"id", "role", "weeks", "title", "authors", "year", "venue", "url",
               "summary", "contributions", "connects_to"}
 YOUTUBE_ID = re.compile(r"^[\w-]{11}$")

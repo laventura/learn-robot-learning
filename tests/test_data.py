@@ -28,7 +28,8 @@ WEEK = {
     "week": 1, "date": datetime.date(2026, 2, 16), "title": "Intro", "slug": "w01-intro",
     "lecture": {"youtube": "abcdefghijk", "duration_s": 4000},
     "slides": {"official": "https://e.org/o.pdf", "community": "https://e.org/c.pdf"},
-    "guest": {"name": "Ada", "affiliation": "Uni", "url": None, "youtube": "ABCDEFGHIJK", "duration_s": 900},
+    "guest": {"name": "Ada", "affiliation": "Uni", "title": "On Robots", "url": None,
+              "youtube": "ABCDEFGHIJK", "duration_s": 900},
     "homework": {"name": "hw1", "url": "https://e.org/hw1"},
     "papers": ["p-lec", "p-disc"],
 }
@@ -59,7 +60,7 @@ def test_resources_use_the_exact_slide_labels(data_dir):
     assert "[Official slides (ETH; password-protected)](https://e.org/o.pdf)" in md
     assert "[Community rebuild (unofficial, student repo)](https://e.org/c.pdf)" in md
     assert "[video](https://youtu.be/abcdefghijk) (1:06:40)" in md
-    assert "Ada (Uni): [video](https://youtu.be/ABCDEFGHIJK)" in md
+    assert "Ada (Uni), *On Robots*: [video](https://youtu.be/ABCDEFGHIJK) (15:00)" in md
     assert md.index("A Paper") < md.index("hw1")
 
 

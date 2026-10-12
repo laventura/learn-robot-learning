@@ -1,126 +1,217 @@
 # One entry per course week (CLAUDE.md §6.5). Rendered by rlc.page.resources and paper_cards.
-# Phase 1 fills the nulls from the course page: https://cvg.ethz.ch/lectures/Robot-Learning/
-# Guest names and affiliations are from CLAUDE.md §9; check their spelling against the course page.
+# Source: https://cvg.ethz.ch/lectures/Robot-Learning/ (fetched 2026-10-12).
+# duration_s from `uvx yt-dlp --print duration`; guest talk titles from the YouTube titles.
+# slides.community: TODO, waiting for the owner to name the student repo.
 #
-# lecture/guest youtube: video id; duration_s: length in seconds (uvx yt-dlp --print duration).
-# papers: ids from data/papers.yml, discussion papers first.
+# Differences from the course page, on purpose:
+# - Week 2: the course page and the video title spell the guest "Abishek"; his own page says Abhishek.
+# - Week 11: the course page says "Frontier & Open Problem"; the video title says "Frontier & Open Problems".
+# - hw4 is listed under both RL weeks; the course page lists it once, under a "Week 5" tutorial.
 
 - week: 1
   date: 2026-02-16
   title: "Introduction to Robot Learning"
   slug: w01-introduction
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
+  lecture: {youtube: X0k14u6pSxw, duration_s: 3875}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture1_intro.pdf
+    community: null
   guest: null
-  homework: {name: "hw1 PyTorch & NumPy", url: null}
+  homework: {name: "hw1: PyTorch & NumPy tutorial", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw1_pytorch_tutorial"}
   papers: []
 
 - week: 2
   date: 2026-02-23
   title: "Robot Control & MDPs"
   slug: w02-robot-control-mdps
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Abhishek Gupta", affiliation: "UW", url: null, youtube: null, duration_s: null}
-  homework: {name: "hw2 Robot Control & MDPs", url: null}
-  papers: []
+  lecture: {youtube: 5-Bb84eTTqQ, duration_s: 2770}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture2_control_mdp.pdf
+    community: null
+  guest:
+    name: "Abhishek Gupta"
+    affiliation: "University of Washington"
+    title: "Simulation for Robotic Manipulation, without the Pain"
+    url: https://homes.cs.washington.edu/~abhgupta/
+    youtube: aG8NPTPhwkE
+    duration_s: 1927
+  homework: {name: "hw2: Robot control & MDPs", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw2_robot_control_mdps"}
+  papers: [random-search, deep-rl-doesnt-work-yet, curiosity]
 
 - week: 3
   date: 2026-03-02
   title: "Imitation Learning"
   slug: w03-imitation-learning
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Danfei Xu", affiliation: "Georgia Tech", url: null, youtube: null, duration_s: null}
-  homework: {name: "hw3 Imitation Learning", url: null}
-  papers: []
+  lecture: {youtube: Ef4R5s1LqoQ, duration_s: 3037}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture3_imitation.pdf
+    community: null
+  guest:
+    name: "Danfei Xu"
+    affiliation: "Georgia Tech"
+    title: "Human Data as a Foundation for Robot Learning"
+    url: https://faculty.cc.gatech.edu/~danfei/
+    youtube: qvTP6T5oq1w
+    duration_s: 2208
+  homework: {name: "hw3: Imitation learning", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw3_imitation_learning"}
+  papers: [causal-confusion, visual-imitation-representations, transporter-networks]
 
 - week: 4
   date: 2026-03-09
   title: "Reinforcement Learning I"
   slug: w04-reinforcement-learning-1
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Aviral Kumar", affiliation: "CMU & Google DeepMind", url: null, youtube: null, duration_s: null}
-  homework: {name: "hw4 Reinforcement Learning", url: null}
-  papers: []
+  lecture: {youtube: 90raNpc11tQ, duration_s: 3153}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture4_rl_I.pdf
+    community: null
+  guest:
+    name: "Aviral Kumar"
+    affiliation: "Carnegie Mellon University & Google DeepMind"
+    title: "How to Replicate the LLM Recipe in Robot Learning"
+    url: https://aviralkumar2907.github.io/
+    youtube: fHHLmTu9sFk
+    duration_s: 2165
+  homework: {name: "hw4: Reinforcement learning", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw4_reinforcement_learning"}
+  papers: [evolution-strategies, pushing-grasping, hil-serl]
 
 - week: 5
   date: 2026-03-16
   title: "Reinforcement Learning II"
   slug: w05-reinforcement-learning-2
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Andrew Wagenmaker", affiliation: "UC Berkeley", url: null, youtube: null, duration_s: null}
-  homework: null    # hw4 continues
-  papers: []
+  lecture: {youtube: AdTGz8YnnlE, duration_s: 3143}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture5_rl_II.pdf
+    community: null
+  guest:
+    name: "Andrew Wagenmaker"
+    affiliation: "UC Berkeley"
+    title: "Robots That Learn From Experience"
+    url: https://wagenmaker.github.io/
+    youtube: CPmTpXA5azw
+    duration_s: 1892
+  homework: {name: "hw4: Reinforcement learning", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw4_reinforcement_learning"}
+  papers: [visuomotor-policies, eureka, tacorl]
 
 - week: 6
   date: 2026-03-23
   title: "Generative Models"
   slug: w06-generative-models
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Cheng Chi", affiliation: "Sunday Robotics", url: null, youtube: null, duration_s: null}
+  lecture: {youtube: qd6Ldsuu46I, duration_s: 3064}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture6_generative.pdf
+    community: null
+  guest:
+    name: "Cheng Chi"
+    affiliation: "Sunday Robotics"
+    title: "Robotics Beyond Algorithms"
+    url: https://cheng-chi.github.io/
+    youtube: tvFvIEOBKfM
+    duration_s: 2036
   homework: null
-  papers: []
+  papers: [diffuser, implicit-bc, dsrl]
 
 - week: 7
   date: 2026-03-30
   title: "Sequence Modeling and Transformers"
   slug: w07-sequence-modeling-transformers
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Ted Xiao", affiliation: "Prometheus", url: null, youtube: null, duration_s: null}
+  lecture: {youtube: imSTfMJjp7M, duration_s: 3312}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture7_sequence_modeling.pdf
+    community: null
+  guest:
+    name: "Ted Xiao"
+    affiliation: "Prometheus"
+    title: "Three Eras of Robot Learning"
+    url: https://tedxiao.me/
+    youtube: VS7Ulaugevg
+    duration_s: 2196
   homework: null
-  papers: []
+  papers: [decision-transformer, aloha, humanoid-next-token]
 
 - week: 8
   date: 2026-04-13
   title: "World Models"
   slug: w08-world-models
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Scott Reed", affiliation: "NVIDIA GEAR Lab", url: null, youtube: null, duration_s: null}
+  lecture: {youtube: cTTmUZlOF2s, duration_s: 4308}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture8_world_models.pdf
+    community: null
+  guest:
+    name: "Scott Reed"
+    affiliation: "NVIDIA GEAR Lab"
+    title: "What is the right Backbone for Embodied Agents?"
+    url: https://reedscot.github.io/
+    youtube: fqkp_wkov6M
+    duration_s: 2171
   homework: null
-  papers: []
+  papers: [unipi, dreamer-4, dreamzero]
 
 - week: 9
   date: 2026-04-27
   title: "Generalist Robot Policies"
   slug: w09-generalist-robot-policies
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Quan Vuong", affiliation: "Physical Intelligence", url: null, youtube: null, duration_s: null}
+  lecture: {youtube: dtofzDY9zuo, duration_s: 3808}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture9_generalist_policies.pdf
+    community: null
+  guest:
+    name: "Quan Vuong"
+    affiliation: "Physical Intelligence"
+    title: "π0.7, A Generalist Model with Emergent Capabilities"
+    url: https://scholar.google.com/citations?user=NSWI3OwAAAAJ
+    youtube: pzolgvyWEFY
+    duration_s: 2219
   homework: null
-  papers: []
+  papers: [language-conditioned-il, gato, pi-star-06]
 
 - week: 10
   date: 2026-05-04
   title: "Embodied Reasoning and Test-time Scaling"
   slug: w10-embodied-reasoning
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Archit Sharma", affiliation: "Google DeepMind", url: null, youtube: null, duration_s: null}
+  lecture: {youtube: CxhrjQuGEuE, duration_s: 3341}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture10_reasoning.pdf
+    community: null
+  guest:
+    name: "Archit Sharma"
+    affiliation: "Google DeepMind"
+    title: "Scaling Test-Time Compute at the Frontier"
+    url: https://architsharma97.github.io
+    youtube: oBEkY6NeE_o
+    duration_s: 1939
   homework: null
-  papers: []
+  papers: [icrt, voyager, ecot-lite]
 
 - week: 11
   date: 2026-05-11
   title: "Frontiers & Open Problems"
   slug: w11-frontiers
-  lecture: {youtube: null, duration_s: null}
-  slides: {official: null, community: null}
-  guest: {name: "Lucas Beyer", affiliation: "Meta", url: null, youtube: null, duration_s: null}
+  lecture: {youtube: eL4lcy1KNzE, duration_s: 3725}
+  slides:
+    official: https://cvg.ethz.ch/lectures/Robot-Learning/lectures/lecture11_frontiers.pdf
+    community: null
+  guest:
+    name: "Lucas Beyer"
+    affiliation: "Meta Superintelligence Labs"
+    title: "Vision in the Age of LLMs"
+    url: https://lucasb.eyer.be/
+    youtube: 0XB7fNS_ONg
+    duration_s: 4144
   homework: null
-  papers: []
+  papers: [path-to-ami, bitter-lesson, intelligence-without-representation]
 
 - week: 12
   date: 2026-05-18
   title: "Guest Lectures"
   slug: w12-guest-lectures
-  lecture: {youtube: null, duration_s: null}    # guest lectures only; recording TODO(video)
+  lecture: {youtube: null, duration_s: null}    # guest lectures only
   slides: {official: null, community: null}
-  guest: {name: "Dieter Fox", affiliation: "UW & AI2", url: null, youtube: null, duration_s: null}
+  guest:
+    name: "Dieter Fox"
+    affiliation: "University of Washington & AI2"
+    title: null
+    url: https://homes.cs.washington.edu/~fox/
+    youtube: null                               # TODO(video): no recording on the course page
+    duration_s: null
   homework: null
   papers: []

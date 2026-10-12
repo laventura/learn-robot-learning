@@ -1,16 +1,379 @@
 # One entry per paper (CLAUDE.md §6.5). Rendered by rlc.page.paper_cards and papers.qmd.
-# Phase 1 adds the 3 discussion papers per week; cards can stay TODO until their week is written.
 #
-# - id: causal-confusion
-#   role: discussion            # discussion = listed on the course page; lecture = key paper cited in the lecture
-#   weeks: [3]
-#   title: "Causal Confusion in Imitation Learning"
-#   authors: "de Haan, Jayaraman & Levine"
-#   year: 2019
-#   venue: "NeurIPS"
-#   url: https://arxiv.org/abs/1905.11979
-#   summary: "TODO"             # one or two original sentences: the problem and the idea
-#   contributions: []           # 2–4 items, original wording
-#   connects_to: "TODO"         # which idea on the page this paper illustrates
+# Source: the course page's "Paper Discussion" column (fetched 2026-10-12), in its order.
+# Authors are from each PDF's first page. venue/year come from the PDF, arXiv's metadata,
+# or Semantic Scholar, and are the published version's where one exists (so the year can
+# differ from the arXiv year the course page shows). TODO(venue) marks venues none of
+# these sources confirmed. summary/contributions/connects_to are written with the week.
+#
+#   role: discussion = listed on the course page; lecture = key paper cited in the lecture
 
-[]
+# --- Week 2 · Robot Control & MDPs ---------------------------------------
+- id: random-search
+  role: discussion
+  weeks: [2]
+  title: "Simple random search provides a competitive approach to reinforcement learning"
+  authors: "Mania, Guy & Recht"
+  year: 2018
+  venue: "arXiv"            # TODO(venue): believed NeurIPS 2018; not confirmed
+  url: https://arxiv.org/abs/1803.07055
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: deep-rl-doesnt-work-yet
+  role: discussion
+  weeks: [2]
+  title: "Deep Reinforcement Learning Doesn't Work Yet"
+  authors: "Irpan"
+  year: 2018
+  venue: "blog post"
+  url: https://www.alexirpan.com/2018/02/14/rl-hard.html
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: curiosity
+  role: discussion
+  weeks: [2]
+  title: "Curiosity-driven Exploration by Self-supervised Prediction"
+  authors: "Pathak, Agrawal, Efros & Darrell"
+  year: 2017
+  venue: "ICML"
+  url: https://arxiv.org/abs/1705.05363
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 3 · Imitation Learning ------------------------------------------
+- id: causal-confusion
+  role: discussion
+  weeks: [3]
+  title: "Causal Confusion in Imitation Learning"
+  authors: "de Haan, Jayaraman & Levine"
+  year: 2019
+  venue: "NeurIPS"
+  url: https://arxiv.org/abs/1905.11979
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: visual-imitation-representations
+  role: discussion
+  weeks: [3]
+  title: "The Surprising Effectiveness of Representation Learning for Visual Imitation"
+  authors: "Pari, Shafiullah, Arunachalam & Pinto"
+  year: 2022                # TODO(venue): RSS per Semantic Scholar; year believed 2022 (arXiv Dec 2021)
+  venue: "RSS"
+  url: https://arxiv.org/abs/2112.01511
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: transporter-networks
+  role: discussion
+  weeks: [3]
+  title: "Transporter Networks: Rearranging the Visual World for Robotic Manipulation"
+  authors: "Zeng et al."
+  year: 2020
+  venue: "CoRL"
+  url: https://arxiv.org/abs/2010.14406
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 4 · Reinforcement Learning I ------------------------------------
+- id: evolution-strategies
+  role: discussion
+  weeks: [4]
+  title: "Evolution Strategies as a Scalable Alternative to Reinforcement Learning"
+  authors: "Salimans, Ho, Chen, Sidor & Sutskever"
+  year: 2017
+  venue: "arXiv"
+  url: https://arxiv.org/abs/1703.03864
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: pushing-grasping
+  role: discussion
+  weeks: [4]
+  title: "Learning Synergies between Pushing and Grasping with Self-supervised Deep Reinforcement Learning"
+  authors: "Zeng, Song, Welker, Lee, Rodriguez & Funkhouser"
+  year: 2018
+  venue: "IROS"
+  url: https://arxiv.org/abs/1803.09956
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: hil-serl
+  role: discussion
+  weeks: [4]
+  title: "Precise and Dexterous Robotic Manipulation via Human-in-the-Loop Reinforcement Learning"
+  authors: "Luo, Xu, Wu & Levine"
+  year: 2024
+  venue: "arXiv"            # TODO(venue): believed later in Science Robotics (2025); not confirmed
+  url: https://arxiv.org/abs/2410.21845
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 5 · Reinforcement Learning II -----------------------------------
+- id: visuomotor-policies
+  role: discussion
+  weeks: [5]
+  title: "End-to-End Training of Deep Visuomotor Policies"
+  authors: "Levine, Finn, Darrell & Abbeel"
+  year: 2016
+  venue: "JMLR"
+  url: https://arxiv.org/abs/1504.00702
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: eureka
+  role: discussion
+  weeks: [5]
+  title: "Eureka: Human-Level Reward Design via Coding Large Language Models"
+  authors: "Ma et al."
+  year: 2024
+  venue: "ICLR"
+  url: https://arxiv.org/abs/2310.12931
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: tacorl
+  role: discussion
+  weeks: [5]
+  title: "Latent Plans for Task-Agnostic Offline Reinforcement Learning"
+  authors: "Rosete-Beas, Mees, Kalweit, Boedecker & Burgard"
+  year: 2022
+  venue: "CoRL"
+  url: https://arxiv.org/abs/2209.08959
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 6 · Generative Models -------------------------------------------
+- id: diffuser
+  role: discussion
+  weeks: [6]
+  title: "Planning with Diffusion for Flexible Behavior Synthesis"
+  authors: "Janner, Du, Tenenbaum & Levine"
+  year: 2022
+  venue: "ICML"
+  url: https://arxiv.org/abs/2205.09991
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: implicit-bc
+  role: discussion
+  weeks: [6]
+  title: "Implicit Behavioral Cloning"
+  authors: "Florence et al."
+  year: 2021
+  venue: "CoRL"
+  url: https://arxiv.org/abs/2109.00137
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: dsrl
+  role: discussion
+  weeks: [6]
+  title: "Steering Your Diffusion Policy with Latent Space Reinforcement Learning"
+  authors: "Wagenmaker et al."
+  year: 2025
+  venue: "arXiv"
+  url: https://arxiv.org/abs/2506.15799
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 7 · Sequence Modeling and Transformers --------------------------
+- id: decision-transformer
+  role: discussion
+  weeks: [7]
+  title: "Decision Transformer: Reinforcement Learning via Sequence Modeling"
+  authors: "Chen et al."
+  year: 2021
+  venue: "arXiv"            # TODO(venue): believed NeurIPS 2021; not confirmed
+  url: https://arxiv.org/abs/2106.01345
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: aloha
+  role: discussion
+  weeks: [7]
+  title: "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware"
+  authors: "Zhao, Kumar, Levine & Finn"
+  year: 2023
+  venue: "RSS"
+  url: https://arxiv.org/abs/2304.13705
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: humanoid-next-token
+  role: discussion
+  weeks: [7]
+  title: "Humanoid Locomotion as Next Token Prediction"
+  authors: "Radosavovic et al."
+  year: 2024
+  venue: "NeurIPS"
+  url: https://arxiv.org/abs/2402.19469
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 8 · World Models ------------------------------------------------
+- id: unipi
+  role: discussion
+  weeks: [8]
+  title: "Learning Universal Policies via Text-Guided Video Generation"
+  authors: "Du et al."
+  year: 2023
+  venue: "NeurIPS"
+  url: https://arxiv.org/abs/2302.00111
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: dreamer-4
+  role: discussion
+  weeks: [8]
+  title: "Training Agents Inside of Scalable World Models"
+  authors: "Hafner, Yan & Lillicrap"
+  year: 2025
+  venue: "arXiv"
+  url: https://arxiv.org/abs/2509.24527
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: dreamzero
+  role: discussion
+  weeks: [8]
+  title: "World Action Models are Zero-shot Policies"
+  authors: "Ye et al."
+  year: 2026
+  venue: "technical report"
+  url: https://dreamzero0.github.io/DreamZero.pdf
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 9 · Generalist Robot Policies -----------------------------------
+- id: language-conditioned-il
+  role: discussion
+  weeks: [9]
+  title: "Language Conditioned Imitation Learning over Unstructured Data"
+  authors: "Lynch & Sermanet"
+  year: 2021
+  venue: "RSS"
+  url: https://arxiv.org/abs/2005.07648
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: gato
+  role: discussion
+  weeks: [9]
+  title: "A Generalist Agent"
+  authors: "Reed et al."
+  year: 2022
+  venue: "TMLR"
+  url: https://arxiv.org/abs/2205.06175
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: pi-star-06
+  role: discussion
+  weeks: [9]
+  title: "π*0.6: a VLA That Learns From Experience"
+  authors: "Physical Intelligence"
+  year: 2025
+  venue: "arXiv"
+  url: https://arxiv.org/abs/2511.14759
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 10 · Embodied Reasoning and Test-time Scaling -------------------
+- id: icrt
+  role: discussion
+  weeks: [10]
+  title: "In-Context Imitation Learning via Next-Token Prediction"
+  authors: "Fu et al."
+  year: 2024
+  venue: "arXiv"            # TODO(venue): believed ICRA 2025; not confirmed
+  url: https://arxiv.org/abs/2408.15980
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: voyager
+  role: discussion
+  weeks: [10]
+  title: "Voyager: An Open-Ended Embodied Agent with Large Language Models"
+  authors: "Wang et al."
+  year: 2023
+  venue: "arXiv"            # TODO(venue): believed later in TMLR; not confirmed
+  url: https://arxiv.org/abs/2305.16291
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: ecot-lite
+  role: discussion
+  weeks: [10]
+  title: "Training Strategies for Efficient Embodied Reasoning"
+  authors: "Chen et al."
+  year: 2025
+  venue: "arXiv"            # TODO(venue): the PDF mentions CoRL in its references only; not confirmed
+  url: https://arxiv.org/abs/2505.08243
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+# --- Week 11 · Frontiers & Open Problems -----------------------------------
+- id: path-to-ami
+  role: discussion
+  weeks: [11]
+  title: "A Path Towards Autonomous Machine Intelligence"
+  authors: "LeCun"
+  year: 2022
+  venue: "position paper, OpenReview"
+  url: https://openreview.net/pdf?id=BZ5a1r-kVsf
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: bitter-lesson
+  role: discussion
+  weeks: [11]
+  title: "The Bitter Lesson"
+  authors: "Sutton"
+  year: 2019
+  venue: "essay"
+  url: http://www.incompleteideas.net/IncIdeas/BitterLesson.html
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
+
+- id: intelligence-without-representation
+  role: discussion
+  weeks: [11]
+  title: "Intelligence without Representation"
+  authors: "Brooks"
+  year: 1991
+  venue: "Artificial Intelligence"
+  url: https://people.csail.mit.edu/brooks/papers/representation.pdf
+  summary: "TODO"
+  contributions: []
+  connects_to: "TODO"
