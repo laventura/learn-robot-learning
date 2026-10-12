@@ -8,12 +8,683 @@ execute:
 
 ```{python}
 #| include: false
-from rlc.page import paper_cards, resources
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, paper_cards, resources, show_source
+from rlc.toys import w03_imitation as w3
+
+style.apply()
+BLUE, ORANGE = style.CATEGORICAL[0], style.CATEGORICAL[1]
+
+# --- Toy 1: BC vs DAgger on the gusty road, averaged over seeds ------------
+E1 = w3.experiment1()                      # 16 seeds x 200 cars x 400 steps
+N_SEEDS, T_MAX = len(E1["J_bc"]), E1["J_bc"].shape[1]
+Jb, Jd = E1["J_bc"].mean(axis=0), E1["J_dagger"].mean(axis=0)
+se_b = E1["J_bc"].std(axis=0, ddof=1) / np.sqrt(N_SEEDS)
+TS = np.array([50, 100, 200, 400])
+slope_bc = float(np.polyfit(np.log(TS), np.log(Jb[TS - 1]), 1)[0])
+h_bc = E1["bc_departures"] / E1["bc_at_risk"]          # per-step leave rate
+pred = w3.predicted_cost(h_bc, T_MAX)
+returned_pct = 100 * E1["bc_returned"] / E1["bc_departures"]
+rounds_pct = 100 * E1["rounds_left"].mean(axis=0)      # BC, then 4 rounds
+J400 = E1["J_bc"][:, -1]
+n_nogust = int((E1["nogust_left"] > 0).sum())
+# Facts the prose relies on:
+assert slope_bc > 1.6                       # BC's cost grows ~quadratically
+assert Jd[-1] < Jb[-1] / 100                # DAgger stays on the road
+assert rounds_pct[1] < rounds_pct[0] / 5    # one DAgger round fixes most
+assert all(np.diff(Jb[TS - 1]) > 0)
+
+# Representative seed for the figures: among seeds whose BC car never leaves
+# on a calm day, the one whose J(400) is closest to their median (ties: lowest).
+calm = np.flatnonzero(E1["nogust_left"] == 0)
+REP = int(calm[np.argmin(np.abs(J400[calm] - np.median(J400[calm])))])
+bc, dg = E1["bc"][REP], E1["dagger"][REP]
+
+# One gust (step 10, from x = 12) applied to the policy of every calm seed.
+def gust_offsets(policies):
+    return np.array([w3.single_gust([p], x0=12.0, t_gust=10, T=60)[0][0]
+                     for p in policies])
+off_expert = gust_offsets([w3.expert])[0]                 # (61,)
+off_bc = gust_offsets([E1["bc"][s] for s in calm])        # (n_calm, 61)
+off_dg = gust_offsets([E1["dagger"][s] for s in calm])
+n_calm = len(calm)
+n_bc_off = int((np.abs(off_bc[:, -1]) > w3.HALF_WIDTH).sum())
+n_bc_far = int((np.abs(off_bc[:, -1]) > 5).sum())         # far off the road
+worst = int(np.argmax(np.abs(off_bc[:, -1])))             # for the table
+assert np.abs(off_expert).max() < w3.HALF_WIDTH           # expert stays on
+assert 2 <= n_bc_off < n_calm                             # BC: some leave
+assert np.abs(off_dg).max() < w3.HALF_WIDTH               # DAgger: none
+
+# --- Toy 2: two modes around an obstacle ----------------------------------
+R2 = w3.experiment2(0.5, seed=0)
+FORK = np.array([[2.0, 0.0]])
+probs_fork = R2["probs"](FORK)[0]
+p_left = float(probs_fork[w3.BINS > 0].sum())
+p_right = float(probs_fork[w3.BINS < 0].sum())
+mse_fork = float(R2["mse_policy"](FORK)[0])
+near = (np.abs(R2["obs"][:, 0] - 2.0) < 0.3) & (np.abs(R2["obs"][:, 1]) < 0.25)
+acts_near = R2["acts"][near]
+mse_rate, bin_rate = w3.hit_rates(0.5, seeds=20)
+side_near = np.where(np.arange(len(R2["acts"])) // w3.STEPS2 < 10, "left", "right")[near]
+assert min(p_left, p_right) > 0.3 and abs(mse_fork) < 0.02
+assert mse_rate >= 0.3 and bin_rate == 0
+assert R2["mse_hits"] and not R2["binned_hits"]         # what the figure shows
 ```
 
-*This page is a stub. The Papers and Resources sections below already come from `data/`.*
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 3 · **Lecture:** [video](https://youtu.be/Ef4R5s1LqoQ) · **Go deeper:** [ADM Ch 18, Imitation Learning]({{< var adm_url >}}/part3/ch18-imitation-learning.html)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(3))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+Week 2 set up the language: a robot observes $o_t$, picks an action $a_t$ from a **policy** $\pi(a_t \mid o_t)$, and the world moves to a new state. It did not say where a good policy comes from. This week gives the first and most direct answer: **copy a person who already knows how.** Weeks 4 and 5 give the other answer, learning from reward by trial and error. Several ideas from this week return later: expressive action distributions in Week 6 (generative models), histories and transformers in Week 7, and imitation at scale in the generalist robot policies of Week 9.
+
+**The question this week answers:** how do you turn a set of expert demonstrations into a policy, and why does straightforward copying break down?
+
+### The key ideas at a glance
+
+- **Behavioral cloning (BC).** Treat each demonstrated moment as a labelled example, "in this situation the expert did this", and train a network to predict the expert's action with ordinary supervised learning. It is simple and often works.
+- **Distribution shift and compounding error.** Training data come from the states the *expert* visited; at test time the policy sees the states *it* visits. A small mistake leads to a state no demonstration covers, where the next mistake is more likely. If each step has a small chance $\varepsilon$ of an unrecoverable mistake, the expected number of bad steps over a task of length $T$ grows like $\varepsilon T^2$, not $\varepsilon T$.
+- **Show the policy how to recover.** Either fake recovery data (side cameras labelled "steer back"), or run the policy, let an expert label the states it actually reaches, and retrain: **DAgger**. Letting a human take over only when the robot errs (**human-gated DAgger**) makes the labelling cheaper.
+- **Non-Markovian behavior and causal confusion.** People act on memory and on things the robot cannot see. Feeding the policy a history helps in principle, but a high-capacity network may then latch onto a signal that merely *correlates* with the expert's action instead of its cause.
+- **Multimodal behavior.** When experts solve the same situation in different ways, a regression loss averages them, and the average of "left of the tree" and "right of the tree" is straight into it. Policies need distributions that can hold several peaks: mixtures of Gaussians, discretized actions, diffusion, or latent-variable models.
+- **From one task to any goal.** Conditioning the policy on a goal, and learning from unscripted "play" data, turns imitation into a way to learn many skills at once.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Demonstration | A recorded run of an expert doing the task: the sequence of states (or observations) and actions |
+| Expert policy $\pi^*$ | The behavior being imitated, usually a person teleoperating the robot |
+| Behavioral cloning (BC) | Supervised learning from (observation, expert action) pairs |
+| Distribution shift | The states seen at test time differ from the states in the training data |
+| Compounding error | Each mistake makes the next one more likely, so errors pile up over a trajectory |
+| DAgger | Dataset Aggregation: label the learner's own states with expert actions and retrain |
+| Mode | One distinct way of doing the task, a peak of the action distribution |
+| Causal confusion | The policy keys on a correlate of the expert's action rather than its cause |
+| Play data | Unscripted teleoperation with no fixed task, later relabelled with goals |
+
+### After this week you can
+
+- Write down behavioral cloning as a loss and train it.
+- Explain, with the $\varepsilon T^2$ argument, why small imitation errors snowball, and how DAgger changes the bound to $\varepsilon T$.
+- Recognize when a policy needs a multimodal action distribution, and name four ways to build one.
+- Spot non-Markovian demonstrations and the risk of causal confusion when adding history.
 
 {{< video https://youtu.be/Ef4R5s1LqoQ >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+Imagine learning to drive only by watching dashcam videos of a careful driver. Every frame shows the car in the middle of its lane, so you learn exactly what to do *there*. Then, on your first drive, a gust nudges you towards the verge. Nothing you watched shows a car near the verge, so you have no idea that you should steer back. The fix is not more videos of perfect driving. It is videos of *recoveries*, or an instructor who tells you what to do in the situations you get yourself into.
+:::
+
+### Copy what the expert did {#copy}
+
+Behavioral cloning is the dashcam student. You collect pairs: "the car was a little left of the centre line, heading slightly right, the road curving left: the expert steered a little left." A network learns to map the first half of each pair to the second. The lecture introduces it as the most straightforward version of imitation learning [▶ 03:58](https://youtu.be/Ef4R5s1LqoQ?t=238). Formally it is a regression loss, @eq-bc-loss.
+
+### One slip and you are somewhere new {#slip}
+
+The road toy on this page makes the analogy concrete. The expert keeps the car's heading along the road and, like most drivers, ignores small offsets from the centre line; only past `{python} f"{w3.DEADBAND:.1f}"` (in road half-widths of 1.0) does it steer back. Its demonstrations were recorded on a calm day, so the car never left that band and the data never show a steer-back. At deployment, each step has a `{python} f"{100 * w3.EPS:.1f}"`% chance of a gust that turns the car by `{python} f"{w3.GUST:.1f}"` rad.
+
+```{python}
+#| label: fig-one-gust
+#| fig-cap: "One gust, many clones. Each line is one car's offset from the centre line; at step 10 the same gust turns every car towards the verge. The expert (dashed) steers back. Orange: the BC policy of each training seed that is stable on a calm day; blue: the DAgger policy of the same seeds. Dashed grey lines are the road edges. Offsets beyond ±4 are drawn at ±4."
+#| fig-alt: "Line chart of offset from the centre line against step, from 0 to 60, with dashed road edges at plus and minus one. Before step 10 all lines sit near zero. After the gust, the dashed expert line rises to about 0.6 and returns. The blue DAgger lines do the same. The orange BC lines split: several return inside the road, while others cross an edge and stay outside, some climbing off the top of the chart."
+steps = np.arange(off_expert.size)
+fig, ax = plt.subplots(figsize=(6.4, 3.4))
+for edge in (-w3.HALF_WIDTH, w3.HALF_WIDTH):
+    ax.axhline(edge, color=style.INK_SECONDARY, ls="--", lw=1)
+for k, row in enumerate(np.clip(off_bc, -4, 4)):
+    ax.plot(steps, row, color=ORANGE, lw=1.3, alpha=0.8, label="BC (one line per seed)" if k == 0 else None)
+for k, row in enumerate(off_dg):
+    ax.plot(steps, row, color=BLUE, lw=1.3, alpha=0.8, label="DAgger (one line per seed)" if k == 0 else None)
+ax.plot(steps, off_expert, color=style.INK, ls="--", lw=2, label="expert")
+ax.annotate("gust", xy=(10, 0.05), xytext=(2, 2.5),
+            arrowprops=dict(arrowstyle="->", color=style.INK_SECONDARY))
+ax.set_ylim(-4.2, 4.2); ax.set_xlabel("step"); ax.set_ylabel("offset from centre line")
+ax.legend(fontsize=8, loc="lower left")
+plt.show()
+```
+
+The gust pushes every car out by about the same amount at first. The expert's offset peaks at `{python} f"{np.abs(off_expert).max():.2f}"`, past its deadband, and it steers back. The cloned policies split. They were trained only on near-centre states, so what each does further out is an accident of its training run: of the `{python} n_calm` BC policies, `{python} n_calm - n_bc_off` happen to steer back, `{python} n_bc_off` end off the road, and `{python} n_bc_far` of those end more than five units from the centre line. This is the lecture's tightrope walker: once you fall off, no demonstration shows how to get back on [▶ 15:16](https://youtu.be/Ef4R5s1LqoQ?t=916). The general version is distribution shift: the states the policy visits stop matching the states the expert visited [▶ 06:18](https://youtu.be/Ef4R5s1LqoQ?t=378). The formal cost of it is @eq-bc-bound.
+
+### Ask the expert about your own mistakes {#dagger-intuition}
+
+If the problem is missing recovery data, supply it. NVIDIA's self-driving car added two side cameras and labelled their images "steer right" and "steer left", which creates recovery examples without ever crashing [▶ 12:01](https://youtu.be/Ef4R5s1LqoQ?t=721). DAgger does the same thing systematically: drive with the current policy, ask the expert what it *would* have done at each state the policy reached, add those pairs to the data, and retrain [▶ 18:44](https://youtu.be/Ef4R5s1LqoQ?t=1124). In the road toy, DAgger's policies (blue above) have seen post-gust states labelled with the expert's steer-back, and every one of them recovers. Asking an expert to relabel thousands of states afterwards is tedious, so in practice a human often watches and takes over only when the robot is about to fail (human-gated DAgger) [▶ 20:48](https://youtu.be/Ef4R5s1LqoQ?t=1248). The formal version is @eq-dagger.
+
+### What the expert knew that the robot didn't {#history}
+
+Experts are not Markovian: a driver brakes because of how a cyclist moved over the last few seconds, and a teleoperator sees the scene from angles the robot's camera does not [▶ 25:38](https://youtu.be/Ef4R5s1LqoQ?t=1538). Giving the policy a history of observations is the obvious fix. It can backfire. In the lecture's drawer example, the demos always show a 10 N force spike when the gripper grasps the handle, so the network learns "pull when the force reads 10 N" instead of "pull when the handle is grasped"; if the gripper slips and reads 2 N, it never pulls [▶ 29:56](https://youtu.be/Ef4R5s1LqoQ?t=1796). This is causal confusion, the subject of one of this week's [papers](#papers).
+
+### Two good answers can average to a bad one {#modes}
+
+```{python}
+#| label: fig-two-modes
+#| fig-cap: "Half the demonstrations (grey) pass the obstacle on the left, half on the right. The MSE policy (blue) predicts the average sideways speed, which near the start is about zero, and runs into the obstacle. The binned policy (orange) keeps both options as separate peaks, takes the more likely one, and follows one side. One training seed; the hit rates over 20 seeds are in the text."
+#| fig-alt: "A grey disc at the centre of a strip from x = 0 to 10. Twenty thin grey demonstration paths start near y = 0, half bending up around the disc and half bending down. A thick blue path goes nearly straight and passes through or very close to the disc. A thick orange path follows one of the grey bundles around the disc."
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+t = np.linspace(0, 2 * np.pi, 100)
+ax.fill(w3.OBSTACLE[0] + w3.RADIUS * np.cos(t), w3.OBSTACLE[1] + w3.RADIUS * np.sin(t),
+        color=style.DIVERGING[1], ec=style.INK_SECONDARY)
+for path in R2["demos"]:
+    ax.plot(path[:, 0], path[:, 1], color=style.MUTED, lw=0.8, alpha=0.6)
+ax.plot(R2["mse"][:, 0], R2["mse"][:, 1], color=BLUE, lw=2.5, label="MSE policy")
+ax.plot(R2["binned"][:, 0], R2["binned"][:, 1], color=ORANGE, lw=2.5, label="binned policy")
+ax.plot([], [], color=style.MUTED, lw=0.8, label="demonstrations")
+ax.set_xlabel("x (forward)"); ax.set_ylabel("y (sideways)"); ax.set_aspect("equal")
+ax.set_ylim(-3, 3); ax.legend(loc="lower left", ncol=3, fontsize=9)
+plt.show()
+```
+
+Real demonstrations rarely agree on one way to do a task: there are endless ways to close a drawer, and different operators pick different ones [▶ 32:11](https://youtu.be/Ef4R5s1LqoQ?t=1931). A mean-squared-error loss is minimized by the *average* action, and the average of two good routes around a tree is straight into the tree [▶ 33:46](https://youtu.be/Ef4R5s1LqoQ?t=2026). In this toy, with half the demos passing on each side, the MSE policy hit the obstacle in `{python} f"{100 * mse_rate:.0f}"`% of 20 training seeds and the binned policy in `{python} f"{100 * bin_rate:.0f}"`%. The fix is a policy that outputs a *distribution* able to hold several peaks [▶ 34:41](https://youtu.be/Ef4R5s1LqoQ?t=2081): see @eq-mixture, @eq-autoregressive, and the latent-variable model in @eq-elbo.
+
+### From one task to any goal {#goals}
+
+Task labels are a blunt instrument: is a sliding door moved halfway "opened"? The lecture argues for **goal-conditioned** policies, $\pi(a_t \mid s_t, s_g)$, that learn to reach any goal state from any start, and for **play data**: operators teleoperate the robot freely, with no task, and every window of that data is relabelled with its own final frame as the goal [▶ 43:37](https://youtu.be/Ef4R5s1LqoQ?t=2617). Play data are cheap and diverse, but highly multimodal, which is why the lecture pairs them with a latent-variable policy (@eq-elbo).
+
+## Key concepts & formulae
+
+The lecture's notation: $s_t$ is the state, $o_t$ the observation, $a_t$ the action at time $t$; $\pi^*$ is the expert and $\pi_\theta$ the learned policy with parameters $\theta$; $\mathcal{D}$ is the demonstration data set. ADM Chapter 18 writes the expert as $\pi_E$.
+
+### Behavioral cloning
+
+::: {.key-equation data-name="Behavioral cloning loss"}
+$$
+\theta^\star = \arg\min_\theta \; \frac{1}{|\mathcal{D}|} \sum_{(s, a^*) \in \mathcal{D}} \big\lVert \pi_\theta(s) - a^* \big\rVert^2
+$$ {#eq-bc-loss}
+:::
+
+**In words.** Pick the network weights that make the policy's action as close as possible, on average, to what the expert did in the same state.
+
+**Term by term.**
+
+- $\mathcal{D}$: every (state, expert action) pair from every demonstration, pooled; the trajectory structure is thrown away.
+- $\pi_\theta(s)$: the policy's action in state $s$, a deterministic network output here.
+- $a^*$: the action the expert took in that state.
+- $\lVert\cdot\rVert^2$: squared error, summed over action dimensions. Any regression or classification loss can stand here; the next sections replace it.
+
+**Why it holds: MSE predicts the average.** For a fixed state, the number $c$ that minimizes $\mathbb{E}[(c - a^*)^2]$ over the expert's possible actions satisfies $\frac{d}{dc}\mathbb{E}[(c-a^*)^2] = 2(c - \mathbb{E}[a^*]) = 0$, so $c = \mathbb{E}[a^* \mid s]$: the mean of the actions the expert took there. That is fine when the expert is consistent and disastrous when it is not.
+
+**Quick check.** In the obstacle toy, the demonstrated sideways speeds near the fork $(x, y) = (2, 0)$ have mean `{python} f"{acts_near.mean():+.3f}"` (from `{python} int(near.sum())` demo steps, `{python} int((acts_near > 0).sum())` steering left and `{python} int((acts_near < 0).sum())` right). The MSE network outputs `{python} f"{mse_fork:+.3f}"` there: close to that average, and close to neither group's action.
+
+### Distribution shift and the $\varepsilon T^2$ bound
+
+BC minimizes its loss on states drawn from $p_{\text{expert}}(s)$, the states the expert visits. What matters at test time is how it does on $p_{\pi_\theta}(s)$, the states *it* visits. These differ as soon as the policy makes a mistake.
+
+::: {.key-equation .famous data-name="Compounding error of behavioral cloning"}
+$$
+\begin{aligned}
+c(s, a) &= \begin{cases} 0 & a = \pi^*(s) \\ 1 & \text{otherwise} \end{cases} \\
+\Pr\big(\pi_\theta(s) \neq \pi^*(s)\big) &\le \varepsilon \quad (s \sim p_{\text{expert}}) \\[4pt]
+\mathbb{E}\Big[\sum_{t=1}^{T} c(s_t, a_t)\Big] &\le \varepsilon T \\
+&\quad + (1-\varepsilon)\big(\varepsilon (T-1) + \dots\big) \\
+&= O(\varepsilon T^2)
+\end{aligned}
+$$ {#eq-bc-bound}
+:::
+
+**In words.** If the cloned policy errs with probability at most $\varepsilon$ on the expert's states, but an error takes it to states where it can no longer be trusted, its expected number of mistakes over $T$ steps can grow with $T^2$.
+
+**Term by term.**
+
+- $c(s, a)$: the cost of a step, 1 if the policy's action differs from the expert's.
+- $\varepsilon$: the mistake rate on states the expert visits, which is what supervised training controls.
+- $T$: the task length in steps.
+- $\varepsilon T$: the cost of a first mistake at step 1, paid on all $T$ steps (the tightrope: once off, always off).
+- $(1-\varepsilon)\,\varepsilon(T-1)$: no mistake at step 1, first mistake at step 2, paid on the remaining $T-1$ steps; and so on.
+
+**Why it holds.** A first mistake at step $t$ costs at most $T - t + 1$, and happens with probability at most $\varepsilon$. Summing, $\sum_{t=1}^{T} \varepsilon (T - t + 1) = \varepsilon \frac{T(T+1)}{2}$, which is $O(\varepsilon T^2)$. Compare supervised learning on independent examples, where $T$ predictions cost $\varepsilon T$. The analysis is from Ross et al. (2011), cited in the lecture [▶ 15:16](https://youtu.be/Ef4R5s1LqoQ?t=916).
+
+**Numeric check.** In the road toy, over `{python} N_SEEDS` seeds × 200 cars, BC's mean cumulative off-road steps are `{python} f"{Jb[49]:.1f}"`, `{python} f"{Jb[99]:.1f}"`, `{python} f"{Jb[199]:.1f}"` and `{python} f"{Jb[399]:.1f}"` at $T =$ 50, 100, 200 and 400: a slope of `{python} f"{slope_bc:.2f}"` on a log-log scale, close to the quadratic's 2. The measured rate at which an on-road BC car leaves is `{python} f"{h_bc:.4f}"` per step. If departures were permanent, that rate would predict `{python} f"{pred[-1]:.0f}"` off-road steps by $T = 400$; the toy measures `{python} f"{Jb[-1]:.0f}"`, lower because `{python} f"{returned_pct:.0f}"`% of the cars that left were back on the road at the end. DAgger's policies, facing the same gusts, total `{python} f"{Jd[-1]:.3f}"`.
+
+```{python}
+#| label: fig-compounding
+#| fig-cap: "Cumulative off-road steps per car against the horizon T, averaged over 16 training seeds and 200 cars each, all facing the same gusts. BC's cost curves upward (shaded: ±1 standard error over seeds); the dashed line is the prediction from BC's measured per-step departure rate if no car ever came back. DAgger's cost stays near zero."
+#| fig-alt: "Line chart, horizon T from 0 to 400 on the x-axis, cumulative off-road steps on the y-axis. The orange BC curve starts flat and bends upward to about 80 at T = 400, with a widening shaded band. A dashed curve above it bends upward to about 110. The blue DAgger line stays at zero."
+tt = np.arange(1, T_MAX + 1)
+fig, ax = plt.subplots(figsize=(6.4, 3.6))
+ax.fill_between(tt, Jb - se_b, Jb + se_b, color=ORANGE, alpha=0.2, lw=0)
+ax.plot(tt, Jb, color=ORANGE, label="BC (measured)")
+ax.plot(tt, pred, color=ORANGE, ls="--", lw=1.2, label=r"constant leave rate $h$, no return")
+ax.plot(tt, Jd, color=BLUE, label="DAgger (measured)")
+ax.set_xlabel("horizon $T$ (steps)"); ax.set_ylabel("cumulative off-road steps")
+ax.legend(fontsize=9)
+plt.show()
+```
+
+### DAgger: label the learner's own states
+
+```{dot}
+//| label: fig-dagger-loop
+//| fig-width: 4.47
+//| fig-height: 5.96
+//| fig-cap: "Behavioral cloning stops after the first training step. DAgger closes the loop: run the current policy, have the expert label the states it reached, add them to the data, and retrain."
+//| fig-alt: "Flow diagram. Expert demonstrations feed 'train policy on all data'. From there, an arrow labeled 'BC stops here' leads to 'deploy'. A second arrow labeled 'DAgger' leads to 'run the policy', then 'visited states', then 'expert labels each state', then 'add to data', which loops back to 'train policy on all data'."
+digraph dagger {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  demos [label="expert demonstrations", fillcolor="#f0efec", color="#52514e"];
+  train [label="train policy on all data"];
+  deploy [label="deploy", fillcolor="#f0efec", color="#52514e"];
+  run [label="run the policy\n(its own mistakes included)"];
+  states [label="visited states"];
+  label [label="expert labels each state:\n\"here I would do this\"", fillcolor="#fbe1d6", color="#eb6834"];
+  add [label="add to data"];
+  demos -> train [label=" start"];
+  train -> deploy [label=" BC stops here"];
+  train -> run [label=" DAgger"];
+  run -> states [label=" collect"];
+  states -> label [label=" query"];
+  label -> add [label=" pairs"];
+  add -> train [label=" retrain"];
+  { rank=same; deploy; run; }
+}
+```
+
+::: {.key-equation data-name="DAgger's data rule"}
+$$
+\begin{aligned}
+\mathcal{D} &\leftarrow \mathcal{D} \cup \big\{ (s, \pi^*(s)) : s \sim p_{\pi_\theta} \big\} \\
+\theta &\leftarrow \arg\min_\theta \mathcal{L}(\pi_\theta, \mathcal{D})
+\end{aligned}
+$$ {#eq-dagger}
+:::
+
+**In words.** Collect states by running the *current learned policy*, label each with the expert's action, add them to everything collected so far, and refit.
+
+**Term by term.**
+
+- $s \sim p_{\pi_\theta}$: states drawn from the learner's own trajectories, mistakes included. This is the distribution BC never trains on.
+- $\pi^*(s)$: the expert's label, "what I would do here". The expert does not have to drive; it only has to answer.
+- $\mathcal{D} \cup$: the old data are kept, so the policy does not forget earlier states (aggregation, the "Agg" in DAgger).
+- $\mathcal{L}$: the same supervised loss as BC, for example @eq-bc-loss.
+
+**Why it helps.** After enough rounds the training data cover the states the policy itself reaches, so the mistake rate $\varepsilon$ holds where the policy actually is. A mistake no longer leads into unknown territory, and the bound drops from $O(\varepsilon T^2)$ to $O(\varepsilon T)$ (Ross et al., 2011). The cost is an expert who can be queried on states it did not choose, which the lecture flags as slow and costly in practice [▶ 19:55](https://youtu.be/Ef4R5s1LqoQ?t=1195).
+
+### Expressive action distributions
+
+When the expert's action in a state has several modes, the policy must output a distribution $\pi_\theta(a \mid s)$ rather than a single action, and be trained by maximum likelihood instead of squared error.
+
+::: {.key-equation data-name="Mixture of Gaussians policy"}
+$$
+\pi_\theta(a \mid s) = \sum_{k=1}^{K} w_k(s)\, \mathcal{N}\big(a;\, \mu_k(s), \Sigma_k(s)\big)
+$$ {#eq-mixture}
+:::
+
+**In words.** The network outputs $K$ bell curves and a weight for each; the action is drawn from their weighted sum.
+
+**Term by term.**
+
+- $K$: the number of components, fixed in advance; the lecture notes this as the main limitation [▶ 34:41](https://youtu.be/Ef4R5s1LqoQ?t=2081).
+- $w_k(s)$: how likely mode $k$ is in state $s$; a softmax output, so the weights sum to 1.
+- $\mu_k(s), \Sigma_k(s)$: the centre and spread of mode $k$.
+
+In the obstacle toy, two components would do: one centred on "steer left", one on "steer right", each with weight near one half at the fork.
+
+::: {.key-equation data-name="Autoregressive discretization"}
+$$
+p(a_t \mid s_t) = \prod_{d=1}^{D} p\big(a_{t,d} \mid s_t, a_{t,1}, \dots, a_{t,d-1}\big)
+$$ {#eq-autoregressive}
+:::
+
+**In words.** Split the action into its $D$ dimensions, chop each into bins, and predict the bins one dimension at a time, each conditioned on the ones already chosen.
+
+**Term by term.**
+
+- $a_{t,d}$: the bin chosen for dimension $d$ (a class label), trained with cross-entropy.
+- The product: the chain rule of probability, exact for any joint distribution.
+- Why not one big grid: with $D$ dimensions of $B$ bins each, a joint grid has $B^D$ classes; the product needs only $D$ predictions of $B$ classes each [▶ 35:27](https://youtu.be/Ef4R5s1LqoQ?t=2127). This is how the first vision-language-action models emitted actions, as tokens from a transformer (Weeks 7 and 9).
+
+The binned policy in the obstacle toy is the one-dimensional case, $D = 1$ with `{python} len(w3.BINS)` bins. At the fork its probabilities put `{python} f"{p_left:.2f}"` on the left-steering bins and `{python} f"{p_right:.2f}"` on the right-steering bins (@fig-fork).
+
+The lecture also previews **diffusion** policies, which turn noise into an action by repeated denoising and are the subject of Week 6 [▶ 37:32](https://youtu.be/Ef4R5s1LqoQ?t=2252), and **latent-variable** policies, which receive an extra random input $z$ that selects the mode [▶ 39:22](https://youtu.be/Ef4R5s1LqoQ?t=2362). For the latter, the training objective is the evidence lower bound.
+
+::: {.key-equation .famous data-name="Evidence lower bound (ELBO), goal-conditioned"}
+$$
+\begin{aligned}
+\log p_\theta(\tau \mid c) \;\ge\;\; & \mathbb{E}_{q_\phi(z \mid \tau, c)}\big[\log p_\theta(\tau \mid z, c)\big] \\
+-\; & \mathrm{KL}\big(q_\phi(z \mid \tau, c)\,\big\|\,p(z \mid c)\big)
+\end{aligned}
+$$ {#eq-elbo}
+:::
+
+**In words.** We would like to maximize the likelihood of the demonstrated trajectory, but that requires averaging over every possible latent plan $z$. Instead, maximize a lower bound: reconstruct the trajectory well from a plan inferred from it, while keeping that inferred plan close to what could be proposed from the start and goal alone.
+
+**Term by term.**
+
+- $\tau$: a short window of demonstration (states and actions); $c = (s_c, s_g)$: its context, the current state $s_c$ and the goal $s_g$.
+- $z$: a latent plan, a continuous vector that picks one way of getting from $s_c$ to $s_g$.
+- $q_\phi(z \mid \tau, c)$: the posterior ("plan recognition"), which sees the whole window and infers which plan it followed.
+- $p_\theta(\tau \mid z, c)$: the action decoder, the policy itself, rewarded for reproducing the window's actions given the plan.
+- $p(z \mid c)$: the prior ("plan proposal"), which sees only start and goal. The KL term pulls the recognized plans and the proposed plans together, so at test time the prior alone can propose plans.
+
+**Why it holds.** For any distribution $q$ over $z$, $\log p(\tau \mid c) = \log \mathbb{E}_{q}\big[p(\tau, z \mid c)/q(z)\big]$, which by Jensen's inequality ($\log$ is concave) is at least $\mathbb{E}_q\big[\log p(\tau, z \mid c) - \log q(z)\big]$; splitting $p(\tau, z \mid c) = p(\tau \mid z, c)\, p(z \mid c)$ gives the two terms. Because the plan absorbs the choice between modes, the decoder only has to model one mode at a time, as the lecture puts it [▶ 46:22](https://youtu.be/Ef4R5s1LqoQ?t=2782).
+
+## Worked examples
+
+### Example 1: a gust, step by step
+
+The table follows three cars of @fig-one-gust from just before the gust: the expert, the BC policy that ends farthest off the road (seed `{python} int(calm[worst])`), and the DAgger policy of the same seed. Offsets are signed distances from the centre line; the road edge is at 1.0.
+
+```{python}
+#| output: asis
+rows = [10, 11, 12, 14, 17, 20, 30, 45, 60]
+cars = np.stack([off_expert, off_bc[worst], off_dg[worst]])
+print("| step | expert | BC | DAgger |")
+print("|---:|---:|---:|---:|")
+for t in rows:
+    cells = " | ".join(f"{v:+.2f}" + (" (off)" if abs(v) > w3.HALF_WIDTH else "")
+                       for v in cars[:, t])
+    print(f"| {t} | {cells} |")
+```
+
+For the first steps after the gust the three cars move alike: each straightens its heading, which the calm-day data did teach. They part once the offset passes the expert's deadband at `{python} f"{w3.DEADBAND:.1f}"`, a region no demonstration covered. The expert starts steering back, the DAgger policy (trained on such states) does the same, and this BC policy, left to guess, keeps going.
+
+How much DAgger data does it take? Averaged over the `{python} N_SEEDS` seeds, the share of cars that leave the road at least once in `{python} T_MAX` steps:
+
+```{python}
+#| output: asis
+print("| policy | cars that leave the road |")
+print("|:---|---:|")
+for k, v in enumerate(rounds_pct):
+    print(f"| {'BC' if k == 0 else f'DAgger, round {k}'} | {v:.1f}% |")
+```
+
+One round of relabelled data does most of the work: the policy sees what happens after a gust once, and the expert's labels fill the gap. Later rounds add little, because the policy now rarely reaches new states.
+
+The averages hide a wide spread between seeds. With the same calm-day demos, BC's cumulative off-road steps at $T = 400$ ranged from `{python} f"{J400.min():.0f}"` to `{python} f"{J400.max():.0f}"` across seeds, and in `{python} n_nogust` of the `{python} N_SEEDS` seeds BC left the road even with no gusts at all. A network trained only on near-centre states has to guess what to do elsewhere, and each seed guesses differently: some guesses happen to steer back, some drift. That unpredictability is the practical face of distribution shift.
+
+### Example 2: the fork
+
+At the fork $(x, y) = (2, 0)$, half the demos are about to swing left and half right. The left panel shows the sideways speeds the demos actually used near that point; the right panel shows what each learned policy does there.
+
+```{python}
+#| label: fig-fork
+#| fig-cap: "What the policies make of the fork at (x, y) = (2, 0). Left: sideways speeds in the demonstrations near that point, split by which side the demo passes the obstacle. The two groups overlap here, because the robot has barely started to swerve, but they lean opposite ways. Right: the binned policy's probability for each of its 11 action bins, with one peak on each side; the MSE policy's single output (blue line) sits between them at about zero."
+#| fig-alt: "Two panels. Left: stacked histograms of demonstrated sideways speeds near the fork, one color for demos that pass on the left and one for demos that pass on the right; the left-passing group sits mostly at positive speeds, the right-passing group mostly at negative speeds, overlapping near zero. Right: bars for 11 action bins from -0.3 to +0.3, with one peak on a negative bin and one on a positive bin; a vertical blue line marks the MSE output near zero."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.4, 2.9), sharex=True)
+edges = np.linspace(-0.3, 0.3, 13)
+a1.hist([acts_near[side_near == "left"], acts_near[side_near == "right"]], bins=edges,
+        stacked=True, color=[style.CATEGORICAL[2], style.CATEGORICAL[4]],
+        label=["passes left", "passes right"])
+a1.set_xlabel("sideways speed"); a1.set_ylabel("demo steps"); a1.set_title("demonstrations", fontsize=10)
+a1.legend(fontsize=8, loc="upper left")
+a2.bar(w3.BINS, probs_fork, width=0.05, color=ORANGE, label="binned policy")
+a2.axvline(mse_fork, color=BLUE, lw=2, label="MSE policy")
+a2.set_ylim(0, 1.45 * probs_fork.max())
+a2.set_xlabel("sideways speed"); a2.set_ylabel("probability"); a2.set_title("policies", fontsize=10)
+a2.legend(fontsize=8, loc="upper left")
+plt.tight_layout(); plt.show()
+```
+
+```{python}
+#| output: asis
+print("| bin centre (sideways speed) | binned policy's probability |")
+print("|---:|---:|")
+for b, p in zip(w3.BINS, probs_fork):
+    print(f"| {b:+.2f} | {p:.2f} |")
+```
+
+The MSE policy outputs `{python} f"{mse_fork:+.3f}"`: go straight, the average of two groups that lean opposite ways. The binned policy puts `{python} f"{p_left:.2f}"` of its probability on steering left and `{python} f"{p_right:.2f}"` on steering right, and taking the most likely bin commits it to one side. One step later the robot is no longer at $y = 0$, the demos near its new position all agree, and the choice sticks.
+
+## Interactive
+
+### Drift under gusts
+
+Move the slider to change how often gusts hit. Each panel shows 20 cars driven by one policy, as offset from the centre line over 400 steps; the dashed lines are the road edges. The policies are from one seed, chosen by an explicit rule: among seeds whose BC car never leaves the road on a calm day, the one whose BC cost is closest to their median (seed `{python} REP`).
+
+```{python}
+#| label: fig-drift-slider
+#| fig-cap: "Offsets from the centre line of 20 cars per policy, for the chosen gust rate. Values beyond ±3 are drawn at ±3. Top: behavioral cloning; bottom: DAgger."
+#| fig-alt: "Interactive figure with a slider for the gust rate (0 to 1 percent per step) and two stacked panels of offset versus step. At zero gust rate all lines in both panels stay near zero. As the rate increases, more and more lines in the top BC panel jump past the dashed road edges at plus or minus one and stay out, while the lines in the bottom DAgger panel spike briefly and return inside the edges."
+EPS_LIST = [0.0, 0.001, 0.002, 0.005, 0.01]
+x0 = np.random.default_rng(7).uniform(0, w3.WAVELEN, 20)
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                    subplot_titles=("behavioral cloning", "DAgger"))
+left_bc, left_dg, still_off_bc, steps_off = [], [], [], {1: [], 2: []}
+for i, eps in enumerate(EPS_LIST):
+    for row, (pol, col, store) in enumerate([(bc, ORANGE, left_bc), (dg, BLUE, left_dg)], start=1):
+        s, _ = w3.rollout(pol, 400, eps, np.random.default_rng(500 + i), x0)
+        off = s[..., 1] - w3.road_y(s[..., 0])                 # (20, 401)
+        outside = np.abs(off) > w3.HALF_WIDTH
+        store.append(float(outside.any(axis=1).mean()))
+        steps_off[row].append(float(outside.sum(axis=1).mean()))  # per car
+        if row == 1:
+            still_off_bc.append(float(outside[:, -1].mean()))
+        xs, ys = [], []
+        for car in np.clip(off[:, ::4], -3, 3):               # one line per car
+            xs += list(range(0, 401, 4)) + [None]
+            ys += list(np.round(car, 3)) + [None]
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=col, width=1),
+                                 opacity=0.7, visible=(i == 2), showlegend=False,
+                                 hoverinfo="skip"), row=row, col=1)
+for row in (1, 2):
+    for edge in (-1, 1):
+        fig.add_hline(y=edge, line=dict(color=style.INK_SECONDARY, dash="dash", width=1), row=row, col=1)
+steps = [dict(method="update", label=f"{100 * eps:g}%",
+              args=[{"visible": [j // 2 == i for j in range(2 * len(EPS_LIST))]}])
+         for i, eps in enumerate(EPS_LIST)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=520, margin=dict(l=65, r=20, t=40, b=40),
+                  sliders=[dict(active=2, steps=steps, pad=dict(t=30),
+                                currentvalue=dict(prefix="gusts per step: "))])
+fig.update_yaxes(range=[-3.2, 3.2], title_text="offset")
+fig.update_xaxes(title_text="step", row=2, col=1)
+fig.show()
+assert left_bc[-1] > left_dg[-1] and left_bc[0] == 0
+assert steps_off[1][-1] > 3 * steps_off[2][-1]
+```
+
+**What to try.** Start at 0%: with no gusts every car of both policies stays inside the edges. Raise the rate. In the top panel, more and more BC cars cross an edge: at 1% per step, `{python} f"{100 * left_bc[-1]:.0f}"`% of the 20 cars leave the road at some point, and a BC car spends on average `{python} f"{steps_off[1][-1]:.1f}"` of its 400 steps off it. In the bottom panel, DAgger's cars spike towards the edge after each gust and come back: `{python} f"{100 * left_dg[-1]:.0f}"`% cross an edge at all, for `{python} f"{steps_off[2][-1]:.1f}"` steps per car on average. This seed's BC policy is a middling one: `{python} f"{100 * still_off_bc[-1]:.0f}"`% of its cars are still off the road at step 400, so its departures are long detours rather than the permanent ones of the worst seeds in @fig-one-gust.
+
+### Demonstration modes
+
+```{python}
+#| include: false
+P_GRID = np.round(np.linspace(0, 1, 11), 1)
+SEEDS2 = [0, 1, 2]
+runs = [[w3.experiment2(p, seed) for seed in SEEDS2] for p in P_GRID]
+t = np.linspace(0, 2 * np.pi, 60)
+write_json({
+    "p": P_GRID, "seeds": SEEDS2,
+    "runs": [[{"demos": np.round(r["demos"][:, ::2], 3), "mse": np.round(r["mse"], 3),
+               "binned": np.round(r["binned"], 3), "mse_hits": r["mse_hits"],
+               "binned_hits": r["binned_hits"]} for r in row] for row in runs],
+    "obstacle": np.round(np.stack([w3.OBSTACLE[0] + w3.RADIUS * np.cos(t),
+                                   w3.OBSTACLE[1] + w3.RADIUS * np.sin(t)], axis=1), 3),
+    "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED,
+              "neutral": style.DIVERGING[1], "surface": style.SURFACE},
+}, "data/w03-modes.json")
+mse_hits_grid = np.array([[r["mse_hits"] for r in row] for row in runs])
+bin_hits_grid = np.array([[r["binned_hits"] for r in row] for row in runs])
+hit_ps = P_GRID[mse_hits_grid.any(axis=1)]
+labels = [f"{p:.1f}" for p in hit_ps]                    # "0.4 and 0.5"
+hit_ps_text = labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
+# Runs where the binned robot passes on the side fewer demos chose:
+minority = sum(np.sign(r["binned"][25, 1]) != np.sign(p - 0.5)
+               for p, row in zip(P_GRID, runs) for r in row if p != 0.5)
+assert mse_hits_grid[5].any() and not mse_hits_grid[[0, 10]].any()
+assert not bin_hits_grid[[0, 10]].any()
+# "it always commits to one side": at x = 5 every binned path is well off-centre
+assert all(abs(r["binned"][25, 1]) > 1.0 for row in runs for r in row)
+```
+
+Slide the share of demonstrations that pass on the left, and pick one of three training seeds. Grey: the 20 demonstrations; blue: the MSE policy; orange: the binned policy. Both policies are retrained for every setting.
+
+```{ojs}
+modes = FileAttachment("data/w03-modes.json").json()
+viewof pLeft = Inputs.range([0, 1], {step: 0.1, value: 0.5, label: "share passing left"})
+viewof seedIdx = Inputs.radio([0, 1, 2], {value: 0, label: "seed"})
+modesRun = modes.runs[Math.round(pLeft * 10)][seedIdx]
+```
+
+```{ojs}
+//| label: fig-modes-explorer
+//| fig-cap: "Demonstrations (grey), the MSE policy (blue) and the binned policy (orange) for the chosen share of left-passing demos and training seed. The grey disc is the obstacle."
+//| fig-alt: "Interactive plot of a strip from x = 0 to 10 with a grey disc obstacle at x = 5. A slider sets the share of demonstrations passing left and radio buttons pick a seed. Thin grey demonstration paths bend around the disc. With all demos on one side, both thick policy paths follow them. Near an even split the blue MSE path runs between the two bundles, close to or through the disc, while the orange binned path follows one bundle."
+Plot.plot({
+  // Equal scales on x (10 units) and y (6 units), so the obstacle is round.
+  width: Math.min(width, 640), height: Math.round(0.6 * (Math.min(width, 640) - 60)) + 60,
+  marginLeft: 40, marginRight: 20, marginTop: 20, marginBottom: 40,
+  x: {domain: [0, 10], label: "x (forward)"}, y: {domain: [-3, 3], label: "y (sideways)"},
+  style: {background: modes.style.surface},
+  marks: [
+    Plot.line(modes.obstacle, {x: d => d[0], y: d => d[1], fill: modes.style.neutral, stroke: modes.style.ink}),
+    Plot.line(modesRun.demos.flatMap((p, k) => p.map(([x, y]) => ({x, y, k}))),
+              {x: "x", y: "y", z: "k", stroke: modes.style.muted, strokeOpacity: 0.6}),
+    Plot.line(modesRun.mse, {x: d => d[0], y: d => d[1], stroke: modes.style.blue, strokeWidth: 3}),
+    Plot.line(modesRun.binned, {x: d => d[0], y: d => d[1], stroke: modes.style.orange, strokeWidth: 3})
+  ]
+})
+```
+
+```{ojs}
+md`MSE policy: **${modesRun.mse_hits ? "hits the obstacle" : "clears it"}** · binned policy: **${modesRun.binned_hits ? "hits the obstacle" : "clears it"}**`
+```
+
+**What to notice.** At 0 or 1, all demos agree and both policies follow them. Near an even split, the blue path is pulled between the two bundles: across the three seeds the MSE policy hits the obstacle at shares `{python} hit_ps_text` (`{python} int(mse_hits_grid.sum())` of the `{python} mse_hits_grid.size` settings in all). The binned policy hits it in `{python} int(bin_hits_grid.sum())` of them. It always commits to one side; in `{python} int(minority)` of the settings with an uneven split it picks the side fewer demos chose, which is still a valid way around.
+
+## Algorithm & code
+
+### Behavioral cloning and DAgger
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w3.fit_policy, w3.behavior_cloning, w3.dagger)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from rlc.toys import w03_imitation as road   # the road toy on this page
+
+torch.manual_seed(0)
+rng = np.random.default_rng(0)
+SCALE = torch.tensor(road.SCALE, dtype=torch.float32)
+
+# Calm-day demos: obs (N, 3) = (offset, heading error, road turn),
+# act (N,) = the expert's steering.
+obs, act = road.expert_data(n_demos=10, T=200, rng=rng)
+X = torch.tensor(obs, dtype=torch.float32) / SCALE     # (N, 3)
+y = torch.tensor(act, dtype=torch.float32)[:, None]    # (N, 1)
+
+policy = nn.Sequential(nn.Linear(3, 32), nn.Tanh(),
+                       nn.Linear(32, 32), nn.Tanh(), nn.Linear(32, 1))
+opt = torch.optim.Adam(policy.parameters(), lr=1e-2)
+
+
+def train(X, y, steps):
+    """Full-batch BC: regress the expert's action. Returns the losses."""
+    losses = []
+    for _ in range(steps):
+        loss = F.mse_loss(policy(X), y)   # behavior cloning = regression
+        opt.zero_grad()                   # .grad accumulates otherwise
+        loss.backward()
+        opt.step()
+        losses.append(loss.item())
+    return losses
+
+
+losses = train(X, y, steps=300)
+assert losses[-1] < losses[0] / 10
+```
+
+```{.python .snippet}
+def as_numpy_policy(net):
+    """Wrap the network for road.rollout: (n, 3) array -> (n,) array."""
+    def act_fn(o):
+        with torch.no_grad():               # acting needs no gradients
+            x = torch.tensor(o, dtype=torch.float32) / SCALE
+            return net(x)[:, 0].numpy()
+    return act_fn
+
+
+# DAgger: drive the current policy, let the expert label what it saw.
+for _ in range(2):
+    starts = rng.uniform(0, road.WAVELEN, 10)
+    # Gust rate 1% (page: 0.2%) so two short rounds meet enough gusts.
+    _, seen = road.rollout(as_numpy_policy(policy), 200, 0.01, rng, starts)
+    seen = seen[:, ::4].reshape(-1, 3)              # (10 * 50, 3)
+    labels = road.expert(seen)                      # "here I would do this"
+    X = torch.cat([X, torch.tensor(seen, dtype=torch.float32) / SCALE])
+    y = torch.cat([y, torch.tensor(labels, dtype=torch.float32)[:, None]])
+    train(X, y, steps=200)                          # refit on all data
+
+assert X.shape == (2000 + 2 * 500, 3) and y.shape == (3000, 1)
+```
+:::
+
+The only difference between the two algorithms is the loop: BC trains once on the expert's states; DAgger keeps adding the learner's states, labelled by the expert (`expert(new)` in the NumPy version), and refits on everything.
+
+### A policy that can hold two modes
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w3.fit_mse, w3.to_bin, w3.fit_binned)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+from rlc.toys.w03_imitation import (BINS, SCALE2, demos2, hits, rollout2,
+                                     to_bin)
+
+_, obs2, acts2 = demos2(20, 0.5, rng)                # half left, half right
+X2 = torch.tensor(obs2 / SCALE2, dtype=torch.float32)   # (1000, 2)
+target = torch.tensor(to_bin(acts2))                    # (1000,) int64 bins
+
+binned = nn.Sequential(nn.Linear(2, 32), nn.Tanh(),
+                       nn.Linear(32, 32), nn.Tanh(),
+                       nn.Linear(32, len(BINS)))        # one logit per bin
+opt2 = torch.optim.Adam(binned.parameters(), lr=1e-2)
+losses2 = []
+for _ in range(400):
+    # cross_entropy takes raw logits (N, K) and class indices (N,);
+    # it applies log-softmax itself, so no softmax layer in the network.
+    loss = F.cross_entropy(binned(X2), target)
+    opt2.zero_grad()
+    loss.backward()
+    opt2.step()
+    losses2.append(loss.item())
+
+
+def most_likely_bin(o):
+    """(n, 2) positions -> (n,) sideways speeds: the centre of the top bin."""
+    with torch.no_grad():
+        logits = binned(torch.tensor(o / SCALE2, dtype=torch.float32))
+    return BINS[logits.argmax(dim=-1).numpy()]     # argmax over bins
+
+
+path, _ = rollout2(most_likely_bin)                 # (1, 51, 2)
+assert losses2[-1] < losses2[0] / 2
+assert not hits(path)[0]              # it commits to one side and clears it
+assert abs(path[0, 25, 1]) > 1.0      # at x = 5 it is well off to one side
+```
+:::
+
+The binned network differs from the MSE one in two places: its last layer has one output per bin instead of one number, and its loss is cross-entropy over bin indices instead of squared error. Everything else, including the data, is identical.
 
 ## Papers
 
@@ -21,6 +692,77 @@ from rlc.page import paper_cards, resources
 #| output: asis
 print(paper_cards(3))
 ```
+
+## Guest spotlight
+
+**Danfei Xu** (Georgia Tech) argues that robot learning should get its data the way language and vision models do: from people going about their lives, not only from people teleoperating robots [▶ 01:32](https://youtu.be/qvTP6T5oq1w?t=92). He frames robot learning as a triangle of data source, learning algorithm and physical system, and argues that changing one corner means redesigning the other two [▶ 02:07](https://youtu.be/qvTP6T5oq1w?t=127). Teleoperation ties all three together: data exist only where a person drives a particular robot, and the resulting policy works only on that robot.
+
+His group's **EgoMimic** records people doing tasks while wearing Meta's Project Aria glasses, then treats human hands as one more embodiment alongside the robot's arms and co-trains a single behavioral cloning policy on both [▶ 06:18](https://youtu.be/qvTP6T5oq1w?t=378). The robot even wears the same glasses as its camera, to shrink the viewpoint gap. In his scaling experiment, more teleoperation data improved the robot only gradually, while adding human data on top of a fixed amount of robot data gave a sharp jump; he also reports that people demonstrate some tasks up to ten times faster than teleoperators [▶ 11:27](https://youtu.be/qvTP6T5oq1w?t=687).
+
+Co-training alone does not make human and robot data share a representation; inside the network they stayed in two separate clusters. **EgoBridge** adds a loss, based on optimal transport, that pulls the two distributions together while keeping their action structure, so that a task shown only in human data can transfer to the robot [▶ 15:11](https://youtu.be/qvTP6T5oq1w?t=911). The talk closes with **EMMA**, which extends the approach to mobile manipulation, and **EgoVerse**, a shared human-data set of about 1,300 hours at the time of the talk [▶ 29:11](https://youtu.be/qvTP6T5oq1w?t=1751).
+
+**How it connects to this week.** Every method in the talk builds on behavioral cloning; what changes is where $\mathcal{D}$ comes from. Human data from wearable cameras is cheap and plentiful, but it is a *different distribution* from what the robot sees and does, which is this week's distribution-shift problem at the level of the whole data set rather than a single trajectory.
+
+## Solved problems
+
+**1. The bound, with numbers.** A cloned policy makes an unrecoverable mistake with probability $\varepsilon = 0.01$ per step on the expert's states. For a task of $T = 100$ steps, compare the BC bound with the $\varepsilon T$ you would expect from independent predictions.
+
+::: {.callout-tip collapse="true" title="Solution"}
+Independent predictions: $\varepsilon T = 0.01 \times 100 = 1$ expected mistake. The BC bound from @eq-bc-bound: $\varepsilon \frac{T(T+1)}{2} = 0.01 \times \frac{100 \times 101}{2} = 50.5$ expected bad steps, fifty times more. If departures are permanent and the rate is exactly $\varepsilon$, the expected cost is $\sum_{t=1}^{100} \big(1 - 0.99^t\big) = 100 - 0.99 \cdot \frac{1 - 0.99^{100}}{0.01} \approx$ `{python} f"{w3.predicted_cost(0.01, 100)[-1]:.1f}"`; the bound is looser because a car that has already left cannot leave again. Both are far above 1, and the gap grows with $T$.
+:::
+
+**2. A lopsided fork.** At the fork in the obstacle toy, suppose 70% of demonstrators steer left at $+0.3$ and 30% steer right at $-0.3$. What does a perfectly trained MSE policy output, and what does a binned policy that takes the most likely bin output?
+
+::: {.callout-tip collapse="true" title="Solution"}
+MSE outputs the mean (@eq-bc-loss): $0.7 \times 0.3 + 0.3 \times (-0.3) = 0.12$, a gentle left turn that no demonstrator made. Whether that clears the obstacle depends on whether the robot gets far enough to the side in time; set the explorer's share to 0.7 and compare the seeds. The binned policy puts probability 0.7 on the $+0.3$ bin and 0.3 on the $-0.3$ bin and takes $+0.3$: a real demonstrated action. Sampling from the bins instead would go right 30% of the time, also a valid way around.
+:::
+
+**3. Recovery labels without an expert in the loop.** The NVIDIA car labels its left camera's images "steer right". Why does that produce the same kind of data DAgger collects, and what can it not provide?
+
+::: {.callout-tip collapse="true" title="Solution"}
+The left camera sees the road as it would look if the car had drifted left: an off-centre state the expert never drove through. Labelling it "steer right" gives a (state, corrective action) pair, exactly what DAgger obtains by driving the learner and asking the expert. It is limited to the drifts the camera geometry simulates (a fixed sideways shift) and to a correction rule chosen by the engineer rather than an expert's judgement; larger or different mistakes, such as the heading errors after a gust in the road toy, remain uncovered. DAgger covers whatever states the policy actually reaches.
+:::
+
+**4. Grids versus chains.** A 7-dimensional arm action is discretized into 256 bins per dimension. How many classes does a joint grid need, and how many outputs does the autoregressive factorization (@eq-autoregressive) need?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Joint grid: $256^7 = 2^{56} \approx 7.2 \times 10^{16}$ classes, impossible to train a softmax over. Autoregressive: 7 predictions of 256 classes each, 1,792 logits in total, produced one dimension at a time. The price is sequential decoding: 7 forward passes (or 7 steps of a transformer) per action.
+:::
+
+**5. Spot the causal confusion.** A driving policy sees the camera image and the previous action. In the demos, the car brakes at red lights and keeps braking for several frames. The cloned policy brakes well when started at a red light but never starts braking on its own. What went wrong?
+
+::: {.callout-tip collapse="true" title="Solution"}
+In the data, "previous action was brake" predicts "brake now" almost perfectly, far better than the small red light in the image does. The network learns to copy its previous action, a correlate, not the cause (the light). At test time nothing ever starts the braking chain. Remedies follow the [papers](#papers): remove or randomly drop the previous-action input, or test which input the policy should rely on with a few targeted interventions (de Haan et al., 2019).
+:::
+
+## Recap
+
+1. **Behavioral cloning is supervised learning on expert (state, action) pairs.** *Why it matters:* it is the baseline every imitation method improves on, and at large scale it is the training recipe of the generalist policies in Week 9.
+2. **A cloned policy is tested on its own states, not the expert's.** Small mistakes lead to unseen states, and the expected cost can grow like $\varepsilon T^2$; on the road toy it grew with slope `{python} f"{slope_bc:.1f}"` on a log-log scale. *Why it matters:* this is why "lower training loss" does not guarantee a better robot.
+3. **Recovery data fix it.** Synthetic corrections (side cameras), DAgger's relabelled states, or human interventions all show the policy how to get back. *Why it matters:* it reframes data collection: mistakes and recoveries are valuable data.
+4. **Experts are not consistent, and MSE averages their choices.** Policies need multimodal action distributions: mixtures, discretization, diffusion, latent plans. *Why it matters:* Week 6's diffusion policies and Week 7's token-based policies are answers to exactly this.
+5. **More inputs can hurt.** History and extra sensors invite causal confusion. *Why it matters:* it explains why later policies are careful about what context they condition on.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| BC loss | $\min_\theta \sum_{\mathcal{D}} \lVert \pi_\theta(s) - a^* \rVert^2$ | @eq-bc-loss |
+| MSE minimizer | $c^\star = \mathbb{E}[a^* \mid s]$ | @eq-bc-loss |
+| BC compounding error ★ | $\mathbb{E}[\sum_t c] = O(\varepsilon T^2)$ | @eq-bc-bound |
+| DAgger data rule, cost $O(\varepsilon T)$ | $\mathcal{D} \leftarrow \mathcal{D} \cup \{(s, \pi^*(s))\}$, $s \sim p_{\pi_\theta}$ | @eq-dagger |
+| Mixture of Gaussians | $\sum_k w_k \mathcal{N}(a; \mu_k, \Sigma_k)$ | @eq-mixture |
+| Autoregressive actions | $\prod_d p(a_{t,d} \mid s_t, a_{t,<d})$ | @eq-autoregressive |
+| ELBO ★ | $\mathbb{E}_q[\log p(\tau \mid z, c)] - \mathrm{KL}(q \Vert p)$ | @eq-elbo |
+
+**Common pitfalls.**
+
+- Judging a cloned policy by its validation loss on held-out demos. Those are still expert states; only closed-loop rollouts measure distribution shift.
+- Collecting only clean, perfect demonstrations. They teach nothing about recovery.
+- Using MSE when demonstrators disagree. Check for multiple modes before choosing the loss.
+- Adding history "because it can only help". It can hurt through causal confusion.
+
+**Connections.** Week 2 gave the policy and MDP vocabulary used here. Weeks 4–5 learn from reward instead of demonstrations. Week 6 builds diffusion policies, the most common answer to multimodality today. Week 7 turns actions into token sequences, the autoregressive factorization above. Week 9's generalist policies are trained largely by behavioral cloning, at scale. In the ADM Companion: [behavioral cloning]({{< var adm_url >}}/part3/ch18-imitation-learning.html#behavioral-cloning) and [DAgger]({{< var adm_url >}}/part3/ch18-imitation-learning.html#data-set-aggregation-dagger) in tabular settings, plus inverse reinforcement learning, which this lecture does not cover.
 
 ## Resources
 
