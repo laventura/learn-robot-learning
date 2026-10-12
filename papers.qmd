@@ -1,6 +1,16 @@
 ---
 title: "Papers"
 subtitle: "Every paper discussed in the course, grouped by week"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This index will be generated from `data/papers.yml`.*
+Each week's student-led session discusses three papers. Papers marked *(from the lecture)* are ones the lecture itself relies on. Each week page has a card per paper with a short summary.
+
+```{python}
+#| output: asis
+from rlc.page import papers_index
+
+print(papers_index())
+```

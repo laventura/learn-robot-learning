@@ -1,0 +1,12 @@
+{
+  "hash": "442cd4766cd4c46f1eebf263b463ecce",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"Papers\"\nsubtitle: \"Every paper discussed in the course, grouped by week\"\njupyter: python3\nexecute:\n  echo: false\n---\n\nEach week's student-led session discusses three papers. Papers marked *(from the lecture)* are ones the lecture itself relies on. Each week page has a card per paper with a short summary.\n\n\n## [Week 1 · Introduction to Robot Learning](weeks/w01-introduction.qmd)\n\n*No papers listed yet.*\n\n## [Week 2 · Robot Control & MDPs](weeks/w02-robot-control-mdps.qmd)\n\n*No papers listed yet.*\n\n## [Week 3 · Imitation Learning](weeks/w03-imitation-learning.qmd)\n\n*No papers listed yet.*\n\n## [Week 4 · Reinforcement Learning I](weeks/w04-reinforcement-learning-1.qmd)\n\n*No papers listed yet.*\n\n## [Week 5 · Reinforcement Learning II](weeks/w05-reinforcement-learning-2.qmd)\n\n*No papers listed yet.*\n\n## [Week 6 · Generative Models](weeks/w06-generative-models.qmd)\n\n*No papers listed yet.*\n\n## [Week 7 · Sequence Modeling and Transformers](weeks/w07-sequence-modeling-transformers.qmd)\n\n*No papers listed yet.*\n\n## [Week 8 · World Models](weeks/w08-world-models.qmd)\n\n*No papers listed yet.*\n\n## [Week 9 · Generalist Robot Policies](weeks/w09-generalist-robot-policies.qmd)\n\n*No papers listed yet.*\n\n## [Week 10 · Embodied Reasoning and Test-time Scaling](weeks/w10-embodied-reasoning.qmd)\n\n*No papers listed yet.*\n\n## [Week 11 · Frontiers & Open Problems](weeks/w11-frontiers.qmd)\n\n*No papers listed yet.*\n\n## [Week 12 · Guest Lectures](weeks/w12-guest-lectures.qmd)\n\n*No papers listed yet.*\n\n\n",
+    "supporting": [
+      "papers_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}

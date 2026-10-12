@@ -1,0 +1,16 @@
+# One entry per paper (CLAUDE.md §6.5). Rendered by rlc.page.paper_cards and papers.qmd.
+# Phase 1 adds the 3 discussion papers per week; cards can stay TODO until their week is written.
+#
+# - id: causal-confusion
+#   role: discussion            # discussion = listed on the course page; lecture = key paper cited in the lecture
+#   weeks: [3]
+#   title: "Causal Confusion in Imitation Learning"
+#   authors: "de Haan, Jayaraman & Levine"
+#   year: 2019
+#   venue: "NeurIPS"
+#   url: https://arxiv.org/abs/1905.11979
+#   summary: "TODO"             # one or two original sentences: the problem and the idea
+#   contributions: []           # 2–4 items, original wording
+#   connects_to: "TODO"         # which idea on the page this paper illustrates
+
+[]

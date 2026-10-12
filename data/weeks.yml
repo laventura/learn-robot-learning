@@ -1,0 +1,126 @@
+# One entry per course week (CLAUDE.md §6.5). Rendered by rlc.page.resources and paper_cards.
+# Phase 1 fills the nulls from the course page: https://cvg.ethz.ch/lectures/Robot-Learning/
+# Guest names and affiliations are from CLAUDE.md §9; check their spelling against the course page.
+#
+# lecture/guest youtube: video id; duration_s: length in seconds (uvx yt-dlp --print duration).
+# papers: ids from data/papers.yml, discussion papers first.
+
+- week: 1
+  date: 2026-02-16
+  title: "Introduction to Robot Learning"
+  slug: w01-introduction
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: null
+  homework: {name: "hw1 PyTorch & NumPy", url: null}
+  papers: []
+
+- week: 2
+  date: 2026-02-23
+  title: "Robot Control & MDPs"
+  slug: w02-robot-control-mdps
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Abhishek Gupta", affiliation: "UW", url: null, youtube: null, duration_s: null}
+  homework: {name: "hw2 Robot Control & MDPs", url: null}
+  papers: []
+
+- week: 3
+  date: 2026-03-02
+  title: "Imitation Learning"
+  slug: w03-imitation-learning
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Danfei Xu", affiliation: "Georgia Tech", url: null, youtube: null, duration_s: null}
+  homework: {name: "hw3 Imitation Learning", url: null}
+  papers: []
+
+- week: 4
+  date: 2026-03-09
+  title: "Reinforcement Learning I"
+  slug: w04-reinforcement-learning-1
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Aviral Kumar", affiliation: "CMU & Google DeepMind", url: null, youtube: null, duration_s: null}
+  homework: {name: "hw4 Reinforcement Learning", url: null}
+  papers: []
+
+- week: 5
+  date: 2026-03-16
+  title: "Reinforcement Learning II"
+  slug: w05-reinforcement-learning-2
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Andrew Wagenmaker", affiliation: "UC Berkeley", url: null, youtube: null, duration_s: null}
+  homework: null    # hw4 continues
+  papers: []
+
+- week: 6
+  date: 2026-03-23
+  title: "Generative Models"
+  slug: w06-generative-models
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Cheng Chi", affiliation: "Sunday Robotics", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
+
+- week: 7
+  date: 2026-03-30
+  title: "Sequence Modeling and Transformers"
+  slug: w07-sequence-modeling-transformers
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Ted Xiao", affiliation: "Prometheus", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
+
+- week: 8
+  date: 2026-04-13
+  title: "World Models"
+  slug: w08-world-models
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Scott Reed", affiliation: "NVIDIA GEAR Lab", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
+
+- week: 9
+  date: 2026-04-27
+  title: "Generalist Robot Policies"
+  slug: w09-generalist-robot-policies
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Quan Vuong", affiliation: "Physical Intelligence", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
+
+- week: 10
+  date: 2026-05-04
+  title: "Embodied Reasoning and Test-time Scaling"
+  slug: w10-embodied-reasoning
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Archit Sharma", affiliation: "Google DeepMind", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
+
+- week: 11
+  date: 2026-05-11
+  title: "Frontiers & Open Problems"
+  slug: w11-frontiers
+  lecture: {youtube: null, duration_s: null}
+  slides: {official: null, community: null}
+  guest: {name: "Lucas Beyer", affiliation: "Meta", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
+
+- week: 12
+  date: 2026-05-18
+  title: "Guest Lectures"
+  slug: w12-guest-lectures
+  lecture: {youtube: null, duration_s: null}    # guest lectures only; recording TODO(video)
+  slides: {official: null, community: null}
+  guest: {name: "Dieter Fox", affiliation: "UW & AI2", url: null, youtube: null, duration_s: null}
+  homework: null
+  papers: []
