@@ -54,9 +54,12 @@
   year: 2019
   venue: "NeurIPS"
   url: https://arxiv.org/abs/1905.11979
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Giving a cloned policy more information can make it worse. With extra inputs, a network can reach low training error by relying on a signal that only correlates with the expert's action, such as a dashboard brake light that comes on after the expert brakes, and then fails once its own actions change what it sees."
+  contributions:
+    - "Names the failure, causal misidentification, and shows it in benchmark control tasks and a driving setting: the policy with more inputs does worse (Sec. 3)."
+    - "Trains one network that masks its inputs according to a randomly sampled causal graph, so a single model holds a policy for every hypothesis about which inputs matter (Sec. 4.1)."
+    - "Picks the right hypothesis with targeted interventions, using either environment reward or expert queries; in query mode it needs far fewer queries than DAgger (Sec. 2, Sec. 4.2)."
+  connects_to: "The lecture's drawer example, where a policy keys on a 10 N force spike instead of the grasped handle, and solved problem 5 on this page."
 
 - id: visual-imitation-representations
   role: discussion
@@ -66,9 +69,12 @@
   year: 2022                # TODO(venue): RSS per Semantic Scholar; year believed 2022 (arXiv Dec 2021)
   venue: "RSS"
   url: https://arxiv.org/abs/2112.01511
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Splits visual behavior cloning into two separate jobs. First, an image encoder is trained with self-supervised learning on offline images; then, with no further training, the action for a new image is a distance-weighted average of the actions of its nearest demonstration frames in the encoder's feature space (VINN)."
+  contributions:
+    - "A simple visual imitation method: a self-supervised (BYOL-style) encoder plus non-parametric locally weighted regression over the demonstrations (Sec. I)."
+    - "Competitive with end-to-end behavior cloning on offline pushing, stacking and door-opening data (Sec. I)."
+    - "On a real robot opening doors from 71 demonstrations: 80% success on doors seen in the data and 40% in new scenes, against 53.3% and 3.3% for the strongest baselines (Sec. I)."
+  connects_to: "It keeps the behavioral-cloning recipe of copying demonstrated actions, but moves the hardest part, learning what to look at in an image, into a separate step that needs no action labels."
 
 - id: transporter-networks
   role: discussion
@@ -78,9 +84,13 @@
   year: 2020
   venue: "CoRL"
   url: https://arxiv.org/abs/2010.14406
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Treats pick-and-place as choosing pixels in a top-down view of the scene. One network scores every pixel as a place to pick; a second finds where to put the object by matching features cropped around the pick against the rest of the scene, at several rotations."
+  contributions:
+    - "An action space that keeps the image's spatial layout: actions are pixel locations and rotations, so what is learned at one position carries over to others (Sec. 1, Sec. 3)."
+    - "Over 90% success on most of 10 simulated tabletop tasks from 100 demonstrations, where end-to-end baselines struggle with the same data (Sec. 1)."
+    - "Its score maps can rank several good pick or place locations at once, so the policy can represent multimodal choices (Abstract)."
+    - "Releases Ravens, a simulated benchmark for these tasks (Sec. 1)."
+  connects_to: "A score map over pixels is a discretized action distribution, like the binned policy on this page: it can keep several good options as separate peaks instead of averaging them."
 
 # --- Week 4 · Reinforcement Learning I ------------------------------------
 - id: evolution-strategies
