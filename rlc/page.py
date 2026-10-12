@@ -53,6 +53,14 @@ def cheat_sheet(page, href) -> str:
                   lambda m: f"[{REF_WORDS[m[2]]}]({href}#{m[1]})", table)
 
 
+def course_map_highlight(week: int) -> str:
+    """CSS that colours this week's node orange in the shared course map
+    (_includes/course-map.qmd). Print it from a cell marked `#| output: asis`."""
+    node = f".course-map #w{week:02d}"
+    return (f"<style>{node} path, {node} polygon {{ fill: #fbe1d6; stroke: #eb6834; }}"
+            f" {node} text {{ font-weight: bold; }}</style>")
+
+
 # --- Timestamps ----------------------------------------------------------
 
 def timestamp(seconds: int) -> str:
