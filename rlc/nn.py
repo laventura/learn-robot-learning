@@ -23,7 +23,8 @@ import numpy as np
 
 Array = np.ndarray
 Layers = list[tuple[Array, Array]]                      # [(W, b), ...]
-Loss = Callable[[Array, Array], tuple[float, Array]]    # (Yhat, Y) -> (loss, dYhat)
+# (Yhat, Y) -> (loss, dLoss/dYhat)
+Loss = Callable[[Array, Array], tuple[float, Array]]
 
 # Each activation is (phi, dphi): the function and its derivative.
 ACTIVATIONS = {
@@ -120,7 +121,8 @@ def loss_and_grads(params: Layers, X, Y, loss="mse", act="tanh", beta=0.0):
     value, dY = LOSSES[loss](Yhat, Y)
     value += beta * sum((W ** 2).sum() for W, _ in params)
     grads = backward(params, cache, dY, act)
-    grads = [(dW + 2 * beta * W, db) for (dW, db), (W, _) in zip(grads, params)]
+    grads = [(dW + 2 * beta * W, db)
+             for (dW, db), (W, _) in zip(grads, params)]
     return value, grads
 
 
