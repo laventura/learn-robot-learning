@@ -1,0 +1,6 @@
+---
+title: "Week 2 · Robot Control & MDPs"
+subtitle: "Lecture of 23 February 2026 · guest: Abhishek Gupta"
+---
+
+*This page is a stub.*

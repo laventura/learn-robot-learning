@@ -1,0 +1,6 @@
+---
+title: "Week 7 · Sequence Modeling and Transformers"
+subtitle: "Lecture of 30 March 2026 · guest: Ted Xiao"
+---
+
+*This page is a stub.*

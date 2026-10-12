@@ -1,0 +1,6 @@
+---
+title: "Week 6 · Generative Models"
+subtitle: "Lecture of 23 March 2026 · guest: Cheng Chi"
+---
+
+*This page is a stub.*

@@ -1,0 +1,6 @@
+---
+title: "Week 9 · Generalist Robot Policies"
+subtitle: "Lecture of 27 April 2026 · guest: Quan Vuong"
+---
+
+*This page is a stub.*
