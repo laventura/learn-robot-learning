@@ -19,7 +19,7 @@
     community: https://github.com/idanL1212000/RobotLerning-2026-ETH-Zurich/blob/main/lectures/week01_slides.pdf
   guest: null
   homework: {name: "hw1: PyTorch & NumPy tutorial", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw1_pytorch_tutorial"}
-  papers: []
+  papers: [open-x-embodiment, rt-2]
 
 - week: 2
   date: 2026-02-23

@@ -8,6 +8,38 @@
 #
 #   role: discussion = listed on the course page; lecture = key paper cited in the lecture
 
+# --- Week 1 · Introduction to Robot Learning ------------------------------
+# No discussion papers this week; these are the papers the lecture relies on.
+- id: open-x-embodiment
+  role: lecture
+  weeks: [1]
+  title: "Open X-Embodiment: Robotic Learning Datasets and RT-X Models"
+  authors: "Open X-Embodiment Collaboration"
+  year: 2024
+  venue: "ICRA"             # as given on the lecture slide (Best Conference Paper Award)
+  url: https://arxiv.org/abs/2310.08864
+  summary: "Pools robot-learning data sets from many labs into one standardized collection and trains a single policy on all of it. The question is whether robot learning can follow the recipe of vision and language: one large model trained on diverse data from many robots, rather than one model per robot and task."
+  contributions:
+    - "A data set of more than a million robot trajectories from 22 robot embodiments, contributed by 21 institutions (Sec. I, Fig. 1)."
+    - "RT-1-X and RT-2-X, versions of RT-1 and RT-2 trained on the mixture (Sec. IV)."
+    - "Positive transfer: RT-1-X's mean success rate is 50% higher than that of either the original method for each data set or RT-1 (Fig. 4)."
+  connects_to: "The lecture's case for generalist robot policies and for data as the bottleneck; the worked example on data-set sizes."
+
+- id: rt-2
+  role: lecture
+  weeks: [1]
+  title: "RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control"
+  authors: "Brohan et al."
+  year: 2023
+  venue: "arXiv"            # TODO(venue): believed CoRL 2023; not confirmed
+  url: https://arxiv.org/abs/2307.15818
+  summary: "Takes a vision-language model trained on web data and fine-tunes it to output robot actions written as text tokens, alongside its usual web tasks. The resulting vision-language-action model (VLA) follows commands that never appear in the robot data and can do simple reasoning about which object to pick."
+  contributions:
+    - "Actions as tokens: each continuous action dimension is cut into 256 uniform bins, so an action becomes 8 integers that the language model writes like words (Sec. 3.2)."
+    - "Co-fine-tuning on robot trajectories and web vision-language tasks, so the robot policy keeps the web knowledge (Abstract)."
+    - "Over 6,000 evaluation trials showing better generalization to new objects and emergent abilities such as picking the smallest object or an improvised hammer (Abstract)."
+  connects_to: "The second toy on this page, which tokenizes a motion the same way, and the lecture's view of robotics as multimodal sequence modeling."
+
 # --- Week 2 · Robot Control & MDPs ---------------------------------------
 - id: random-search
   role: discussion
