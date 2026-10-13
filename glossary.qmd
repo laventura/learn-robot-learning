@@ -5,6 +5,22 @@ subtitle: "Vocabulary and notation, grouped by week"
 
 Symbols follow the lecture slides. Where a week's page uses a symbol, it explains it there too.
 
+## Week 1 · Introduction to Robot Learning
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $s_t$, $o_t$, $a_t$ | State of the world, the robot's observation of it, and its action, at time step $t$ |
+| $\hat{s}_t$ | The robot's estimate of the state, from its sensors |
+| $\pi$ | Policy: the rule that picks an action from what the robot observes |
+| $f_\theta$, $\ell$ | A model with parameters $\theta$, and the loss it is trained to minimize |
+| i.i.d. | Independent and identically distributed data, the usual assumption of supervised learning |
+| $B$, $\Delta$ | Number of bins per action dimension, and the bin width |
+| $k$ | An action token: the index of a bin, from 0 to $B-1$ |
+| $\hat{a}$ | The bin centre a token stands for, the action the robot executes |
+| Sense-plan-act | Perceive once, plan a complete path, execute it without looking again |
+| Open loop, closed loop | Executing a fixed plan, versus choosing each action from the latest observation |
+| Vision-language-action model (VLA) | A vision-language model fine-tuned to output robot actions as tokens |
+
 ## Week 3 · Imitation Learning
 
 | Symbol or term | Meaning |
