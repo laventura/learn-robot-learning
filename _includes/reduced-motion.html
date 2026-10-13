@@ -1,0 +1,17 @@
+<script>
+// Hero animations autoplay (CLAUDE.md §6.3a). If the reader's system asks for
+// reduced motion, stop them and show the poster frame; the controls still work.
+(function () {
+  var query = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  function apply() {
+    if (!query || !query.matches) return;
+    document.querySelectorAll("video[autoplay]").forEach(function (v) {
+      v.removeAttribute("autoplay");
+      v.pause();
+      v.currentTime = 0;
+    });
+  }
+  document.addEventListener("DOMContentLoaded", apply);
+  if (query && query.addEventListener) query.addEventListener("change", apply);
+})();
+</script>

@@ -53,6 +53,28 @@ def cheat_sheet(page, href) -> str:
                   lambda m: f"[{REF_WORDS[m[2]]}]({href}#{m[1]})", table)
 
 
+def hero_video(name: str, caption: str, alt: str, media="media") -> str:
+    """Raw HTML for a hero animation (CLAUDE.md §6.3a): a looping, muted,
+    autoplaying clip with a poster, alt text and caption. Quarto's video
+    shortcode can't loop or autoplay, hence this helper. Print it from a cell
+    marked `#| output: asis`. `media` is relative to the page."""
+    from html import escape
+
+    src = f"{media}/{name}.mp4"
+    poster = f"{media}/{name}-poster.png"
+    return (
+        '\n```{=html}\n'
+        f'<figure class="hero-video">\n'
+        f'<video autoplay loop muted playsinline controls preload="metadata" '
+        f'poster="{poster}" aria-label="{escape(alt, quote=True)}" '
+        f'style="width:100%;height:auto;border-radius:6px">\n'
+        f'<source src="{src}" type="video/mp4">\n'
+        f'</video>\n'
+        f'<figcaption>{escape(caption)}</figcaption>\n'
+        f'</figure>\n```\n'
+    )
+
+
 def course_map_highlight(week: int) -> str:
     """CSS that colours this week's node orange in the shared course map
     (_includes/course-map.qmd). Print it from a cell marked `#| output: asis`."""
