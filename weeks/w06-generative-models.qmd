@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from rlc import style
 from rlc.io import write_json
-from rlc.page import course_map_highlight, paper_cards, resources, show_source
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
 from rlc.toys import w06_generative as g
 
 style.apply()
@@ -203,6 +203,24 @@ plt.tight_layout(); plt.show()
 ```
 
 The **backward process** is what we want: from a noisy point, the slightly less noisy one before it. Predicting that directly is ill-posed, since many clean points could have produced the same noisy one. The key move is to ask the network for something simpler: the noise that was added [▶ 27:09](https://youtu.be/qd6Ldsuu46I?t=1629). That is an easy regression target with a plain squared-error loss (@eq-ddpm-loss). Training can jump straight to any noise level in one step, which makes it fast (@eq-closed-form) [▶ 30:34](https://youtu.be/qd6Ldsuu46I?t=1834).
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w06-denoise",
+    caption="Diffusion versus averaging, on this page's toy. The demonstrations (grey) leave the middle "
+            "empty; MSE regression answers with one point there (blue). Noise samples (orange) follow "
+            "the trained diffusion model's 50 denoising steps and settle on the two sides.",
+    alt="Animation, about 17 seconds, looping. Two grey crescents of points sit left and right of an "
+        "empty grey band. A blue dot appears in the middle of the band, captioned as MSE regression's "
+        "single answer, the average. A cloud of orange points appears spread over the whole scene. A "
+        "step counter runs from 0 to 50 while the cloud slowly contracts and then, in the last steps, "
+        "splits into two groups that land on the crescents. The final caption says each sample picks "
+        "a side and the middle stays empty. Everything except the crescents fades out and the loop "
+        "restarts."))
+```
+
+**What to watch for.** The clip opens on the demonstrations, with the empty middle shaded. First the MSE answer appears: a single blue dot, the average, in the one place no demonstrator went. Then a cloud of noise samples appears, centred on that same dot. As the step counter runs, the cloud changes slowly for most of the 50 steps (the early steps remove only a little noise each) and then, in the last few steps, splits: every orange point moves *away* from the blue dot to one of the crescents. The clip ends on both crescents filled and the middle empty, then fades back to the start.
 
 To **sample**, start from pure noise and repeatedly subtract the predicted noise. DDPM also adds a little *fresh* noise at each step, which sounds backwards but keeps samples spread over the whole distribution instead of collapsing towards its mean [▶ 32:22](https://youtu.be/qd6Ldsuu46I?t=1942). It needs many steps; image models use around a thousand, too slow for robot control. **DDIM** visits only a few steps, estimating the clean point and re-noising it deterministically to the next visited step (@eq-ddim) [▶ 34:20](https://youtu.be/qd6Ldsuu46I?t=2060). In the toy, 10 DDIM steps leave `{python} f"{100 * ddim_off[STEPS.index(10)]:.1f}"`% of samples off the demonstrations; 2 steps leave `{python} f"{100 * ddim_off[STEPS.index(2)]:.0f}"`% (@fig-steps).
 
