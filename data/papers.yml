@@ -253,9 +253,12 @@
   year: 2022
   venue: "ICML"
   url: https://arxiv.org/abs/2205.09991
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Instead of learning a dynamics model and handing it to a separate trajectory optimizer, Diffuser trains a diffusion model on whole trajectories, so that planning becomes sampling: start from noise and denoise a full plan at once, nudging the samples towards high reward or towards a required start or goal."
+  contributions:
+    - "A diffusion model over complete state-action trajectories that refines a whole plan in parallel rather than step by step (Abstract, Fig. 1)."
+    - "Recasts classifier-guided sampling as planning for reward and image-style inpainting as planning to fixed start and goal states (Abstract)."
+    - "Useful properties for long-horizon tasks: handles sparse rewards, plans for new rewards without retraining, and stitches together pieces of trajectories it has seen into new ones (Sec. 7)."
+  connects_to: "Diffusion applied to trajectories instead of single actions, the same move Diffusion Policy makes for action sequences; guidance is a cousin of classifier-free guidance on this page."
 
 - id: implicit-bc
   role: discussion
@@ -265,9 +268,13 @@
   year: 2021
   venue: "CoRL"
   url: https://arxiv.org/abs/2109.00137
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Rather than a network that outputs the action, Implicit BC learns an energy function over (observation, action) pairs and picks the action with the lowest energy. Because the policy is an argmin, it can represent several equally good actions and sharp jumps, which a regression network smooths over."
+  contributions:
+    - "Reformulates behavioral cloning with energy-based models and inference-time optimization over actions (Sec. 1, Sec. 7)."
+    - "Often outperforms explicit policies trained with mean-squared error or mixture densities, including with image inputs and action spaces of up to 30 dimensions (Abstract, Sec. 7)."
+    - "Real-robot tasks from human demonstrations that need about 1 mm precision (Abstract)."
+    - "An analysis of why implicit models handle discontinuous and multi-valued functions, and a universal-approximation result for them (Abstract, Sec. 7)."
+  connects_to: "Another answer to the averaging problem from Week 3; Diffusion Policy sets itself against both explicit and implicit policies like this one (its Fig. 1)."
 
 - id: dsrl
   role: discussion
@@ -277,9 +284,57 @@
   year: 2025
   venue: "arXiv"
   url: https://arxiv.org/abs/2506.15799
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "A diffusion policy turns random noise into an action. DSRL keeps the trained policy fixed and instead learns, with reinforcement learning, which input noise to feed it, steering the policy towards actions that earn reward without touching its weights."
+  contributions:
+    - "Diffusion steering via RL: run RL over the policy's latent-noise space rather than its parameters (Abstract)."
+    - "Needs only black-box access to the policy and is sample-efficient enough for real-world improvement (Abstract)."
+    - "Shown on simulated benchmarks, real robot tasks, and for adapting pretrained generalist policies (Abstract)."
+  connects_to: "The noise a diffusion or flow policy starts from is an input you can choose; Weeks 4–5 supply the RL that does the choosing."
+
+- id: ddpm
+  role: lecture
+  weeks: [6]
+  title: "Denoising Diffusion Probabilistic Models"
+  authors: "Ho, Jain & Abbeel"
+  year: 2020
+  venue: "NeurIPS"
+  url: https://arxiv.org/abs/2006.11239
+  summary: "Shows that a diffusion model, which learns to undo a gradual noising process step by step, can generate high-quality images. The key practical step is to train the network to predict the noise that was added, with a plain squared error."
+  contributions:
+    - "High-quality image synthesis from diffusion models, with an FID of 3.17 on unconditional CIFAR-10 (Abstract)."
+    - "A link between diffusion models and denoising score matching with Langevin dynamics (Abstract)."
+    - "The simplified training objective: predict the added noise with a squared error, L_simple (Sec. 3.4, Eq. 14)."
+  connects_to: "The DDPM loss and sampler on this page."
+
+- id: diffusion-policy
+  role: lecture
+  weeks: [6]
+  title: "Diffusion Policy: Visuomotor Policy Learning via Action Diffusion"
+  authors: "Chi et al."
+  year: 2023
+  venue: "arXiv"            # TODO(venue): believed RSS 2023, with a later journal version; not confirmed
+  url: https://arxiv.org/abs/2303.04137
+  summary: "Represents a robot's visuomotor policy as a conditional diffusion process: starting from noise, it denoises a whole sequence of future actions, conditioned on the current observations. This handles demonstrations with several valid ways of doing a task, and trains stably."
+  contributions:
+    - "Across 15 tasks from 4 manipulation benchmarks, an average improvement of 46.9% over prior state-of-the-art methods (Abstract)."
+    - "Practical ingredients for real robots: receding-horizon control over predicted action sequences, visual conditioning, and a time-series diffusion transformer (Abstract)."
+    - "An analysis of why it works: multimodal action distributions, high-dimensional action sequences, and training stability (Sec. 4)."
+  connects_to: "The lecture's main case study and this week's guest speaker's work; the conditional version of the toy on this page."
+
+- id: flow-matching
+  role: lecture
+  weeks: [6]
+  title: "Flow Matching for Generative Modeling"
+  authors: "Lipman, Chen, Ben-Hamu, Nickel & Le"
+  year: 2023
+  venue: "arXiv"            # TODO(venue): believed ICLR 2023; the PDF says "Preprint"
+  url: https://arxiv.org/abs/2210.02747
+  summary: "Trains a continuous normalizing flow by regressing a velocity field along simple, fixed paths from noise to data, with no simulation during training. Diffusion paths are one special case; straight-line (optimal-transport) paths train and sample faster."
+  contributions:
+    - "Flow Matching: a simulation-free objective that regresses the vector field of chosen conditional probability paths (Abstract)."
+    - "Covers Gaussian paths including diffusion's, and finds training diffusion paths with it more robust (Abstract)."
+    - "Optimal-transport (straight-line) paths that give faster training and sampling and better results on ImageNet (Abstract)."
+  connects_to: "The flow-matching toy on this page, and π0, which generates robot actions this way (Week 9)."
 
 # --- Week 7 · Sequence Modeling and Transformers --------------------------
 - id: decision-transformer

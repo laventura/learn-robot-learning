@@ -110,7 +110,7 @@
     youtube: tvFvIEOBKfM
     duration_s: 2036
   homework: null
-  papers: [diffuser, implicit-bc, dsrl]
+  papers: [diffuser, implicit-bc, dsrl, ddpm, diffusion-policy, flow-matching]
 
 - week: 7
   date: 2026-03-30
