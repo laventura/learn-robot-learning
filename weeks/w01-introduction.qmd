@@ -1,6 +1,694 @@
 ---
 title: "Week 1 · Introduction to Robot Learning"
 subtitle: "Lecture of 16 February 2026"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub. It will be written last, once the other weeks exist.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, paper_cards, resources, show_source
+from rlc.toys import w01_intro as w1
+
+style.apply()
+BLUE, ORANGE = style.CATEGORICAL[0], style.CATEGORICAL[1]
+
+# --- Toy 1: sense-plan-act vs closed loop ----------------------------------
+SIGMAS = np.round(np.arange(0, 0.81, 0.05), 2)
+N_EP = 1000
+rates = {mode: [w1.success_rate(mode, s, n=N_EP) for s in SIGMAS]
+         for mode in ("open", "closed")}
+goal = {mode: np.array([r["goal"] for r in rates[mode]]) for mode in rates}
+crash = {mode: np.array([r["crash"] for r in rates[mode]]) for mode in rates}
+at = {s: i for i, s in enumerate(SIGMAS)}
+# Noise level at which open loop falls below 50% success (linear interpolation)
+i50 = int(np.argmax(goal["open"] < 0.5))
+s50 = float(np.interp(0.5, goal["open"][[i50, i50 - 1]], SIGMAS[[i50, i50 - 1]]))
+closed_perfect_up_to = float(SIGMAS[np.flatnonzero(goal["closed"] < 1.0)[0] - 1])
+assert goal["open"][0] < 0.95 and goal["closed"][0] == 1.0
+assert all(goal["closed"] > goal["open"])
+assert np.all(np.diff(goal["open"][:10]) < 0)          # open loop degrades
+
+# --- Toy 2: actions as tokens ----------------------------------------------
+PATH = w1.reach_path()                      # (101, 2) metres
+MOVES = np.diff(PATH, axis=0)               # (100, 2)
+LO, HI = w1.action_range(MOVES)
+BINS_LIST = [4, 8, 16, 32, 64, 128, 256]
+err_open = np.array([w1.replay_error(PATH, b) for b in BINS_LIST])
+err_closed = np.array([w1.replay_error(PATH, b, closed_loop=True) for b in BINS_LIST])
+half_bin = np.array([np.linalg.norm((HI - LO) / b) / 2 for b in BINS_LIST])
+k256 = BINS_LIST.index(256)
+k16 = BINS_LIST.index(16)
+assert all(err_closed[1:] <= half_bin[1:] * 1.01)          # one rounding at most
+assert all(err_open[1:] > 2 * err_closed[1:])               # open loop drifts
+assert err_closed[0] > half_bin[0]                          # but not with 4 bins
+
+# One action, tokenized (worked example)
+EX_T = 40
+ex_move = MOVES[EX_T]
+ex_tok = w1.tokenize(ex_move, LO, HI, 256)
+ex_back = w1.detokenize(ex_tok, LO, HI, 256)
+ex_width = (HI - LO) / 256
+
+# --- Reading time (worked example) ----------------------------------------
+# Sizes from the sources cited in the text; reading speeds are assumptions.
+WPM = 250                       # words per minute, a typical adult reader
+SECONDS_PER_IMAGE = 5
+WORDS_PER_TOKEN = 0.75
+BYTES_PER_WORD = 6              # five letters and a space
+imagenet_images = 14_197_122
+webtext_bytes = 40e9
+llama3_tokens = 15.6e12
+read = {
+    "ImageNet": (w1.reading_years(imagenet_images, SECONDS_PER_IMAGE), 2),
+    "GPT-2 (WebText)": (w1.reading_years(webtext_bytes / BYTES_PER_WORD, 60 / WPM), 60),
+    "Llama 3": (w1.reading_years(llama3_tokens * WORDS_PER_TOKEN, 60 / WPM), 90_000),
+}
+for ours, lecture in read.values():
+    assert 0.5 < ours / lecture < 2           # same order as the lecture's figure
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 1 · **Lecture:** [video](https://youtu.be/X0k14u6pSxw) · **Next:** [Week 2, Robot Control & MDPs](w02-robot-control-mdps.qmd)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(1))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+This is the start. The lecture sets out why robotics is hard in a way that language and vision are not, what "robot learning" means, and why the field now seems close to the kind of shift that large models brought to language [▶ 07:08](https://youtu.be/X0k14u6pSxw?t=428). The rest of the course splits in two: the fundamentals (Weeks 2–5), then scaling robot learning to large models and data (Weeks 6–11).
+
+**The question this week answers:** why can't we simply program robots to work in our homes, and what does learning from data change?
+
+### The key ideas at a glance
+
+- **Classic robots sense, plan, then act.** Shakey (1966) looked at its world, planned a path, and executed it. Factory robots still work this way, and it works as long as the world is structured and the robot knows exactly where everything is.
+- **Planning breaks when sensing is imperfect.** Small errors in the robot's estimate of the world, or in its motors, add up when the plan is executed blind. Closing the loop, re-sensing and re-deciding at every step, is the first defence, and the policies of this course work that way.
+- **Moravec's paradox.** Abstract reasoning is easy for computers; the physical skills a toddler has are hard. There is no internet-sized data set of how to grasp a mug.
+- **Robot learning = robotics + machine learning.** Instead of hand-coding behaviour, a robot acquires skills from data and experience.
+- **The hardware has been ready for a while; the brain is missing.** A 2007 robot tidying a room was teleoperated. What has changed since: compute, data at scale, and large models.
+- **Robotics as multimodal sequence modeling.** Treat camera images, language instructions and robot actions all as tokens, and train one large model to continue the sequence with the right action tokens.
+- **But robots are not chatbots.** Robot data is scarce and varied, control must be fast, and testing on hardware is slow and expensive.
+- **Two families of algorithms.** Imitation learning copies demonstrations, much like supervised learning; reinforcement learning learns by trial and error from a reward. Either way, the robot's actions change what it sees next, so its data are not independent samples.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Sense-plan-act | Perceive the world, compute a complete plan, then execute it |
+| State estimation | Working out where the robot and everything around it are, from sensor data |
+| Open loop | Executing actions without checking the result along the way |
+| Closed loop | Choosing each action from the latest observation |
+| Policy | A rule that picks the robot's next action from what it observes |
+| Robot learning | Getting a robot's behaviour from data and experience instead of hand-written rules |
+| Generalist policy | One policy for many tasks, robots and environments |
+| Token | A discrete symbol a sequence model reads and writes: a word piece, an image patch, or a binned action |
+| Vision-language-action model (VLA) | A vision-language model fine-tuned to output robot actions as tokens |
+| i.i.d. | Independent and identically distributed: each data point drawn separately from the same distribution |
+
+### After this week you can
+
+- Explain why sense-plan-act robots need near-perfect state estimation, and why closing the loop helps.
+- State Moravec's paradox and what it implies for robot data.
+- Describe how a model like RT-2 turns continuous robot actions into tokens, and what that costs in precision.
+- Say how imitation learning and reinforcement learning differ, and why neither has i.i.d. data.
+
+### A tour of the course
+
+| Week | Lecture | In one line |
+|:---|:---|:---|
+| 1 | Introduction | Why robot learning, and why now (this page) |
+| 2 | Robot Control & MDPs | The mathematical language of robot–environment interaction |
+| 3 | [Imitation Learning](w03-imitation-learning.qmd) | Learning a policy from expert demonstrations, and why copying drifts |
+| 4–5 | Reinforcement Learning I and II | Learning from reward by trial and error, online and offline |
+| 6 | Generative Models | Policies that output whole distributions of actions |
+| 7 | Sequence Modeling and Transformers | The architectures behind language models, applied to actions |
+| 8 | World Models | Models that predict how the world will respond |
+| 9 | Generalist Robot Policies | One policy for many tasks and robots |
+| 10 | Embodied Reasoning and Test-time Scaling | High-level reasoning for robots |
+| 11 | Frontiers & Open Problems | What is still unsolved |
+| 12 | Guest Lectures | Talks from the field |
+
+The lecturer describes the second half as the architectures of the foundation-model era: generative models, sequence models and transformers, world models and high-level reasoning [▶ 58:24](https://youtu.be/X0k14u6pSxw?t=3504).
+
+{{< video https://youtu.be/X0k14u6pSxw >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+Walking to a door across a dark room, you can memorize the route with the lights on and then walk it blind, or keep a hand on the wall and correct as you go. Memorizing works if your picture of the room was exact and your steps are precise. A few degrees off at the start, or a short step halfway, and you meet the wall. Classic robots memorize the route; learned policies keep a hand on the wall.
+:::
+
+### Why build robots at all {#why}
+
+The lecture's answer is practical: jobs that are dangerous, distant or demanding (space, the deep sea, mines, disaster sites), health care, and care for ageing societies [▶ 24:27](https://youtu.be/X0k14u6pSxw?t=1467).
+
+### Sense, plan, act {#spa}
+
+Shakey, built at SRI in the 1960s, looked at its world through a camera, planned with search algorithms (the lecture notes that A* was developed for it), and pushed boxes around rooms [▶ 26:43](https://youtu.be/X0k14u6pSxw?t=1603). That **sense-plan-act** loop, run once per decision, is still how most industrial robots work: sense, plan a geometric path in a known map, execute with high precision [▶ 28:58](https://youtu.be/X0k14u6pSxw?t=1738). It works superbly in structured settings such as a car assembly line, because there the robot's picture of the world is right [▶ 30:25](https://youtu.be/X0k14u6pSxw?t=1825).
+
+```{dot}
+//| label: fig-spa
+//| fig-width: 7
+//| fig-height: 2.95
+//| fig-cap: "Two ways to control a robot. Top: sense-plan-act runs perception once, plans a complete path, then executes it without looking again. Bottom: a closed-loop policy looks at every step and picks only the next action."
+//| fig-alt: "Two flow diagrams. Top row: sense, then plan whole path, then execute all steps, with the label 'once' on the first arrow and 'blind' on the last. Bottom row: a loop from observe to policy to one action to the world and back to observe, with the label 'every step'."
+digraph spa {
+  rankdir=LR; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  subgraph cluster_loop { label="closed loop"; fontname="Helvetica"; fontsize=10; color="#c3c2b7";
+    obs [label="observe"]; pol [label="policy", fillcolor="#fbe1d6", color="#eb6834"]; act [label="one action"]; world [label="world", fillcolor="#f0efec", color="#52514e"];
+    obs -> pol [label=" every step"]; pol -> act [label=" pick"]; act -> world [label=" move"]; world -> obs [label=" new view"];
+  }
+  subgraph cluster_spa { label="sense-plan-act"; fontname="Helvetica"; fontsize=10; color="#c3c2b7";
+    sense [label="sense"]; planner [label="plan whole path"]; exec [label="execute all steps"];
+    sense -> planner [label=" once"]; planner -> exec [label=" blind"];
+  }
+}
+```
+
+The first toy on this page shows the difference. A robot starts on the left of a room and must pass a doorway in a wall to reach a goal on the right. The sense-plan-act robot estimates its starting position once, with error σ, plans a path through the door, and walks it. The closed-loop robot gets an equally noisy estimate at *every* step and heads for its next waypoint from there. Both robots' motors land each step a little off (a standard deviation of `{python} f"{w1.MOTOR_NOISE:.2f}"` per step).
+
+```{python}
+#| label: fig-doorway
+#| fig-cap: "Share of 1,000 episodes that reach the goal (solid) or hit the wall (dashed), against the error σ of the robot's position estimate, in room units (the doorway is 0.8 wide). Orange: sense-plan-act, estimating once and executing blind. Blue: closed loop, re-estimating every step."
+#| fig-alt: "Line chart with sensing error from 0 to 0.8 on the x-axis and share of episodes from 0 to 1 on the y-axis. The blue closed-loop success line stays near 1, dipping to about 0.9 at the right. The orange sense-plan-act success line starts near 0.9 and falls steeply, below 0.5 near 0.2 and under 0.1 by 0.8. The orange dashed crash line rises from 0 to above 0.6; the blue dashed crash line stays near the bottom."
+fig, ax = plt.subplots(figsize=(6.4, 3.4))
+ax.plot(SIGMAS, goal["open"], color=ORANGE, label="sense-plan-act: reaches goal")
+ax.plot(SIGMAS, crash["open"], color=ORANGE, ls="--", label="sense-plan-act: hits wall")
+ax.plot(SIGMAS, goal["closed"], color=BLUE, label="closed loop: reaches goal")
+ax.plot(SIGMAS, crash["closed"], color=BLUE, ls="--", label="closed loop: hits wall")
+ax.set_xlabel(r"position-estimate error $\sigma$"); ax.set_ylabel("share of episodes")
+ax.set_ylim(-0.02, 1.02)
+ax.legend(fontsize=8, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.22))
+plt.show()
+```
+
+With a perfect estimate (σ = 0) the closed-loop robot always arrives; the sense-plan-act robot arrives in only `{python} f"{100 * goal['open'][0]:.0f}"`% of episodes, because its small motor errors add up over the whole walk and nothing corrects them. As σ grows, sense-plan-act success falls below half at σ ≈ `{python} f"{s50:.2f}"`, and at σ = 0.8 `{python} f"{100 * crash['open'][-1]:.0f}"`% of its runs end in the wall. The closed-loop robot succeeds every time up to σ = `{python} f"{closed_perfect_up_to:.2f}"` and still `{python} f"{100 * goal['closed'][-1]:.0f}"`% of the time at σ = 0.8, because each step's error is independent and gets corrected at the next step.
+
+### When state estimation fails {#state-estimation}
+
+The lecture's videos make the same point with real hardware. Humanoids at the 2015 DARPA Robotics Challenge fell over opening doors and turning valves; later Atlas demonstrations relied on markers placed around the room so the robot always knew exactly where it was, and a few centimetres of error could end in a fall [▶ 31:43](https://youtu.be/X0k14u6pSxw?t=1903). Even the best engineered robots have depended on near-perfect state estimation.
+
+### Moravec's paradox {#moravec}
+
+Hans Moravec observed in 1988 that what humans find hard, such as chess and mathematics, is relatively easy for computers, while what a toddler does without thinking, picking up a cup, is very hard [▶ 33:28](https://youtu.be/X0k14u6pSxw?t=2008). One reason the lecture gives: there is no internet of grasping. The lecturer's own PhD-era robot, grasping a mug from point clouds with an analytical grasp planner, crushed it.
+
+### What robot learning is, and what counts as a robot {#definition}
+
+The course defines **robot learning** as solving robotics with machine learning: perception and control on one side, imitation, reinforcement and representation learning on the other, and data-driven methods filling the gaps that hand-built models leave [▶ 35:56](https://youtu.be/X0k14u6pSxw?t=2156). Is a dishwasher a robot? A teleoperated surgical robot? ChatGPT on a phone? The class discussion landed on two tests: does it change the physical world, and does it act autonomously [▶ 38:09](https://youtu.be/X0k14u6pSxw?t=2289). Robot learning wants all three qualities at once: an appliance's reliability, a surgical arm's dexterity, and a foundation model's general reasoning.
+
+### Why we don't have home robots yet {#why-not-yet}
+
+In 2007 a Stanford robot, the PR1, was filmed tidying a room. It was teleoperated [▶ 40:58](https://youtu.be/X0k14u6pSxw?t=2458). The hardware to do housework has existed for almost two decades; the missing piece is the software, the brain that makes it autonomous. Since then three things have changed: capable humanoid hardware from several companies, far more compute, and data at a scale that would take a person tens of thousands of years to read [▶ 44:01](https://youtu.be/X0k14u6pSxw?t=2641) (see the [worked example](#ex-reading)).
+
+### Generalist policies and actions as tokens {#tokens}
+
+The lecture's "north star" is a generalist robot policy: one model that takes a large, diverse robot data set and outputs actions for any task, on any robot, in any environment [▶ 47:20](https://youtu.be/X0k14u6pSxw?t=2840). The Open X-Embodiment collaboration pooled data from 22 robot types to make that possible [▶ 48:53](https://youtu.be/X0k14u6pSxw?t=2933).
+
+The trick that connects this to large language models: a robot policy that maps "image + instruction" to "action" looks like a vision-language model that maps "image + question" to "answer", if the actions are written as tokens [▶ 52:04](https://youtu.be/X0k14u6pSxw?t=3124).
+
+```{dot}
+//| label: fig-tokens-loop
+//| fig-width: 3.87
+//| fig-height: 5.96
+//| fig-cap: "Robotics as multimodal sequence modeling. The camera image and the instruction become tokens; a transformer continues the sequence with action tokens; these are converted back to a continuous motion; the robot moves, and the next image starts the loop again."
+//| fig-alt: "Flow diagram. A camera image becomes image tokens and an instruction such as 'pick up the spoon' becomes text tokens. Both feed a transformer, which outputs action tokens. Action tokens are de-tokenized into a motion, the robot moves, and an arrow labeled 'next image' returns to the camera image."
+digraph tokens {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  img [label="camera image", fillcolor="#f0efec", color="#52514e"];
+  txt [label="instruction\n\"pick up the spoon\"", fillcolor="#f0efec", color="#52514e"];
+  itok [label="image tokens"]; ttok [label="text tokens"];
+  tf [label="transformer", fillcolor="#fbe1d6", color="#eb6834"];
+  atok [label="action tokens\n(integers 0-255)"];
+  move [label="de-tokenize:\ncontinuous motion"];
+  robot [label="robot moves", fillcolor="#f0efec", color="#52514e"];
+  img -> itok [label=" encode"]; txt -> ttok [label=" encode"];
+  itok -> tf [label=" input"]; ttok -> tf [label=" input"];
+  tf -> atok [label=" continue"]; atok -> move [label=" bin centres"]; move -> robot [label=" execute"];
+  robot -> img [label=" next image", constraint=false];
+  { rank=same; img; txt; }
+}
+```
+
+How do you write a continuous action as a token? RT-2 cuts each action dimension into 256 equal bins and writes the bin's number (@eq-tokenize). That loses a little precision every step. The second toy replays a 0.6 m reaching motion through tokens. Replayed blind, the rounding errors add up; a robot that re-observes where it is and tokenizes the correction keeps the error to one rounding. With 256 bins the largest deviation from the demonstrated path is `{python} f"{1000 * err_open[k256]:.2f}"` mm replayed blind and `{python} f"{1000 * err_closed[k256]:.2f}"` mm closed loop; with 16 bins, `{python} f"{1000 * err_open[k16]:.1f}"` mm and `{python} f"{1000 * err_closed[k16]:.1f}"` mm.
+
+### Not quite: why robots aren't chatbots {#not-quite}
+
+"So we train a large transformer on robot data and we're done?" Not quite [▶ 52:36](https://youtu.be/X0k14u6pSxw?t=3156). Robot data is scarce, because a person usually has to teleoperate or supervise every minute of it. It is multimodal and heterogeneous, since every robot has different sensors and actuators. The model must run in real time on the robot, so a giant model behind a slow API won't do [▶ 53:59](https://youtu.be/X0k14u6pSxw?t=3239). And evaluating a policy on real hardware is slow, expensive and hard to reproduce [▶ 54:27](https://youtu.be/X0k14u6pSxw?t=3267).
+
+### Two families of algorithms {#families}
+
+Most of the course builds on two frameworks [▶ 54:45](https://youtu.be/X0k14u6pSxw?t=3285). **Imitation learning** is close to supervised learning: learn a function from observations to the expert's actions. **Reinforcement learning** learns a policy by trial and error to maximize a reward. In both, the robot's own actions change what it observes next, so its data are not independent samples (@eq-loop), which breaks a basic assumption of supervised learning [▶ 56:28](https://youtu.be/X0k14u6pSxw?t=3388). Week 3 shows what that costs.
+
+## Key concepts & formulae
+
+### Supervised learning assumes independent examples
+
+::: {.key-equation data-name="Supervised learning"}
+$$
+\begin{aligned}
+\theta^\star &= \arg\min_\theta \; \frac{1}{N}\sum_{i=1}^{N} \ell\big(f_\theta(x_i),\, y_i\big) \\
+(x_i, y_i) &\overset{\text{i.i.d.}}{\sim} p(x, y)
+\end{aligned}
+$$ {#eq-supervised}
+:::
+
+**In words.** Fit a function so that its predictions match the labels on the training examples, where every example is drawn on its own from one fixed distribution.
+
+**Term by term.**
+
+- $f_\theta$: the model, with parameters $\theta$; $x_i$ an input, $y_i$ its label.
+- $\ell$: a loss that is small when the prediction matches the label, such as squared error.
+- i.i.d.: drawing $(x_1, y_1)$ tells you nothing about $(x_2, y_2)$, and test inputs come from the same $p$ as training inputs. Classifying one cat photo does not change the next photo.
+
+### The robot loop breaks that assumption
+
+::: {.key-equation data-name="The robot-environment loop"}
+$$
+\begin{aligned}
+a_t &\sim \pi(a_t \mid o_t) \\
+s_{t+1} &\sim p(s_{t+1} \mid s_t, a_t) \\
+o_{t+1} &\sim p(o_{t+1} \mid s_{t+1})
+\end{aligned}
+$$ {#eq-loop}
+:::
+
+**In words.** The robot picks an action from what it observes, the world moves to a new state that depends on that action, and the robot observes the new state.
+
+**Term by term.**
+
+- $\pi$: the policy, the thing robot learning produces.
+- $s_t$: the true state of the world; $o_t$: what the robot's sensors report about it. They differ, which is exactly the state-estimation problem.
+- $p(s_{t+1} \mid s_t, a_t)$: the dynamics. Because $a_t$ appears here, the next observation depends on the robot's own choice: consecutive data points are not independent, and a different policy sees a different distribution of states. Week 2 builds this into Markov decision processes.
+
+### Open loop and closed loop
+
+::: {.key-equation data-name="Open-loop plan vs closed-loop policy"}
+$$
+\begin{aligned}
+\text{open loop:}\quad a_t &= \text{plan}_t(\hat{s}_0) \\
+\text{closed loop:}\quad a_t &= \pi(\hat{s}_t)
+\end{aligned}
+$$ {#eq-open-closed}
+:::
+
+**In words.** An open-loop controller fixes every action in advance from one estimate of the start; a closed-loop controller computes each action from the latest estimate.
+
+**Term by term.**
+
+- $\hat{s}_0$, $\hat{s}_t$: the robot's estimates of its state at the start and at step $t$, never exactly right.
+- $\text{plan}_t$: the $t$-th action of a plan made once. An error in $\hat{s}_0$ shifts the whole executed path, and motor errors add up step after step because nothing looks at the result.
+- $\pi(\hat{s}_t)$: an action chosen from the current estimate. A motor error at step $t$ shows up in $\hat{s}_{t+1}$ and gets corrected.
+
+**Numeric check.** In the doorway toy at σ = 0.2, sense-plan-act reaches the goal in `{python} f"{100 * goal['open'][at[0.2]]:.0f}"`% of episodes and closed loop in `{python} f"{100 * goal['closed'][at[0.2]]:.0f}"`% (@fig-doorway).
+
+### Actions as tokens
+
+::: {.key-equation data-name="Uniform action tokenization"}
+$$
+\begin{aligned}
+\Delta &= \frac{a_{\max} - a_{\min}}{B} \\
+k &= \min\!\Big(B - 1,\; \Big\lfloor \frac{a - a_{\min}}{\Delta} \Big\rfloor\Big) \\
+\hat{a} &= a_{\min} + \big(k + \tfrac{1}{2}\big)\Delta \\
+|a - \hat{a}| &\le \tfrac{\Delta}{2}
+\end{aligned}
+$$ {#eq-tokenize}
+:::
+
+**In words.** Cut the range of one action dimension into $B$ equal bins, write down which bin the action falls in, and later replace that bin number by the bin's centre. The round trip is off by at most half a bin.
+
+**Term by term.**
+
+- $a$: one dimension of a continuous action, for example how far the gripper moves along $x$ in one step.
+- $[a_{\min}, a_{\max}]$: the range covered by the bins; values outside are clipped to the end bins.
+- $B$: the number of bins; RT-2 uses 256 per dimension.
+- $\Delta$: the bin width, the precision of one token.
+- $k$: the token, an integer from 0 to $B - 1$, which a language model can emit like a word.
+- $\hat{a}$: the bin centre, what the robot actually executes.
+
+**Numeric check.** With 256 bins, this page's worked example tokenizes one move with an error of at most half a bin (`{python} f"{1000 * ex_width.max() / 2:.4f}"` mm in its wider dimension); replayed open loop over 100 steps, those errors grow to the `{python} f"{1000 * err_open[k256]:.2f}"` mm quoted above.
+
+### One sequence model for images, words and actions
+
+::: {.key-equation data-name="Actions as the continuation of a token sequence"}
+$$
+\begin{aligned}
+&p\big(k_{1}, \dots, k_{D} \mid \text{image}, \text{text}\big) \\
+&\quad = \prod_{j=1}^{D} p\big(k_{j} \mid \text{image}, \text{text}, k_{1}, \dots, k_{j-1}\big)
+\end{aligned}
+$$ {#eq-sequence}
+:::
+
+**In words.** The model reads the image tokens and the instruction tokens, then writes the action one token at a time, each conditioned on everything before it, exactly as a language model writes a sentence.
+
+**Term by term.**
+
+- $k_1, \dots, k_D$: the action's tokens, one per action dimension (RT-2 writes 8 integers per action).
+- The product: the chain rule of probability, which is how autoregressive transformers factor any sequence.
+- Image and text: inputs the model only reads; the same network, pretrained on web images and text, now also writes actions. Week 3 returns to this factorization as a way to represent several possible actions, and Week 7 covers the transformers that compute it.
+
+## Worked examples
+
+### Example 1: the doorway, number by number
+
+```{python}
+#| output: asis
+print("| position error σ | sense-plan-act: goal | sense-plan-act: wall | closed loop: goal | closed loop: wall |")
+print("|---:|---:|---:|---:|---:|")
+for s in (0.0, 0.1, 0.2, 0.4, 0.8):
+    i = at[s]
+    print(f"| {s:.1f} | {100 * goal['open'][i]:.0f}% | {100 * crash['open'][i]:.0f}% "
+          f"| {100 * goal['closed'][i]:.0f}% | {100 * crash['closed'][i]:.0f}% |")
+```
+
+The remaining sense-plan-act runs neither hit the wall nor reach the goal: they finish the planned walk somewhere near it, but not within `{python} f"{w1.GOAL_TOL:.1f}"` of it. Two errors are at work. An error in the starting estimate shifts the entire path, so the robot walks the right shape in the wrong place; motor errors add up over the `{python} len(w1.plan(w1.START))` steps of the plan. The closed-loop robot is hit by the same errors but never lets them accumulate.
+
+### Example 2: one action, as tokens
+
+Take step `{python} EX_T` of the reaching motion. With 256 bins per dimension over the motion's range:
+
+```{python}
+#| output: asis
+print("| | x | y |")
+print("|:---|---:|---:|")
+print(f"| move (mm) | {1000 * ex_move[0]:.4f} | {1000 * ex_move[1]:.4f} |")
+print(f"| range covered by the bins (mm) | {1000 * LO[0]:.3f} to {1000 * HI[0]:.3f} | {1000 * LO[1]:.3f} to {1000 * HI[1]:.3f} |")
+print(f"| bin width Δ (mm) | {1000 * ex_width[0]:.4f} | {1000 * ex_width[1]:.4f} |")
+print(f"| token k | {int(ex_tok[0])} | {int(ex_tok[1])} |")
+print(f"| bin centre, executed (mm) | {1000 * ex_back[0]:.4f} | {1000 * ex_back[1]:.4f} |")
+print(f"| error (mm) | {1000 * (ex_back[0] - ex_move[0]):+.4f} | {1000 * (ex_back[1] - ex_move[1]):+.4f} |")
+```
+
+The two tokens, `{python} int(ex_tok[0])` and `{python} int(ex_tok[1])`, are all a language model has to write for this step. Each error is below half a bin width. Over many steps the errors don't average out, because neighbouring moves are similar and tend to round the same way, which is why the open-loop replay drifts.
+
+### Example 3: how long would it take to read the data? {#ex-reading}
+
+The lecture compares data sets by the time one person would need to get through them: about 2 years for ImageNet, 60 years for GPT-2's training text, and 90,000 years for Llama 3's [▶ 44:01](https://youtu.be/X0k14u6pSxw?t=2641). Those figures can be checked from published sizes plus a reading speed.
+
+```{python}
+#| output: asis
+print("| data set | size (source) | assumption | years, non-stop | lecture |")
+print("|:---|:---|:---|---:|---:|")
+print(f"| ImageNet | {imagenet_images:,} images (image-net.org) | {SECONDS_PER_IMAGE} s per image "
+      f"| {read['ImageNet'][0]:,.1f} | {read['ImageNet'][1]:,} |")
+print(f"| GPT-2 (WebText) | 40 GB of text (Radford et al., 2019, Sec. 2.1) | {BYTES_PER_WORD} bytes per word, {WPM} words/min "
+      f"| {read['GPT-2 (WebText)'][0]:,.0f} | {read['GPT-2 (WebText)'][1]:,} |")
+print(f"| Llama 3 | 15.6 trillion tokens (Llama Team, 2024) | {WORDS_PER_TOKEN} words per token, {WPM} words/min "
+      f"| {read['Llama 3'][0]:,.0f} | {read['Llama 3'][1]:,} |")
+```
+
+The reading speed and the bytes-per-word and words-per-token ratios are assumptions, so these are orders of magnitude, not exact figures; with them, all three come out within a factor of 2 of the lecture's numbers. For scale on the robot side, the largest pooled robot data set the lecture shows, Open X-Embodiment, holds over a million trajectories, each one recorded episode of one robot (see [Papers](#papers)).
+
+```{python}
+#| label: fig-reading
+#| fig-cap: "Years of non-stop reading or looking needed to get through each training data set, from the published sizes and the stated assumptions (log scale). Dots: the lecture's figures."
+#| fig-alt: "Bar chart on a logarithmic scale with three bars: ImageNet at about 2 years, GPT-2's WebText at about 50 years, and Llama 3's training text at about 90,000 years. A dot above each bar marks the lecture's figure, close to the top of each bar."
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+names = list(read)
+ax.bar(names, [read[n][0] for n in names], color=BLUE, width=0.55, label="computed here")
+ax.scatter(names, [read[n][1] for n in names], color=ORANGE, zorder=3, label="lecture")
+ax.set_yscale("log"); ax.set_ylabel("years")
+ax.legend(fontsize=8, loc="upper left")
+plt.show()
+```
+
+## Interactive
+
+### Plan once, or look every step
+
+Pick a position-estimate error. Each panel shows 20 episodes; the grey bars are the wall, with the doorway between them, and the circle is the goal. Crosses mark crashes.
+
+```{python}
+#| label: fig-doorway-slider
+#| fig-cap: "Paths of 20 episodes for the chosen position-estimate error σ. Top: sense-plan-act; bottom: closed loop."
+#| fig-alt: "Interactive figure with a slider for the position-estimate error and two room panels stacked vertically. Each panel shows a vertical wall at x = 5 with a gap, a start point at the lower left and a goal circle at the upper right, and 20 paths. At zero error both panels show tight bundles of paths through the doorway; the top bundle fans out slightly near the goal. As the error grows, the top panel's paths fan out widely, many ending in crosses at the wall, while the bottom panel's paths stay bundled through the doorway to the goal."
+SLIDER_SIGMAS = [0.0, 0.1, 0.2, 0.4, 0.8]
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                    subplot_titles=("sense-plan-act", "closed loop"))
+n_traces = 0
+for i, s in enumerate(SLIDER_SIGMAS):
+    for row, (mode, col) in enumerate([("open", ORANGE), ("closed", BLUE)], start=1):
+        rng = np.random.default_rng(100 + i)
+        xs, ys, cx, cy = [], [], [], []
+        for _ in range(20):
+            path, outcome = w1.run(mode, s, rng)
+            xs += list(np.round(path[:, 0], 3)) + [None]
+            ys += list(np.round(path[:, 1], 3)) + [None]
+            if outcome == "crash":
+                cx.append(round(float(path[-1, 0]), 3)); cy.append(round(float(path[-1, 1]), 3))
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=col, width=1),
+                                 opacity=0.7, visible=(i == 2), showlegend=False, hoverinfo="skip"),
+                      row=row, col=1)
+        fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", marker=dict(symbol="x", size=7, color=style.INK),
+                                 visible=(i == 2), showlegend=False, hoverinfo="skip"), row=row, col=1)
+        n_traces += 2
+for row, axis in ((1, ""), (2, "2")):
+    for y0, y1 in ((-2.5, w1.DOOR_Y - w1.DOOR_HALF), (w1.DOOR_Y + w1.DOOR_HALF, 3.0)):
+        fig.add_shape(type="rect", x0=w1.WALL_X - 0.06, x1=w1.WALL_X + 0.06, y0=y0, y1=y1,
+                      fillcolor=style.MUTED, line_width=0, xref=f"x{axis}", yref=f"y{axis}")
+    fig.add_shape(type="circle", x0=w1.GOAL[0] - w1.GOAL_TOL, x1=w1.GOAL[0] + w1.GOAL_TOL,
+                  y0=w1.GOAL[1] - w1.GOAL_TOL, y1=w1.GOAL[1] + w1.GOAL_TOL,
+                  line=dict(color=style.INK, width=1.5), xref=f"x{axis}", yref=f"y{axis}")
+per_sigma = n_traces // len(SLIDER_SIGMAS)
+steps = [dict(method="update", label=f"{s:g}",
+              args=[{"visible": [j // per_sigma == i for j in range(n_traces)]}])
+         for i, s in enumerate(SLIDER_SIGMAS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=620, margin=dict(l=50, r=20, t=40, b=40),
+                  sliders=[dict(active=2, steps=steps, pad=dict(t=30),
+                                currentvalue=dict(prefix="position-estimate error σ = "))])
+fig.update_xaxes(range=[-0.5, 9], title_text="x", row=2, col=1)
+fig.update_yaxes(range=[-2.5, 3.0], scaleanchor="x", scaleratio=1, title_text="y")
+fig.show()
+```
+
+**What to try.** At σ = 0 the closed-loop paths form one tight bundle through the doorway, while the sense-plan-act paths already spread out towards the goal: those are the motor errors adding up. Raise σ. The sense-plan-act paths shift as a whole, each copying the shape of the plan from a wrong starting point, and more of them end against the wall. The closed-loop paths wobble but keep converging on the doorway and the goal.
+
+### Precision of tokenized actions
+
+```{python}
+#| include: false
+write_json({"path": PATH, "lo": LO, "hi": HI,
+            "style": {"blue": BLUE, "orange": ORANGE, "surface": style.SURFACE, "ink": style.INK}},
+           "data/w01-reach.json")
+```
+
+Choose how many bins each action dimension gets. The chart shows, for every step of the 0.6 m reach, how far the robot is from the demonstrated path when it replays the tokens blindly (orange) or re-observes and tokenizes the correction (blue). The tokenization is recomputed in your browser.
+
+```{ojs}
+reach = FileAttachment("data/w01-reach.json").json()
+viewof bitsW1 = Inputs.range([2, 8], {step: 1, value: 4, label: "bits per dimension"})
+binsW1 = 2 ** bitsW1
+errorsW1 = {
+  // Same rules as rlc.toys.w01_intro: tokenize, then use the bin centre.
+  const P = reach.path, T = P.length - 1;
+  const tok = (a, d) => Math.min(binsW1 - 1, Math.max(0, Math.floor((a - reach.lo[d]) / (reach.hi[d] - reach.lo[d]) * binsW1)));
+  const centre = (k, d) => reach.lo[d] + (k + 0.5) * (reach.hi[d] - reach.lo[d]) / binsW1;
+  const rows = [];
+  for (const mode of ["open loop", "closed loop"]) {
+    let p = P[0].slice();
+    rows.push({step: 0, mm: 0, mode});
+    for (let t = 0; t < T; t++) {
+      for (let d = 0; d < 2; d++) {
+        const want = mode === "open loop" ? P[t + 1][d] - P[t][d] : P[t + 1][d] - p[d];
+        p[d] += centre(tok(want, d), d);
+      }
+      rows.push({step: t + 1, mm: 1000 * Math.hypot(p[0] - P[t + 1][0], p[1] - P[t + 1][1]), mode});
+    }
+  }
+  return rows;
+}
+```
+
+```{ojs}
+//| label: fig-token-explorer
+//| fig-cap: "Distance from the demonstrated path at each step, in millimetres, when the reach is executed from tokens: replayed blindly (orange) or re-tokenizing the correction from the robot's actual position each step (blue)."
+//| fig-alt: "Interactive line chart with a slider for the number of bits per action dimension (2 to 8, that is 4 to 256 bins). The x-axis is the step from 0 to 100, the y-axis the distance from the demonstrated path in millimetres. The orange open-loop line wanders upward over the steps; the blue closed-loop line stays low and flat. With more bits both lines shrink, and the blue line stays well below the orange one."
+Plot.plot({
+  width: Math.min(width, 640), height: 280, marginLeft: 50,
+  style: {background: reach.style.surface},
+  x: {label: "step"}, y: {label: "distance from path (mm)", grid: true},
+  color: {domain: ["open loop", "closed loop"], range: [reach.style.orange, reach.style.blue], legend: true},
+  marks: [Plot.line(errorsW1, {x: "step", y: "mm", stroke: "mode", strokeWidth: 2}), Plot.ruleY([0])]
+})
+```
+
+**What to notice.** Each extra bit halves the bin width, and both curves shrink. The blue curve stays flat at the size of one rounding; the orange one wanders, because neighbouring moves round in the same direction and nothing corrects the sum. At 2 bits (4 bins) the blue curve is no longer the smaller one: with bins that coarse, the corrections themselves overshoot.
+
+```{python}
+#| label: fig-token-error
+#| fig-cap: "Largest distance from the demonstrated 0.6 m path against the number of bins per action dimension (log-log). Orange: replaying the tokens blindly; blue: re-tokenizing the correction each step. Dashed: half a bin width (diagonal), the error of a single rounding."
+#| fig-alt: "Log-log line chart, bins from 4 to 256 on the x-axis, largest error in millimetres on the y-axis. All three lines fall as the bins increase. The orange open-loop line lies above the others. The blue closed-loop line follows the dashed half-bin line from 8 bins on, but lies above it at 4 bins."
+fig, ax = plt.subplots(figsize=(6.4, 3.3))
+ax.loglog(BINS_LIST, 1000 * err_open, "o-", color=ORANGE, label="replay tokens blindly")
+ax.loglog(BINS_LIST, 1000 * err_closed, "o-", color=BLUE, label="re-tokenize correction each step")
+ax.loglog(BINS_LIST, 1000 * half_bin, "--", color=style.INK_SECONDARY, label="half a bin (one rounding)")
+ax.set_xticks(BINS_LIST); ax.set_xticklabels([str(b) for b in BINS_LIST]); ax.minorticks_off()
+ax.set_xlabel("bins per action dimension"); ax.set_ylabel("largest error (mm)")
+ax.legend(fontsize=8)
+plt.show()
+```
+
+## Algorithm & code
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w1.tokenize, w1.detokenize, w1.replay)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from rlc.toys import w01_intro as toy
+
+torch.manual_seed(0)
+BINS, CTX = 256, 16
+
+# Tokenize the reaching motion: (100, 2) moves -> (100, 2) integers.
+moves = np.diff(toy.reach_path(), axis=0)
+lo, hi = toy.action_range(moves)
+tokens = torch.tensor(toy.tokenize(moves, lo, hi, BINS))   # int64
+seq = tokens.reshape(-1)        # (200,): x, y, x, y, ... like RT-2's ints
+
+# Training windows: predict token j+1 from tokens up to j.
+win = seq.unfold(0, CTX + 1, 1)                 # (185, CTX+1)
+inputs, targets = win[:, :-1], win[:, 1:]       # (185, CTX) each
+
+
+class TinyActionGPT(nn.Module):
+    """A decoder-only transformer over action tokens. A real VLA puts
+    image and instruction tokens in front of these in the same sequence."""
+
+    def __init__(self, vocab=BINS, d=64, ctx=CTX):
+        super().__init__()
+        self.tok = nn.Embedding(vocab, d)
+        self.pos = nn.Embedding(ctx, d)
+        layer = nn.TransformerEncoderLayer(d, nhead=4, dim_feedforward=128,
+                                           batch_first=True)
+        self.body = nn.TransformerEncoder(layer, num_layers=2)
+        self.head = nn.Linear(d, vocab)
+
+    def forward(self, idx):                      # idx: (N, L) int64
+        L = idx.shape[1]
+        h = self.tok(idx) + self.pos(torch.arange(L))       # (N, L, d)
+        # Causal mask: position j may only attend to positions <= j.
+        mask = nn.Transformer.generate_square_subsequent_mask(L)
+        return self.head(self.body(h, mask=mask, is_causal=True))
+
+
+model = TinyActionGPT()
+opt = torch.optim.Adam(model.parameters(), lr=3e-3)
+losses = []
+for _ in range(150):
+    logits = model(inputs)                                  # (N, L, BINS)
+    # cross_entropy wants (N*L, BINS) logits and (N*L,) class indices
+    loss = F.cross_entropy(logits.reshape(-1, BINS), targets.reshape(-1))
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+    losses.append(loss.item())
+
+assert logits.shape == (inputs.shape[0], CTX, BINS)
+assert losses[-1] < losses[0] / 3
+```
+:::
+
+The NumPy code is everything the page's tokenizer does: a floor and a clip to get the token, a bin centre to get back. The PyTorch sketch goes one step further, training a small transformer to continue the reaching motion's token sequence, which is the core of how RT-2 and its successors produce actions.
+
+## Papers
+
+There are no discussion papers in Week 1. These are papers the lecture relies on.
+
+```{python}
+#| output: asis
+print(paper_cards(1))
+```
+
+## Solved problems
+
+**1. Token precision.** A robot's end effector moves at most 2 cm per control step along each axis, and each axis is tokenized into 256 uniform bins over [−2 cm, 2 cm]. What is the largest rounding error per step, and how many tokens does one action with 3 position axes, 3 rotation axes and a gripper need?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Bin width $\Delta = 4\,\text{cm} / 256 \approx 0.156$ mm; the largest error per axis is half of that, about 0.078 mm (@eq-tokenize). One action needs one token per dimension: 3 + 3 + 1 = 7 tokens. RT-2 adds an eighth for "episode finished" (Sec. 3.2 of the paper).
+:::
+
+**2. Blind replay.** Suppose every move of a 100-step motion rounds the same way, by $+0.05$ mm along $x$. How far off is the end of a blind replay? And with closed-loop correction?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Blind: the errors add up to $100 \times 0.05 = 5$ mm. Closed loop: each step aims at the next point of the path from where the robot actually is, so the previous error is part of the correction; what remains after any step is one rounding, at most half a bin. Systematic rounding is the worst case for open loop and harmless for closed loop. In this page's toy, rounding is partly systematic, which is why the open-loop error grows (@fig-token-error).
+:::
+
+**3. A plan made from a wrong start.** A sense-plan-act robot believes it starts 0.3 to the left of where it really is. Ignoring motor noise, where does its executed path end, and does it get through a door 0.8 wide?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Executing the plan moves the robot by exactly the planned displacements, so the whole executed path is the planned path shifted 0.3 to the right: it ends 0.3 from the goal. At the door it passes 0.3 off the door's centre line, inside the 0.4 half-width, so it gets through, but with only 0.1 to spare; add a little motor drift and it hits the frame. A closed-loop robot's next estimate would show it is off course, and it would correct.
+:::
+
+**4. Is it a robot?** Classify a dishwasher, a teleoperated surgical robot and a chatbot on a phone by the two tests from the lecture's class discussion: does it change the physical world, and does it act on its own?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Dishwasher: changes the world (cleans dishes) and runs on its own, but only one fixed program in a fixed environment. Surgical robot: changes the world with great dexterity, but a surgeon makes every decision; it is teleoperated, like the 2007 PR1. Chatbot: reasons generally and acts autonomously in conversation, but has no body and changes nothing physical. Robot learning aims for all three at once: physical effect, autonomy, and generality.
+:::
+
+**5. Why the data are not i.i.d.** A cleaning robot records (camera image, action) pairs while it works. Give two reasons these pairs are not independent and identically distributed samples.
+
+::: {.callout-tip collapse="true" title="Solution"}
+Not independent: consecutive images are nearly identical, and each action determines the next image (@eq-loop). Not identically distributed: change the policy and the robot visits different places, so the distribution of images changes; a policy trained on one robot's data then meets different states when it acts itself. Week 3 shows how this makes small imitation errors snowball.
+:::
+
+## Recap
+
+1. **Sense-plan-act needs an exact picture of the world.** *Why it matters:* it explains both the success of factory robots and the falls of humanoids, and motivates closed-loop, learned policies.
+2. **Feedback beats precision.** In the doorway toy, re-estimating at every step kept success at 100% up to σ = `{python} f"{closed_perfect_up_to:.2f}"`, while planning once fell below half by σ ≈ `{python} f"{s50:.2f}"`. *Why it matters:* every policy in this course is a closed-loop controller.
+3. **Moravec's paradox: physical skill is the hard part, and its data is scarce.** *Why it matters:* data collection is a theme of nearly every week, from demonstrations (Week 3) to human video (Week 3's guest) to pooled data sets (Week 9).
+4. **Write actions as tokens and robotics becomes sequence modeling.** *Why it matters:* this is how vision-language-action models reuse web-scale pretraining (Weeks 7 and 9), at the cost of a small, controllable loss of precision.
+5. **Robot data are not i.i.d.** *Why it matters:* it is the root of compounding error in imitation (Week 3) and of the exploration problem in reinforcement learning (Weeks 4–5).
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Supervised learning | $\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i), y_i)$, i.i.d. data | @eq-supervised |
+| Robot loop | $a_t \sim \pi(\cdot \mid o_t)$, $s_{t+1} \sim p(\cdot \mid s_t, a_t)$ | @eq-loop |
+| Open vs closed loop | $\text{plan}_t(\hat{s}_0)$ vs $\pi(\hat{s}_t)$ | @eq-open-closed |
+| Tokenization | $k = \lfloor (a - a_{\min})/\Delta \rfloor$, $\lvert a - \hat{a} \rvert \le \Delta/2$ | @eq-tokenize |
+| Sequence model | $\prod_j p(k_j \mid \text{image}, \text{text}, k_{<j})$ | @eq-sequence |
+
+**Common pitfalls.**
+
+- Treating robot data like a supervised data set. Consecutive samples are correlated, and the policy changes the distribution it is evaluated on.
+- Assuming tokenized actions are exact. They are rounded to the bin centre; count the bins against the precision the task needs.
+- Judging a robot demo without asking whether it was teleoperated.
+
+**Connections.** Next week formalizes the robot loop as a Markov decision process. [Week 3](w03-imitation-learning.qmd) is the first family of algorithms, imitation learning, and shows what the non-i.i.d. data cost. In the ADM Companion, [Chapter 1]({{< var adm_url >}}/intro/ch01-introduction.html) introduces decision making under uncertainty, the broader setting of the robot loop.
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(1))
+```
