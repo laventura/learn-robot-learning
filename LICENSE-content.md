@@ -14,7 +14,7 @@ You may share and adapt this material for non-commercial purposes, as long as
 you give appropriate credit, link to the license, and indicate if changes were
 made.
 
-Suggested credit: *Learning Robot Learning* by Atul Acharya, <https://laventura.github.io/robot-learning-companion/>, CC BY-NC 4.0.
+Suggested credit: *Learning Robot Learning* by Atul Acharya, <https://laventura.github.io/learn-robot-learning/>, CC BY-NC 4.0.
 
 ## What this license does not cover
 

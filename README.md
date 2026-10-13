@@ -2,7 +2,7 @@
 
 An independent, unofficial companion site for ETH Zürich's *Robot Learning: From Fundamentals to Foundation Models* (Oier Mees, Spring 2026). Course page: <https://cvg.ethz.ch/lectures/Robot-Learning/>.
 
-Site: <https://laventura.github.io/robot-learning-companion/>
+Site: <https://laventura.github.io/learn-robot-learning/> (not published yet)
 
 ## Setup
 

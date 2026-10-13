@@ -18,7 +18,7 @@ execute:
 website:
   title: "Learning Robot Learning"
   description: "An independent, unofficial companion to ETH Zürich's Robot Learning course (Spring 2026)."
-  site-url: "https://laventura.github.io/robot-learning-companion/"
+  site-url: "https://laventura.github.io/learn-robot-learning/"
   page-navigation: true
   sidebar:
     style: docked
