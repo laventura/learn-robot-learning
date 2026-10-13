@@ -26,10 +26,15 @@ dev = [
 torch = [
     "torch>=2.9",
 ]
+# Manim Community Edition, used only by tools/render_animations.py (CLAUDE.md §6.3a).
+# Pinned exactly; pycairo builds from source and needs Homebrew cairo + pkg-config.
+anim = [
+    "manim==0.22.0",
+]
 
 [tool.uv]
 # `uv sync` is exact: a group missing here is uninstalled by the next plain sync.
-default-groups = ["site", "dev", "torch"]
+default-groups = ["site", "dev", "torch", "anim"]
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
