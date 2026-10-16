@@ -15,7 +15,7 @@ from plotly.subplots import make_subplots
 
 from rlc import style
 from rlc.io import write_json
-from rlc.page import course_map_highlight, paper_cards, resources, show_source
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
 from rlc.toys import w01_intro as w1
 
 style.apply()
@@ -184,6 +184,33 @@ digraph spa {
 ```
 
 The first toy on this page shows the difference. A robot starts on the left of a room and must pass a doorway in a wall to reach a goal on the right. The sense-plan-act robot estimates its starting position once, with error σ, plans a path through the door, and walks it. The closed-loop robot gets an equally noisy estimate at *every* step and heads for its next waypoint from there. Both robots' motors land each step a little off (a standard deviation of `{python} f"{w1.MOTOR_NOISE:.2f}"` per step).
+
+```{python}
+#| output: asis
+# The clip's episodes: the first 12 the slider below draws at sigma 0.2 (seed 102 per robot).
+clip = {}
+for m in ("open", "closed"):
+    r = np.random.default_rng(102)
+    clip[m] = [w1.run(m, 0.2, r)[1] for _ in range(12)]
+n_goal = {m: clip[m].count("goal") for m in clip}
+n_crash = clip["open"].count("crash")
+assert n_goal["closed"] == 12 and n_goal["open"] < 12
+print(hero_video(
+    "w01-doorway",
+    caption=f"Plan once, or look every step. Twelve sense-plan-act robots (orange) walk their plans "
+            f"from one noisy estimate (σ = 0.2); then twelve closed-loop robots (blue) start from the "
+            f"same spot and re-estimate at every step.",
+    alt=f"Animation, about 15 seconds, looping. A grey wall with a doorway splits a pale room; a "
+        f"start dot sits at the lower left and a goal circle at the upper right. Twelve orange paths "
+        f"grow from the start through the doorway and spread out: {n_goal['open']} end inside the "
+        f"circle, {n_crash} ends against the wall with a cross, and the rest stop beside the circle. "
+        f"The orange paths fade, and twelve blue paths grow as a tight, wobbly bundle through the "
+        f"doorway; all {n_goal['closed']} end inside the circle. Captions give the counts, then "
+        f"everything fades back to the empty room.",
+))
+```
+
+**What to watch for.** The orange robots set off together, but each follows a plan made from a slightly wrong starting point, so the bundle fans out as it walks. By the end, `{python} n_goal["open"]` of 12 sit in the circle, `{python} n_crash` has hit the wall beside the doorway, and the rest stop short or wide of the goal. The blue robots wobble more step to step, because each new estimate is noisy, but the wobbles don't add up: every step aims at the next waypoint from wherever the robot now thinks it is, and all `{python} n_goal["closed"]` arrive.
 
 ```{python}
 #| label: fig-doorway
