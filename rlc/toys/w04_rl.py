@@ -197,16 +197,16 @@ def td_control(method, rng, episodes=500, eps=0.1, alpha=0.5, gamma=1.0):
     for ep in range(episodes):
         pos, total = CLIFF_START, 0.0
         a = eps_greedy(Q[pos], eps, rng)
-        for _ in range(1000):                       # cap for very early episodes
+        for _ in range(1000):                 # cap for very early episodes
             nxt, r, done = cliff_step(pos, a)
             total += r
             a2 = eps_greedy(Q[nxt], eps, rng)
             if done:
-                target = r                          # no value beyond the goal
+                target = r                    # no value beyond the goal
             elif method == "q":
-                target = r + gamma * Q[nxt].max()   # best next action
+                target = r + gamma * Q[nxt].max()    # best next action
             else:
-                target = r + gamma * Q[nxt][a2]     # the action SARSA will take
+                target = r + gamma * Q[nxt][a2]      # SARSA's next action
             Q[pos][a] += alpha * (target - Q[pos][a])
             pos, a = nxt, a2
             if done:
@@ -252,7 +252,7 @@ def expected_max_normal(n, grid=4001) -> float:
 DIM = 7
 PEAK = np.full(DIM, 0.5)                 # the global maximum, Q = 1
 DECOY = np.full(DIM, -0.5)               # a lower local maximum, Q = 0.7
-WIDTH = 0.7                              # broad enough that gradients reach most starts
+WIDTH = 0.7                              # gradients reach most starts
 
 
 def q_landscape(a) -> Array:
@@ -266,9 +266,11 @@ def q_landscape(a) -> Array:
 def q_grad(a) -> Array:
     """dQ/da, the direction DDPG's actor follows."""
     a = np.asarray(a)
-    g1 = np.exp(-((a - PEAK) ** 2).sum(-1) / (2 * WIDTH ** 2))[..., None] * -(a - PEAK) / WIDTH ** 2
-    g2 = 0.7 * np.exp(-((a - DECOY) ** 2).sum(-1) / (2 * WIDTH ** 2))[..., None] * -(a - DECOY) / WIDTH ** 2
-    return g1 + g2
+    out = 0.0
+    for centre, height in ((PEAK, 1.0), (DECOY, 0.7)):
+        bump = height * np.exp(-((a - centre) ** 2).sum(-1) / (2 * WIDTH ** 2))
+        out = out + bump[..., None] * -(a - centre) / WIDTH ** 2
+    return out
 
 
 def random_search_argmax(n, rng) -> float:
@@ -282,8 +284,9 @@ def cem_argmax(rng, n=64, elite=8, iters=10, init_std=0.6):
     Returns the final mean action and its Q; costs n * iters evaluations."""
     mu, std = np.zeros(DIM), np.full(DIM, init_std)
     for _ in range(iters):
-        a = np.clip(mu + std * rng.standard_normal((n, DIM)), -1, 1)   # (n, DIM)
-        best = a[np.argsort(q_landscape(a))[-elite:]]                    # (elite, DIM)
+        noise = rng.standard_normal((n, DIM))
+        a = np.clip(mu + std * noise, -1, 1)               # (n, DIM)
+        best = a[np.argsort(q_landscape(a))[-elite:]]      # (elite, DIM)
         mu, std = best.mean(axis=0), best.std(axis=0) + 1e-3
     return mu, float(q_landscape(mu))
 
