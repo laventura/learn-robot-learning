@@ -232,6 +232,35 @@ So far the samples are unconditional: draws from the data distribution with no s
 
 **Diffusion Policy** applies all of this to actions: instead of denoising pixels, denoise a short sequence of future robot actions, with the camera images and robot state as the condition [▶ 38:59](https://youtu.be/qd6Ldsuu46I?t=2339). It trains with the DDPM loss, samples with DDIM, computes the observation features once per decision, and conditions the denoising network with FiLM, a learned per-feature scale and shift [▶ 40:46](https://youtu.be/qd6Ldsuu46I?t=2446). It handles multimodal demonstrations well but has been harder to scale to many tasks. Follow-ups attach a diffusion head to a large transformer trained on many robots (Octo) [▶ 42:05](https://youtu.be/qd6Ldsuu46I?t=2525), or condition through adaptive layer normalization, borrowed from diffusion transformers for images, which trains more stably and scales to long two-armed tasks [▶ 42:52](https://youtu.be/qd6Ldsuu46I?t=2572).
 
+```{dot}
+//| label: fig-dp-loop
+//| fig-width: 5.86
+//| fig-height: 6.23
+//| fig-cap: "One decision of a diffusion policy. The observation is encoded once; the noise predictor then denoises a random action sequence over K steps, conditioned on those features. The robot executes only the first few actions of the result, then observes again (receding-horizon control, Chi et al. 2023, Sec. 3)."
+//| fig-alt: "Flow diagram. 'Recent observations: images, robot state' leads to 'vision encoder, run once per decision', which feeds 'noise predictor conditioned with FiLM' with the arrow labeled 'condition'. 'Random action sequence, pure noise' also feeds the noise predictor, labeled 'start'. The noise predictor has a loop labeled 'K steps' and leads to 'denoised sequence of Tp actions', then 'execute the first Ta actions', then 'robot and world', which loops back to the observations, labeled 'new view'."
+digraph dploop {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.4;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  obs [label="recent observations\n(images, robot state)", fillcolor="#f0efec", color="#52514e"];
+  enc [label="vision encoder\n(run once per decision)"];
+  noise [label="random action sequence\n(pure noise)", fillcolor="#f0efec", color="#52514e"];
+  net [label="noise predictor εθ\n(conditioned with FiLM)"];
+  seq [label="denoised sequence\nof Tp actions"];
+  exec [label="execute the first Ta actions", fillcolor="#fbe1d6", color="#eb6834"];
+  world [label="robot and world", fillcolor="#f0efec", color="#52514e"];
+  { rank=same; enc; noise; }
+  obs -> enc [label=" encode"];
+  enc -> net [label=" condition"];
+  noise -> net [label=" start"];
+  net -> net [label=" K steps"];
+  net -> seq [label=" result"];
+  seq -> exec [label=" keep few"];
+  exec -> world [label=" act"];
+  world -> obs [label=" new view", constraint=false];
+}
+```
+
 ### Flow matching: straight lines from noise to data {#flow}
 
 **Flow matching** drops the noise schedule: pair each noise sample with a data point, draw the straight line between them, and train a network to predict the velocity along that line (@eq-flow) [▶ 43:43](https://youtu.be/qd6Ldsuu46I?t=2623). Sampling integrates the learned velocity from noise to data in a few Euler steps. With a linear schedule it is equivalent to diffusion up to a change of variables [▶ 45:35](https://youtu.be/qd6Ldsuu46I?t=2735); in practice its paths are straighter and need fewer steps. **Rectified flow** retrains on noise–data pairs produced by the flow itself, which untangles crossing paths and straightens them further [▶ 46:54](https://youtu.be/qd6Ldsuu46I?t=2814). Physical Intelligence's **π0** was, to the lecturer's knowledge, the first vision-language-action model to produce actions with flow matching; it samples the training time from a shifted Beta distribution to concentrate on the noisier, harder part of the path [▶ 48:03](https://youtu.be/qd6Ldsuu46I?t=2883).
