@@ -21,7 +21,29 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | Open loop, closed loop | Executing a fixed plan, versus choosing each action from the latest observation |
 | Vision-language-action model (VLA) | A vision-language model fine-tuned to output robot actions as tokens |
 
-## Week 3 · Imitation Learning
+## Week 2 · Robot Control & MDPs
+
+| Symbol or term | Meaning |
+|:---|:---|
+| SE(2), SE(3) | Rigid-body poses in the plane (3 numbers) and in space (6 numbers) |
+| $R$, $\mathbf{t}$, $T$ | A rotation matrix, a translation vector, and the homogeneous transform built from them |
+| $q$ | Joint configuration: one angle (or length) per joint |
+| $x = f(q)$ | Forward kinematics: the end-effector pose for joint configuration $q$ |
+| $J(q)$ | Jacobian: how the end-effector moves for a small change of each joint |
+| C-space | Configuration space: the set of all joint configurations |
+| Workspace, task space | Points the end effector can reach, and the space the task is defined in |
+| $f(s)$, $s \in [0, 1]$ | Time scaling of a move: $s$ is the share of the move's time used so far |
+| $e_k$, $u_k$ | Tracking error and motor command at control step $k$ |
+| $K_p$, $K_i$, $K_d$ | Proportional, integral and derivative gains of a PID controller |
+| $\pi_\theta(a_t \mid o_t)$ | Policy with parameters $\theta$: a distribution over actions given the observation |
+| $\mathcal{M} = (\mathcal{S}, \mathcal{A}, P, R)$ | A Markov decision process: states, actions, transition probabilities, reward function |
+| $P(s_{t+1} \mid s_t, a_t)$ | Transition probability (dynamics); ADM writes $T(s' \mid s, a)$ |
+| $r_t$, $\gamma$ | Reward at step $t$, and the discount factor in $[0, 1)$ |
+| $\tau$, $p_\pi(\tau)$ | A trajectory $(s_0, a_0, s_1, \dots)$ and its probability under policy $\pi$ |
+| $G$, $J(\pi)$ | Return of one trajectory, and its expected value under $\pi$ |
+| $\delta$, $\nu$ | A random search direction, and the size of the nudge along it |
+| Markov property | The next state depends only on the current state and action, not on earlier ones |
+| Sparse, dense reward | Reward only on success, versus a reward that measures progress at every step |
 
 | Symbol or term | Meaning |
 |:---|:---|
@@ -70,3 +92,9 @@ Symbols that mean different things in different weeks.
 | $t$ | A time step of the robot's trajectory | 1, 3 |
 | $t$ | Continuous flow-matching time from noise ($t = 0$) to data ($t = 1$) | 6 |
 | $\alpha_i$ | Signal kept by one diffusion step, $1 - \beta_i$ | 6 |
+| $\alpha$ | Step size of a gradient or random-search update | 2 |
+| $T$ | A homogeneous transform (a $3 \times 3$ or $4 \times 4$ matrix) | 2 |
+| $T$ | Task length (horizon) in steps | 3 |
+| $T$ | Number of diffusion steps | 6 |
+| $f$ | Forward kinematics $f(q)$, or a time scaling $f(s)$; also a control frequency in Hz | 2 |
+| $J$ | The Jacobian $J(q)$, or the expected return $J(\pi)$ | 2 |

@@ -47,11 +47,14 @@
   title: "Simple random search provides a competitive approach to reinforcement learning"
   authors: "Mania, Guy & Recht"
   year: 2018
-  venue: "arXiv"            # TODO(venue): believed NeurIPS 2018; not confirmed
+  venue: "NeurIPS"          # papers.nips.cc 2018, as "Simple random search of static linear policies is competitive for reinforcement learning"
   url: https://arxiv.org/abs/1803.07055
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Trains static linear policies for continuous control by random search in parameter space: try the weights nudged a little in a random direction and in the opposite one, and move them towards whichever scored higher. No neural network and no gradient of the policy are needed."
+  contributions:
+    - "Augmented Random Search (ARS): basic random search plus three small changes: scale each step by the spread of the rewards, normalize states with running statistics, and keep only the best-scoring directions (Sec. 1, Algorithm 2)."
+    - "Linear policies trained this way matched the sample efficiency of policy-gradient methods on the MuJoCo locomotion benchmarks, with at least 15 times less computation than Evolution Strategies (Abstract, Sec. 1)."
+    - "Over a hundred random seeds and many hyperparameter settings, results varied widely, which the authors argue makes the usual few-seed comparisons unreliable (Sec. 1, Sec. 5)."
+  connects_to: "The random-search toy on this page runs its Algorithm 1; whether the reward is sparse or dense decides whether those nudges see any signal."
 
 - id: deep-rl-doesnt-work-yet
   role: discussion
@@ -61,9 +64,13 @@
   year: 2018
   venue: "blog post"
   url: https://www.alexirpan.com/2018/02/14/rl-hard.html
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "A practitioner's account, from early 2018, of why deep reinforcement learning was hard to use in practice: it needs huge amounts of experience, a reward function that is hard to get right, and it can fail depending on nothing but the random seed."
+  contributions:
+    - "Sample inefficiency: Rainbow DQN reaches the median human-normalized Atari score after about 18 million frames, roughly 83 hours of play."
+    - "Rewards: agents exploit a misspecified reward (the boat-racing example), and even a good reward can leave them stuck in a local optimum."
+    - "Instability: in the author's own pendulum experiment, 3 of 10 runs that differed only in their random seed failed."
+    - "When it can work: when experience is cheap and nearly unlimited, the problem can be simplified, and the reward is clean and aligned with the goal."
+  connects_to: "Why the lecture's choice between sparse and dense rewards matters, and why this site's toys report averages over many seeds."
 
 - id: curiosity
   role: discussion
@@ -71,11 +78,15 @@
   title: "Curiosity-driven Exploration by Self-supervised Prediction"
   authors: "Pathak, Agrawal, Efros & Darrell"
   year: 2017
-  venue: "ICML"
+  venue: "ICML"             # the PDF's first page: Proceedings of the 34th ICML, 2017
   url: https://arxiv.org/abs/1705.05363
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Gives the agent a reward of its own for being surprised: the error of a model that predicts the features of the next state from the current one and the action. The features are trained to keep only what the agent's actions can affect."
+  contributions:
+    - "The Intrinsic Curiosity Module: an inverse-dynamics model (which action led from this state to that one?) shapes the feature space, and a forward model's prediction error in that space is the curiosity reward (Sec. 2)."
+    - "Because the features ignore what the agent cannot influence, unpredictable but irrelevant changes in the scene do not keep attracting it (Abstract, Sec. 1)."
+    - "In VizDoom with sparse rewards, curiosity lets an A3C agent reach the goal with far fewer interactions; with no reward at all, it explores a large part of Super Mario Bros Level 1 (Sec. 4)."
+    - "Exploration learned on one level makes exploring new levels faster than starting from scratch (Sec. 4.3)."
+  connects_to: "One answer to the sparse-reward problem of the lecture and of this page's random-search toy: make up a dense reward from the agent's own prediction errors."
 
 # --- Week 3 · Imitation Learning ------------------------------------------
 - id: causal-confusion
