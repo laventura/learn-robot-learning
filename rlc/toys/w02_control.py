@@ -327,7 +327,7 @@ def expected_return(policy, slip, gamma, horizon=2000) -> float:
     total = 0.0
     for t in range(horizon):
         new = np.zeros(N_CELLS)
-        for s in range(1, N_CELLS - 1):          # mass in end cells has stopped
+        for s in range(1, N_CELLS - 1):    # episodes in end cells stopped
             if dist[s] == 0:
                 continue
             for s2, p, r in step_dist(s, policy(s), slip):
@@ -366,7 +366,8 @@ def flip_gamma(slip, lo=0.01, hi=0.999, tol=1e-6) -> float:
     """The discount factor above which going right beats going left, found
     by bisection on J(right) - J(left)."""
     def gap(g):
-        return expected_return(go_right, slip, g) - expected_return(go_left, slip, g)
+        return (expected_return(go_right, slip, g)
+                - expected_return(go_left, slip, g))
     if gap(hi) <= 0:
         return np.nan
     while hi - lo > tol:
@@ -410,35 +411,39 @@ def reach_episode(M, rng, sparse) -> tuple[float, float]:
     return reward, final
 
 
-def basic_random_search(sparse, rng, iters=80, n_dirs=8, nu=0.05, alpha=0.5) -> dict:
-    """Basic random search (Mania et al. 2018, Algorithm 1) on the 2x2 matrix M.
+def success_rate(M, rng, n=50) -> float:
+    """Share of n fresh episodes that end within REACH_TOL of the goal."""
+    finals = [reach_episode(M, rng, sparse=True)[1] for _ in range(n)]
+    return float(np.mean(np.array(finals) < REACH_TOL))
+
+
+def basic_random_search(sparse, rng, iters=80, n_dirs=8, nu=0.05,
+                        alpha=0.5) -> dict:
+    """Basic random search (Mania et al. 2018, Algorithm 1) on M (2, 2).
 
     Each iteration samples n_dirs Gaussian directions delta, runs one
     episode at M + nu delta and one at M - nu delta, and moves M by
     alpha / n_dirs * sum (r+ - r-) delta. A pair whose two episodes score
-    the same contributes nothing; with a sparse reward that is almost every
-    pair until some perturbation happens to reach the goal.
+    the same adds nothing; with a sparse reward that is almost every pair
+    until some nudge happens to reach the goal.
 
-    Returns "success": the success rate (final distance < REACH_TOL) of M
-    after each iteration on 50 fresh episodes, shape (iters + 1,), and
-    "informative": the share of pairs with r+ != r- in each iteration,
-    shape (iters,)."""
-    M = np.zeros((2, 2))                         # starts by not moving at all
-
-    def success(M):
-        return np.mean([reach_episode(M, rng, sparse)[1] < REACH_TOL for _ in range(50)])
-
-    curve, informative = [success(M)], []
+    Returns "success": success_rate of M after each iteration, shape
+    (iters + 1,), and "informative": the share of pairs with r+ != r-
+    in each iteration, shape (iters,)."""
+    M = np.zeros((2, 2))                   # starts by not moving at all
+    curve, informative = [success_rate(M, rng)], []
     for _ in range(iters):
-        deltas = rng.standard_normal((n_dirs, 2, 2))
+        deltas = rng.standard_normal((n_dirs, 2, 2))   # (N, 2, 2)
         step, n_info = np.zeros((2, 2)), 0
         for d in deltas:
             r_plus = reach_episode(M + nu * d, rng, sparse)[0]
             r_minus = reach_episode(M - nu * d, rng, sparse)[0]
-            step += (r_plus - r_minus) * d       # finite-difference direction
+            # (r+ - r-) / (2 nu) estimates the slope of the reward along d;
+            # the constant 1 / (2 nu) is folded into alpha.
+            step += (r_plus - r_minus) * d
             n_info += r_plus != r_minus
         M = M + alpha / n_dirs * step
-        curve.append(success(M))
+        curve.append(success_rate(M, rng))
         informative.append(n_info / n_dirs)
     return {"success": np.array(curve), "informative": np.array(informative)}
 
@@ -449,7 +454,8 @@ def random_search_study(n_seeds=20, **kw) -> dict:
     informative shares (n_seeds, iters)."""
     out = {}
     for name, sparse in (("dense", False), ("sparse", True)):
-        runs = [basic_random_search(sparse, np.random.default_rng(s), **kw) for s in range(n_seeds)]
+        runs = [basic_random_search(sparse, np.random.default_rng(s), **kw)
+                for s in range(n_seeds)]
         out[name] = {"success": np.array([r["success"] for r in runs]),
                      "informative": np.array([r["informative"] for r in runs])}
     return out
