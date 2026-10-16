@@ -1,4 +1,10 @@
 {
+  "w03-drift": {
+    "bytes": 288360,
+    "hash": "d1a592b9f201dc07",
+    "render_seconds": 78.8,
+    "seconds": 17.0
+  },
   "w06-denoise": {
     "bytes": 1002554,
     "hash": "fdf7e5250fab51cd",
