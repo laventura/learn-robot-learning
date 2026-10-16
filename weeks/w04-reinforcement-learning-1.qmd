@@ -1,6 +1,1024 @@
 ---
 title: "Week 4 · Reinforcement Learning I"
 subtitle: "Lecture of 9 March 2026 · guest: Aviral Kumar"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w04_rl as w4
+
+style.apply()
+BLUE, ORANGE = style.CATEGORICAL[0], style.CATEGORICAL[1]
+GAMMA = 0.95
+
+# --- Toy 1: smoothing ------------------------------------------------------------
+SIGMAS = [0.1, 0.3, 0.6]
+grad_at_2 = float(w4.expected_reward_grad(-1.0, 0.6))     # 2 units from the edge
+assert grad_at_2 < 0
+
+# --- Toy 2: the warehouse grid -----------------------------------------------------
+SLIPS = [0.0, 0.1, 0.2, 0.3]
+DP = {}
+rng = np.random.default_rng(0)
+for slip in SLIPS:
+    P, R = w4.transition_model(slip)
+    H = w4.value_iteration(P, R, GAMMA)
+    V = H[-1]
+    pol = w4.greedy(P, R, V, GAMMA)
+    PI = w4.policy_iteration(P, R, GAMMA)
+    paths = [w4.rollout_grid(pol, slip, rng) for _ in range(4000)]
+    DP[slip] = dict(P=P, R=R, H=H, V=V, pol=pol, PI=PI, sweeps=len(H) - 1, iters=len(PI),
+                    steps=float(np.mean([len(p) - 1 for p in paths])),
+                    goal=float(np.mean([p[-1] == w4.GOAL for p in paths])))
+    assert np.allclose(PI[-1][1], V, atol=1e-6)            # PI and VI agree
+assert DP[0.0]["steps"] == 6 and DP[0.2]["steps"] > 10     # the route changes with slip
+assert DP[0.2]["sweeps"] > 5 * DP[0.0]["sweeps"]
+exact_at = int(np.argmax(np.abs(np.array(DP[0.0]["H"]) - DP[0.0]["V"]).max(axis=1) == 0))
+assert exact_at == 8                                       # "8" in fig-dp's alt text
+assert all(d["iters"] <= 10 for d in DP.values())
+assert all(d["goal"] > 0.98 for d in DP.values())
+# First sweep at which the start state's value becomes nonzero (the "ripple" arrives).
+ripple = {s: next(k for k, Vk in enumerate(DP[s]["H"]) if Vk[w4.START] > 0) for s in SLIPS}
+assert ripple[0.0] == ripple[0.2]                          # "either way"
+
+# --- Toy 3: cliff walking --------------------------------------------------------------
+EPS_LIST = [0.01, 0.05, 0.1, 0.2]
+N_CLIFF = 20
+CLIFF = {}
+for eps in EPS_LIST:
+    for m in ("q", "sarsa"):
+        runs = [w4.td_control(m, np.random.default_rng(s), eps=eps) for s in range(N_CLIFF)]
+        lens = [len(w4.greedy_path(Q)) - 1 for Q, _ in runs]
+        CLIFF[eps, m] = dict(Q=[Q for Q, _ in runs], ret=np.array([r for _, r in runs]),
+                             lens=np.array(lens))
+cq, cs = CLIFF[0.1, "q"], CLIFF[0.1, "sarsa"]
+top_row_len = 2 * (w4.CLIFF_ROWS - 1) + w4.CLIFF_COLS - 1    # up, along row 0, down
+edge_len = w4.CLIFF_COLS + 1
+q_edge = int((cq["lens"] == edge_len).sum())
+s_med = float(np.median(cs["lens"]))
+s_fail = int((cs["lens"] >= 60).sum())               # greedy path never reached the goal
+online_q, online_s = float(cq["ret"][:, -100:].mean()), float(cs["ret"][:, -100:].mean())
+assert q_edge == N_CLIFF and s_med == top_row_len and online_s > online_q
+
+# --- Toy 4: overestimation ---------------------------------------------------------------
+KS = [1, 2, 4, 8, 16, 32, 64]
+BIAS = {k: w4.max_bias(k, 1.0, np.random.default_rng(k)) for k in KS}
+THEORY = {k: w4.expected_max_normal(k) for k in KS}
+assert all(abs(BIAS[k][0] - THEORY[k]) < 0.03 and abs(BIAS[k][1]) < 0.03 for k in KS)
+
+# --- Toy 5: continuous argmax ----------------------------------------------------------------
+N_ARG = 200
+cem_q = np.array([w4.cem_argmax(np.random.default_rng(s))[1] for s in range(N_ARG)])
+grad_q = np.array([w4.gradient_argmax(np.random.default_rng(1000 + s).uniform(-1, 1, w4.DIM))[1]
+                   for s in range(N_ARG)])
+RAND_N = [64, 640, 6400, 64000]
+rand_rng = np.random.default_rng(7)
+rand_q = {n: np.array([w4.random_search_argmax(n, rand_rng) for _ in range(40)]) for n in RAND_N}
+at_peak = lambda q: float(np.mean(q > 0.95))
+at_decoy = lambda q: float(np.mean((q > 0.65) & (q < 0.75)))
+CEM_EVALS = 64 * 10
+assert np.mean(cem_q) > np.mean(rand_q[640]) + 0.15
+assert at_peak(grad_q) + at_decoy(grad_q) > 0.95          # gradient ends on one of the two hills
+assert 0.1 < at_decoy(cem_q) < 0.3
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 4 · **Lecture:** [video](https://youtu.be/90raNpc11tQ) · **Go deeper:** [ADM Ch 7, value iteration]({{< var adm_url >}}/part2/ch07-exact-solution-methods.html#value-iteration) and [ADM Ch 17, Q-learning]({{< var adm_url >}}/part3/ch17-model-free-methods.html#q-learning)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(4))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+Imitation learning (Week 3) copies an expert, so it can never do better than the expert. **Reinforcement learning (RL)** removes that ceiling: the robot tries things, receives rewards, and improves by trial and error [▶ 01:02](https://youtu.be/90raNpc11tQ?t=62). Week 2 defined the goal, the policy with the highest expected discounted return, but not how to find it. This week gives the first family of answers, built on **value functions**: numbers that say how good it is to be in a state, or to take an action there. Week 5 gives the second family, which improves the policy directly by gradient ascent (policy gradients and actor-critic methods).
+
+**The question this week answers:** how can a robot work out what to do from rewards alone, first with a model of the world, then without one, and finally with images and continuous actions?
+
+### The key ideas at a glance
+
+- **Expectations smooth things out.** A reward can be a step function (on the road or off the cliff) with no useful gradient, yet its *expected* value under a stochastic policy changes smoothly with the policy's parameters. That is why RL can optimize what looks non-differentiable.
+- **Values and the Bellman equation.** The value of a state is the reward now plus the discounted value of where you land next. This one-step recursion replaces waiting until the end of the episode.
+- **Dynamic programming.** With a known model, **value iteration** applies the Bellman optimality update until the values stop changing; **policy iteration** alternates exact evaluation and greedy improvement. Both converge to the optimal policy.
+- **Q-functions and Q-learning.** Storing a value per state *and action* lets a robot act without a model: pick the action with the highest Q. **Q-learning** learns Q from sampled transitions, and because its target uses the best next action it can learn from any data (**off-policy**); **SARSA** learns the value of the exploring policy itself (**on-policy**).
+- **Deep Q-learning.** DQN replaces the table with a convolutional network and stabilizes it with a **replay buffer** and a **target network**. Taking a maximum over noisy estimates overestimates values; **Double DQN** fixes it.
+- **Continuous actions.** The maximum over actions is no longer a lookup. Options: discretize cleverly (pixels as actions), search with sampling or the **cross-entropy method** (QT-Opt), or learn the argmax with an actor network (**DDPG**).
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Value function $V^\pi(s)$ | Expected discounted return from state $s$ when following $\pi$ |
+| Q-function $Q^\pi(s, a)$ | Expected discounted return after taking action $a$ in $s$, then following $\pi$ |
+| Bellman equation | Value now = reward now + discounted value next |
+| Bootstrapping | Updating an estimate using another estimate (the next state's value) |
+| Dynamic programming | Solving the Bellman equations with a known model, by repeated sweeps |
+| Model-free | Learning from sampled experience, with no transition model |
+| TD target | The one-sample estimate $r + \gamma \cdot(\text{value of next state})$ that an update moves towards |
+| On-policy, off-policy | Learning the value of the policy that collects the data, or of another one |
+| Replay buffer | A store of past transitions, sampled at random for training |
+| Target network | A slowly updated copy of the Q-network that computes the TD targets |
+| Actor, critic | A network that outputs actions, and one that scores them with Q |
+
+### After this week you can
+
+- Explain why the expected reward of a stochastic policy is smooth even when the reward is a step.
+- Write the Bellman equations for $V^\pi$, $V^*$ and $Q^*$, and say what value iteration and policy iteration do with them.
+- Explain the difference between Q-learning and SARSA, and predict which route each learns along a cliff.
+- Name DQN's two stabilizers and the bias Double DQN removes.
+- Compare discretization, sampling (CEM) and an actor network (DDPG) as ways to choose a continuous action.
+
+{{< video https://youtu.be/90raNpc11tQ >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+Think of learning the way home in a new city without a map. At first you wander. Over time you learn how promising each street corner is: "from here it's about ten minutes". Once every corner has such a number, choosing a turn is easy: take the street to the corner with the best number. You never need to plan the whole route; the numbers carry the long-range information. Value functions are those numbers, and the Bellman equation says how a corner's number relates to its neighbours': this corner is worth one minute plus the next corner.
+:::
+
+### A step reward, a smooth objective {#smooth}
+
+The lecture opens with a car on a narrow mountain road: +1 for each step on the road, -1 for falling off the cliff [▶ 03:41](https://youtu.be/90raNpc11tQ?t=221). As a function of the car's position this reward is a step: flat on either side, with a jump at the edge. Its gradient is zero almost everywhere and undefined at the edge, so gradient descent on the reward itself learns nothing [▶ 04:12](https://youtu.be/90raNpc11tQ?t=252). RL never optimizes the reward of one action, though; it optimizes the *expected* reward under a stochastic policy [▶ 05:15](https://youtu.be/90raNpc11tQ?t=315). If the car's position is spread out by the policy's randomness, the expected reward is the step averaged over that spread: a smooth curve whose slope is never zero [▶ 06:16](https://youtu.be/90raNpc11tQ?t=376). In this page's version, with a spread of 0.6, the slope two units from the edge is still `{python} f"{grad_at_2:.3f}"`: small, but it points the right way (@fig-smooth).
+
+```{python}
+#| label: fig-smooth
+#| fig-cap: "A step reward and its expectation. Grey: the reward as a function of the car's sideways position, +1 on the road and -1 past the edge at 1. Coloured: the expected reward when the position is Gaussian around μ with standard deviation σ. The wider the policy's randomness, the smoother the curve and the further from the edge its slope reaches."
+#| fig-alt: "Line chart with the mean sideways position mu from -2 to 3 on the x-axis and reward from -1 to 1 on the y-axis. A grey step drops from +1 to -1 at position 1. Three smooth S-shaped curves cross zero at 1: a steep one for sigma 0.1 that almost follows the step, a medium one for 0.3, and a gentle one for 0.6."
+mu = np.linspace(-2, 3, 501)
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+ax.plot(mu, w4.step_reward(mu), color=style.MUTED, lw=2.5, label="reward of one position")
+for s, col in zip(SIGMAS, (style.CATEGORICAL[2], BLUE, ORANGE)):
+    ax.plot(mu, w4.expected_reward(mu, s), color=col, lw=1.8, label=rf"expected, $\sigma$ = {s}")
+ax.axvline(w4.EDGE, color=style.INK, lw=0.6, ls=":")
+ax.set_xlabel(r"mean sideways position $\mu$"); ax.set_ylabel("reward"); ax.legend(fontsize=8, loc="lower left")
+plt.show()
+```
+
+### Value: how good is it to be here? {#values}
+
+The expected return tells you how good a policy is overall, but to learn from it you would have to run every episode to the end: let the car fall off the cliff before learning that falling is bad [▶ 07:19](https://youtu.be/90raNpc11tQ?t=439). The Markov property offers a shortcut. Because the future depends only on the current state, a single number per state can summarize everything ahead: the **value** $V^\pi(s)$, the expected return from $s$ onwards [▶ 08:57](https://youtu.be/90raNpc11tQ?t=537). Any return splits into the reward now plus the discounted return from the next state, so values satisfy a one-step recursion, the **Bellman equation** (@eq-bellman) [▶ 11:01](https://youtu.be/90raNpc11tQ?t=661). Updating a value from the next state's estimated value, rather than waiting for the real outcome, is called **bootstrapping** [▶ 11:31](https://youtu.be/90raNpc11tQ?t=691).
+
+The **optimal value** $V^*(s)$ is the best any policy can achieve from $s$ [▶ 12:02](https://youtu.be/90raNpc11tQ?t=722). Once you have it, acting optimally needs no long-range planning: from each state, take the action whose one-step lookahead is best [▶ 13:05](https://youtu.be/90raNpc11tQ?t=785).
+
+### Value iteration: the ripple {#vi-intuition}
+
+**Value iteration** starts with every value at zero and applies the Bellman optimality update to every state, again and again [▶ 14:09](https://youtu.be/90raNpc11tQ?t=849). In a grid world with one reward at the goal, the first sweep gives value only to the cells next to the goal; the second to their neighbours; information flows backwards from the goal one step per sweep [▶ 16:13](https://youtu.be/90raNpc11tQ?t=973). The update is a contraction, so the values converge [▶ 14:39](https://youtu.be/90raNpc11tQ?t=879).
+
+This page's warehouse grid has a start on the left, a goal on the right, a short route that runs along a row of hazards (-1), and a longer route round the top past some walls. Each move goes the intended way with probability $1 - p$ and slips sideways otherwise, half to each side; $p = 0.2$ is the lecture's 80/10/10. With no slips, the optimal route is the short one: `{python} f"{DP[0.0]['steps']:.0f}"` steps. With $p = 0.2$, a sideways slip on the short route could drop the robot into a hazard, and the optimal policy takes the long way round: `{python} f"{DP[0.2]['steps']:.1f}"` steps on average, reaching the goal in `{python} f"{100 * DP[0.2]['goal']:.1f}"`% of episodes. The goal's value reaches the start after `{python} ripple[0.0]` sweeps either way. With slips, though, it takes `{python} DP[0.2]['sweeps']` sweeps for the values to settle, against `{python} DP[0.0]['sweeps']` without.
+
+```{python}
+#| include: false
+# The clip's episode: the first seed whose run slips at least once and reaches the goal
+# (the same rule as animations/w04_ripple.py).
+pol2 = DP[0.2]["pol"]
+for clip_seed in range(1000):
+    clip_path = w4.rollout_grid(pol2, 0.2, np.random.default_rng(clip_seed))
+    clip_slips = [(a, b) for a, b in zip(clip_path, clip_path[1:]) if b != w4.move(a, pol2[a])]
+    if clip_slips and clip_path[-1] == w4.GOAL:
+        break
+n_bumps = sum(a == b for a, b in clip_slips)               # slipped into a wall: stayed put
+assert n_bumps >= 1 and len(clip_slips) > n_bumps         # the narration's wording
+bottom = [w4.ARROWS[pol2[w4.INDEX[(4, c)]]] for c in (1, 2)]
+assert bottom == ["↓", "↓"]                                 # pushing into the wall
+```
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w04-ripple",
+    caption="Value iteration on the warehouse grid with slip probability 0.2: values spread back from the "
+            "goal sweep by sweep, settle, and the greedy policy they imply carries a robot to the goal.",
+    alt=f"Animation, about 22 seconds, looping. A 5-by-7 grid with black wall cells in the second row, orange "
+        f"hazard cells in the fourth row, a start S on the left of the middle row and a goal G on the right. "
+        f"Starting from all-white cells, blue colour spreads leftwards from the goal while a counter counts "
+        f"sweeps 1 to 12; then the counter jumps to {DP[0.2]['sweeps']} and the colours settle, darker along "
+        f"the top row than beside the hazards. Arrows appear in every cell: from the start they point up, "
+        f"along the top row and down to the goal. An orange dot walks that route, slipping {len(clip_slips)} "
+        f"times, and reaches the goal. Everything fades back to the empty grid.",
+))
+```
+
+**What to watch for.** At sweep 1 only the goal's neighbours turn blue; each sweep adds one more ring of cells, so the colour reaches the start at sweep `{python} ripple[0.2]`. The cells beside the hazards stay paler than the top row: from there, one slip in ten ends in a hazard. After the jump to the converged values the arrows appear, and the route from the start goes up and round the top. Two arrows in the bottom row point straight into the wall: pushing against the wall means a slip can only go sideways, never up into a hazard. The robot then slips `{python} len(clip_slips)` times on its way, `{python} n_bumps` of them into a wall or the edge of the grid, where it stays put; each time, the arrow in its new cell points it back onto the route.
+
+### Policy iteration: measure, then improve {#pi-intuition}
+
+**Policy evaluation** answers a simpler question than value iteration: how good is *this* policy? It uses the same update with the maximum replaced by the policy's own action [▶ 17:47](https://youtu.be/90raNpc11tQ?t=1067). **Policy iteration** alternates: evaluate the current policy exactly, then switch every state to its greedy action under those values [▶ 19:21](https://youtu.be/90raNpc11tQ?t=1161). Each round can only improve the policy, and there are finitely many policies, so it stops at the optimum, usually after few rounds [▶ 20:56](https://youtu.be/90raNpc11tQ?t=1256). On the warehouse grid it needs at most `{python} max(d['iters'] for d in DP.values())` rounds for every slip probability tried (@fig-dp).
+
+### Q-functions: bake the model into the values {#q-intuition}
+
+Both methods need the transition model, and acting with $V^*$ needs it too: the greedy step averages over where each action might lead. A robot rarely has such a model, and evaluating it for every candidate action at every control step would be slow [▶ 21:58](https://youtu.be/90raNpc11tQ?t=1318). The **Q-function** stores a value per state *and action*: the expected return after taking $a$ in $s$. The averaging over the dynamics is done once, during training, and baked into Q; at test time acting is just "pick the action with the largest Q" [▶ 22:59](https://youtu.be/90raNpc11tQ?t=1379).
+
+### Q-learning: learn from samples {#q-learning-intuition}
+
+**Q-learning** removes the model from training as well: instead of averaging over all possible next states, it takes one action, observes one transition, and nudges Q towards the **TD target** $r + \gamma \max_{a'} Q(s', a')$ [▶ 25:34](https://youtu.be/90raNpc11tQ?t=1534). The world becomes its own simulator. The price is data: Q-learning needs many more transitions than dynamic programming needs sweeps [▶ 27:10](https://youtu.be/90raNpc11tQ?t=1630).
+
+Because the target always uses the *best* next action, regardless of what the robot actually did next, Q-learning learns the optimal policy's values from data collected by any policy: random exploration, an old policy, a human. It is **off-policy** [▶ 28:45](https://youtu.be/90raNpc11tQ?t=1725). **SARSA** changes one thing: its target uses the action the robot *will actually take* next, exploration included. It learns the value of the exploring policy itself (**on-policy**), and so it is wary of states where its own random moves are dangerous [▶ 29:47](https://youtu.be/90raNpc11tQ?t=1787).
+
+On a cliff walk, where the shortest route runs along the edge, the difference is visible [▶ 30:51](https://youtu.be/90raNpc11tQ?t=1851). With 10% random moves, Q-learning's greedy route runs along the edge in all `{python} N_CLIFF` training runs (`{python} edge_len` steps), but while it is still exploring it keeps falling off and averages `{python} f"{online_q:.1f}"` per episode over the last 100 episodes. SARSA's greedy route runs along the top row, as far from the edge as the grid allows (median `{python} f"{s_med:.0f}"` steps), and SARSA earns `{python} f"{online_s:.1f}"` per episode while exploring (@fig-cliff).
+
+### Deep Q-learning {#dqn-intuition}
+
+Tables do not scale to camera images: an 84 × 84 frame stack has astronomically many possible states [▶ 32:26](https://youtu.be/90raNpc11tQ?t=1946). **DQN** replaces the table by a convolutional network that maps frames to one Q-value per action, trained with Q-learning targets [▶ 33:28](https://youtu.be/90raNpc11tQ?t=2008). With one architecture and one set of hyperparameters it learned 49 Atari games from pixels [▶ 34:02](https://youtu.be/90raNpc11tQ?t=2042). Two stabilizers made it work. A **replay buffer** stores transitions and trains on random minibatches, which breaks the correlation between consecutive samples [▶ 35:05](https://youtu.be/90raNpc11tQ?t=2105). A **target network**, a slowly updated copy, computes the targets, so an update does not immediately move its own target [▶ 36:08](https://youtu.be/90raNpc11tQ?t=2168).
+
+One flaw remains: the maximum of noisy estimates is, on average, larger than the maximum of the true values [▶ 37:42](https://youtu.be/90raNpc11tQ?t=2262). In this page's toy, with 8 actions whose true values are all 0 and whose estimates carry unit noise, the maximum estimate averages `{python} f"{BIAS[8][0]:.2f}"`. **Double DQN** lets the online network choose the action and the target network score it; with independent errors, the toy's bias drops to `{python} f"{BIAS[8][1]:+.3f}"` [▶ 38:14](https://youtu.be/90raNpc11tQ?t=2294).
+
+### Continuous actions: the max is a search {#continuous}
+
+DQN takes a maximum over a list of actions. A robot arm's action is a continuous vector, and there is no list to scan [▶ 39:15](https://youtu.be/90raNpc11tQ?t=2355). The lecture gives three ways out [▶ 39:47](https://youtu.be/90raNpc11tQ?t=2387):
+
+- **Discretize.** Ten bins per joint for a 7-joint arm is $10^7$ actions. Discretizing *where it matches the task* can work well: the pushing-and-grasping system scores every pixel of a top-down image as a place to push or grasp, and learns by itself to push objects apart before grasping [▶ 41:19](https://youtu.be/90raNpc11tQ?t=2479).
+- **Search.** Sample candidate actions and keep the best, or refine the samples with the **cross-entropy method (CEM)**: sample, keep the best few, fit a Gaussian to them, repeat [▶ 44:21](https://youtu.be/90raNpc11tQ?t=2661). CEM can lock onto a lower peak, and its cost is paid at every control step. QT-Opt used it to learn grasping from over 580,000 real grasp attempts [▶ 45:54](https://youtu.be/90raNpc11tQ?t=2754).
+- **Learn the argmax.** **DDPG** trains a second network, the **actor**, to output the action the critic (the Q-network) rates highest; choosing an action becomes one forward pass [▶ 46:56](https://youtu.be/90raNpc11tQ?t=2816). The actor follows the critic's gradient with respect to the action, and explores by adding Gaussian noise to its output [▶ 49:00](https://youtu.be/90raNpc11tQ?t=2940). It is notoriously sensitive to hyperparameters [▶ 50:04](https://youtu.be/90raNpc11tQ?t=3004).
+
+In this page's 7-dimensional toy, CEM with `{python} CEM_EVALS` evaluations of Q reaches the true peak in `{python} f"{100 * at_peak(cem_q):.0f}"`% of runs and settles on a lower peak in `{python} f"{100 * at_decoy(cem_q):.0f}"`%; even `{python} f"{RAND_N[-1]:,}"` uniform samples average only `{python} f"{rand_q[RAND_N[-1]].mean():.2f}"` of the peak's value 1. Gradient ascent climbs whichever hill it starts on: `{python} f"{100 * at_peak(grad_q):.0f}"`% of random starts reach the top, `{python} f"{100 * at_decoy(grad_q):.0f}"`% the lower peak (@fig-argmax).
+
+```{dot}
+//| label: fig-taxonomy
+//| fig-width: 5.4
+//| fig-height: 5.0
+//| fig-cap: "The methods of this lecture, from exact to deep. Moving down trades guarantees for reach: from tabular methods that need a model, to model-free learning, to networks that read images, to continuous actions."
+//| fig-alt: "Flow diagram with four boxes from top to bottom. 'Exact dynamic programming: value and policy iteration; needs the model; small tables; converges' leads, labelled 'drop the model', to 'Tabular Q-learning and SARSA: learns from samples; small tables'. That leads, labelled 'networks', to 'DQN, Double DQN: images in, discrete actions; replay and target network; no guarantees'. That leads, labelled 'continuous actions', to 'QT-Opt (CEM), DDPG (actor): high-dimensional states and actions; off-policy'."
+digraph tax {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.42;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  dp [label="Exact dynamic programming\nvalue and policy iteration\nneeds the model · small tables · converges", fillcolor="#f0efec", color="#52514e"];
+  tab [label="Tabular Q-learning, SARSA\nlearns from samples · small tables"];
+  dqn [label="DQN, Double DQN\nimages in, discrete actions\nreplay + target network · no guarantees"];
+  cont [label="QT-Opt (CEM), DDPG (actor)\ncontinuous actions · off-policy", fillcolor="#fbe1d6", color="#eb6834"];
+  dp -> tab [label=" drop the model"];
+  tab -> dqn [label=" networks"];
+  dqn -> cont [label=" continuous actions"];
+}
+```
+
+## Key concepts & formulae
+
+The lecture's notation: $V^\pi$ and $Q^\pi$ for values, $P(s' \mid s, a)$ for the dynamics, $r(s, a)$ for the reward, $\gamma$ for the discount. The ADM book writes $U^\pi$ for $V^\pi$ and $T(s' \mid s, a)$ for the dynamics.
+
+### Smoothing by expectation
+
+::: {.key-equation data-name="Expected reward of a Gaussian policy"}
+$$
+J(\mu) = \mathbb{E}_{y \sim \mathcal{N}(\mu, \sigma^2)}\big[r(y)\big] = 2\,\Phi\Big(\frac{c - \mu}{\sigma}\Big) - 1
+$$ {#eq-smooth}
+:::
+
+**In words.** For the step reward (+1 on the road, -1 past the edge at $c$), the expected reward is the chance of staying on the road minus the chance of falling off, a smooth function of the policy's mean.
+
+**Term by term.**
+
+- $y$: the car's sideways position, drawn from the policy.
+- $\mu$, $\sigma$: the policy's mean (its parameter) and spread.
+- $\Phi$: the standard normal cumulative distribution, $P(y < c) = \Phi((c - \mu)/\sigma)$.
+- Its derivative, $-\frac{2}{\sigma}\varphi\big(\frac{c - \mu}{\sigma}\big)$, is negative everywhere: moving away from the edge always helps, a little.
+
+**Why it holds.** In general $J(\theta) = \int r(y)\, p_\theta(y)\, dy$: the parameters enter only through the density, which is smooth, so $J$ is smooth however rough $r$ is. Week 5's policy gradient turns this observation into an algorithm.
+
+### Value functions and the Bellman equation
+
+::: {.key-equation data-name="Value function"}
+$$
+\begin{aligned}
+V^\pi(s) &= \mathbb{E}_\pi\Big[\sum_{t \ge 0} \gamma^t r_t \;\Big|\; s_0 = s\Big] \\
+J(\pi) &= \mathbb{E}_{s_0 \sim p(s_0)}\big[V^\pi(s_0)\big]
+\end{aligned}
+$$ {#eq-value}
+:::
+
+**In words.** The value of a state is the expected discounted return when starting there and following $\pi$. Averaging it over start states gives back Week 2's objective.
+
+**Term by term.**
+
+- $\mathbb{E}_\pi$: over the policy's choices and the world's random transitions.
+- $V^\pi$ is a local version of $J(\pi)$: one number per state instead of one for the whole policy.
+
+::: {.key-equation .famous data-name="Bellman equation"}
+$$
+\begin{aligned}
+V^\pi(s) &= \textstyle\sum_a \pi(a \mid s) \big[ r(s, a) + \gamma\, \mathbb{E}_{s'} V^\pi(s') \big] \\
+\mathbb{E}_{s'} f(s') &= \textstyle\sum_{s'} P(s' \mid s, a)\, f(s')
+\end{aligned}
+$$ {#eq-bellman}
+:::
+
+**In words.** A state's value is the expected reward of this step plus the discounted expected value of the next state.
+
+**Term by term.**
+
+- $r(s, a)$: the expected immediate reward.
+- $\mathbb{E}_{s'} V^\pi(s')$: the value of where the action leads, averaged over the dynamics (second line); the rest of this page uses this shorthand.
+- For a fixed $\pi$ this is a linear system: one equation per state.
+
+**Why it holds.** Split the return: $G_0 = r_0 + \gamma (r_1 + \gamma r_2 + \dots) = r_0 + \gamma G_1$. Take expectations given $s_0 = s$; by the Markov property, $\mathbb{E}[G_1 \mid s_1 = s'] = V^\pi(s')$ whatever happened before.
+
+::: {.key-equation .famous data-name="Bellman optimality equation"}
+$$
+\begin{aligned}
+V^*(s) &= \max_a \big[ r(s, a) + \gamma\, \mathbb{E}_{s'} V^*(s') \big] \\
+\pi^*(s) &= \text{the maximizing } a
+\end{aligned}
+$$ {#eq-bellman-opt}
+:::
+
+**In words.** The best achievable value of a state is the best one-step lookahead using the best achievable values of the next states. The optimal policy picks the action that attains that maximum.
+
+**Term by term.**
+
+- The maximum replaces the policy's average over actions in @eq-bellman.
+- $\pi^*$ is greedy with respect to $V^*$: all long-range reasoning is already inside $V^*$.
+
+### Dynamic programming
+
+::: {.key-equation data-name="Value iteration"}
+$$
+\begin{aligned}
+V_{k+1}(s) &= \max_a \big[ r(s, a) + \gamma\, \mathbb{E}_{s'} V_k(s') \big] \\
+\lVert V_{k+1} - V^* \rVert_\infty &\le \gamma\, \lVert V_k - V^* \rVert_\infty
+\end{aligned}
+$$ {#eq-vi}
+:::
+
+**In words.** Apply the right-hand side of @eq-bellman-opt to the current guess, for every state at once. Each sweep shrinks the largest error by at least a factor $\gamma$.
+
+**Term by term.**
+
+- $V_0 = 0$: start knowing nothing.
+- $\lVert\cdot\rVert_\infty$: the largest error over all states.
+- The second line is the contraction property: two value functions get at least $\gamma$ times closer under one sweep, so the sweeps converge to the unique fixed point $V^*$.
+
+**Numeric check.** On the warehouse grid ($\gamma =$ `{python} GAMMA`), value iteration stops changing by more than $10^{-8}$ after `{python} DP[0.0]['sweeps']` sweeps without slips and `{python} DP[0.2]['sweeps']` with $p = 0.2$. Without slips every path to the goal is at most a few steps long, and the values are exact from sweep `{python} exact_at`, once the ripple has passed; with slips, a robot can wander, and the error shrinks geometrically instead (@fig-dp, left).
+
+::: {.key-equation data-name="Policy evaluation and policy iteration"}
+$$
+\begin{aligned}
+V^{\pi}_{k+1}(s) &= \textstyle\sum_a \pi(a \mid s) \big[ r(s, a) + \gamma\, \mathbb{E}_{s'} V^{\pi}_k(s') \big] \\
+\pi_{i+1}(s) &= \arg\max_a \big[ r(s, a) + \gamma\, \mathbb{E}_{s'} V^{\pi_i}(s') \big]
+\end{aligned}
+$$ {#eq-pi}
+:::
+
+**In words.** Policy evaluation repeats the Bellman equation of a fixed policy until it converges to $V^\pi$. Policy iteration alternates that evaluation with greedy improvement.
+
+**Term by term.**
+
+- First line: no maximum, so no improvement; it only measures. (It can also be solved directly as a linear system.)
+- Second line: the greedy step. If it changes nothing, the policy is optimal.
+- Policy improvement theorem: the new policy is at least as good in every state, $V^{\pi_{i+1}} \ge V^{\pi_i}$.
+
+**Numeric check.** With $p = 0.2$, the start state's value under successive policies is `{python} ", ".join(f"{float(V[w4.START]):.3f}" for _, V in DP[0.2]['PI'])`: never decreasing, optimal after `{python} DP[0.2]['iters']` rounds.
+
+```{python}
+#| label: fig-dp
+#| fig-cap: "Dynamic programming on the warehouse grid. Left: the largest error of value iteration's estimate after each sweep (log scale), for four slip probabilities. Without slips the error drops to zero once the ripple has crossed the grid; with slips it shrinks geometrically, more slowly the more slippery the floor. Right: the start state's value under each successive policy of policy iteration; it never decreases and reaches the optimum within a few rounds."
+#| fig-alt: "Two panels. Left: four curves of maximum error against sweep number on a logarithmic y-axis. The slip-0 curve stays near 1 and then drops to exactly zero at sweep 8, marked by an arrow and label; the other curves decline in straight lines on the log scale, steeper for slip 0.1 than for 0.2 and 0.3, reaching about 1e-8 between 30 and 160 sweeps. Right: four step curves of the start state's value against policy-iteration round, from about 0 up to between 0.47 and 0.77 within 7 to 9 rounds, all non-decreasing."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 3.0))
+cols = [style.INK, BLUE, ORANGE, style.CATEGORICAL[2]]
+for slip, col in zip(SLIPS, cols):
+    H = np.array(DP[slip]["H"]); err = np.abs(H - DP[slip]["V"]).max(axis=1)
+    k = np.arange(len(err)); keep = err > 0
+    a1.semilogy(k[keep], err[keep], color=col, lw=1.5, label=f"p = {slip}")
+    if slip == 0.0:                               # the error becomes exactly 0: mark it
+        k0 = int(np.argmax(err == 0))
+        a1.annotate(f"p = 0: exact\nat sweep {k0}", xy=(k0, err[k0 - 1]), xytext=(k0 + 45, 0.25),
+                    fontsize=8, arrowprops=dict(arrowstyle="->", color=style.INK, lw=0.8))
+    a2.step(np.arange(1, DP[slip]["iters"] + 1), [float(V[w4.START]) for _, V in DP[slip]["PI"]],
+            where="post", color=col, lw=1.5, marker="o", ms=3)
+a1.set_xlabel("value-iteration sweep"); a1.set_ylabel(r"max error $|V_k - V^*|$"); a1.legend(fontsize=8)
+a2.set_xlabel("policy-iteration round"); a2.set_ylabel("value of the start state")
+plt.tight_layout(); plt.show()
+```
+
+### Q-functions and model-free learning
+
+::: {.key-equation data-name="Optimal Q-function"}
+$$
+\begin{aligned}
+Q^*(s, a) &= r(s, a) + \gamma\, \mathbb{E}_{s'} \max_{a'} Q^*(s', a') \\
+V^*(s) &= \max_a Q^*(s, a) \\
+\pi^*(s) &= \arg\max_a Q^*(s, a)
+\end{aligned}
+$$ {#eq-q}
+:::
+
+**In words.** The value of taking $a$ in $s$ and acting optimally afterwards. Once known, the optimal action is a lookup, with no model needed.
+
+**Term by term.**
+
+- The sum over $s'$ (the dynamics) now sits *inside* $Q^*$: it is computed during training, not at decision time.
+- One extra input dimension (the action) is the price.
+
+::: {.key-equation .famous data-name="Q-learning"}
+$$
+\begin{aligned}
+y &= r + \gamma \max_{a'} Q(s', a') \qquad \text{(TD target)} \\
+Q(s, a) &\leftarrow Q(s, a) + \alpha \big[ y - Q(s, a) \big]
+\end{aligned}
+$$ {#eq-q-learning}
+:::
+
+**In words.** After one real transition $(s, a, r, s')$, move the stored value a fraction $\alpha$ of the way towards the reward plus the discounted best value of the state actually reached.
+
+**Term by term.**
+
+- $(s, a, r, s')$: one sampled transition, from any policy.
+- The TD target replaces the sum over $s'$ in @eq-q by the single $s'$ that happened. Averaged over many updates, the samples stand in for the expectation.
+- $\max_{a'}$: the target assumes the best next action, whatever the robot did next: off-policy.
+- $\alpha$: the learning rate.
+
+::: {.key-equation data-name="SARSA"}
+$$
+\begin{aligned}
+y &= r + \gamma\, Q(s', a'), \qquad a' \sim \pi(\cdot \mid s') \\
+Q(s, a) &\leftarrow Q(s, a) + \alpha \big[ y - Q(s, a) \big]
+\end{aligned}
+$$ {#eq-sarsa}
+:::
+
+**In words.** The same update, but the target uses the action $a'$ the robot actually takes next, chosen by its own (exploring) policy.
+
+**Term by term.**
+
+- The name lists the update's ingredients: $s, a, r, s', a'$.
+- On-policy: it learns $Q^\pi$ of the $\varepsilon$-greedy policy, mistakes included, not $Q^*$.
+
+```{python}
+#| label: fig-cliff
+#| fig-cap: "Q-learning (orange) versus SARSA (blue) on a cliff walk, both acting ε-greedily with ε = 0.1, 20 runs each. Top: the greedy route each has learned after 500 episodes (the most common route across runs). Q-learning's runs along the cliff edge; SARSA's runs along the top row, as far from the edge as possible. Bottom: return per episode while learning (mean over runs, smoothed over 20 episodes). Q-learning's random moves keep tipping it over the edge, so it earns less while exploring."
+#| fig-alt: "Two panels. Top: a 4-by-10 grid with a dark band of cliff cells along the bottom row between a start cell at the bottom left and a goal at the bottom right. An orange line goes up one cell from the start, along the row just above the cliff, and down into the goal. A blue line goes up three cells to the top row, along it, and back down three cells to the goal. Bottom: two learning curves of episode return against episode from 0 to 500; both rise from around -100 or below; the blue SARSA curve levels off near -24, the orange Q-learning curve lower, around -40, with more dips."
+fig, (a1, a2) = plt.subplots(2, 1, figsize=(6.4, 4.8), gridspec_kw={"height_ratios": [1, 1.1]})
+a1.add_patch(plt.Rectangle((0.5, 2.5), w4.CLIFF_COLS - 2, 1, color=style.INK, alpha=0.75, lw=0))
+a1.text(w4.CLIFF_COLS / 2 - 0.5, 3.0, "cliff", color="white", ha="center", va="center", fontsize=9)
+for m, col, off in (("q", ORANGE, -0.08), ("sarsa", BLUE, 0.08)):
+    paths = [tuple(w4.greedy_path(Q)) for Q in CLIFF[0.1, m]["Q"]]
+    common = max(set(paths), key=paths.count)
+    rc = np.array(common, dtype=float)
+    a1.plot(rc[:, 1] + off, rc[:, 0] + off, color=col, lw=2.5, label="Q-learning" if m == "q" else "SARSA")
+a1.plot(0, 3, "o", color=style.INK, ms=8); a1.plot(w4.CLIFF_COLS - 1, 3, "*", color=style.INK, ms=12)
+a1.set_xlim(-0.5, w4.CLIFF_COLS - 0.5); a1.set_ylim(w4.CLIFF_ROWS - 0.5, -0.5); a1.set_aspect("equal")
+a1.set_xticks([]); a1.set_yticks([]); a1.legend(fontsize=8, loc="upper right", ncol=2)
+kern = np.ones(20) / 20
+for m, col in (("q", ORANGE), ("sarsa", BLUE)):
+    mean_ret = CLIFF[0.1, m]["ret"].mean(axis=0)
+    a2.plot(np.arange(len(kern) - 1, 500), np.convolve(mean_ret, kern, mode="valid"), color=col, lw=1.6)
+a2.set_ylim(-110, 0); a2.set_xlabel("episode"); a2.set_ylabel("return per episode")
+plt.tight_layout(); plt.show()
+```
+
+### Deep Q-learning
+
+::: {.key-equation data-name="DQN loss"}
+$$
+\begin{aligned}
+y &= r + \gamma \max_{a'} Q_{\theta^-}(s', a') \\
+\mathcal{L}(\theta) &= \mathbb{E}_{(s, a, r, s') \sim \mathcal{D}} \big[ (y - Q_\theta(s, a))^2 \big]
+\end{aligned}
+$$ {#eq-dqn}
+:::
+
+**In words.** Regress the network's Q-value towards the TD target, on transitions sampled at random from a replay buffer, with the target computed by a frozen copy of the network.
+
+**Term by term.**
+
+- $\mathcal{D}$: the replay buffer of past transitions; random minibatches break the correlation of consecutive steps.
+- $\theta^-$: the target network's weights, copied from $\theta$ only every so often (or moved towards it slowly), so the target does not shift with every update.
+- The square: an ordinary regression loss; the target is treated as a fixed label (no gradient flows into it).
+
+```{dot}
+//| label: fig-dqn
+//| fig-width: 5.3
+//| fig-height: 4.6
+//| fig-cap: "DQN's training loop. The agent acts ε-greedily with the online network and stores every transition in the replay buffer. Training samples random minibatches from the buffer, computes targets with the target network, and updates the online network; every so often the target network copies the online one."
+//| fig-alt: "Flow diagram. 'Environment' sends transitions to 'replay buffer'. The buffer sends 'random minibatch' to 'loss: (target − Q)²'. 'Target network θ⁻' feeds 'max next Q' into the loss. The loss sends a gradient to 'online network θ'. The online network sends 'ε-greedy action' to the environment, and 'copy every N steps' to the target network."
+digraph dqn {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.45; ranksep=0.45;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  env [label="environment", fillcolor="#f0efec", color="#52514e"];
+  buf [label="replay buffer\n(s, a, r, s')"];
+  loss [label="loss: (target − Q)²", fillcolor="#fbe1d6", color="#eb6834"];
+  online [label="online network θ"];
+  target [label="target network θ⁻"];
+  env -> buf [label=" transitions"];
+  buf -> loss [label=" random minibatch"];
+  target -> loss [label=" max next Q"];
+  loss -> online [label=" gradient"];
+  online -> env [label=" ε-greedy action"];
+  online -> target [label=" copy every N steps", style=dashed];
+  { rank=same; loss; target; }
+}
+```
+
+::: {.key-equation data-name="Overestimation and the double estimator"}
+$$
+\begin{aligned}
+\mathbb{E}\big[\max_a \hat Q_a\big] &\ge \max_a \mathbb{E}\big[\hat Q_a\big] \\
+a^\star &= \arg\max_{a'} Q_\theta(s', a') \\
+y^{\text{double}} &= r + \gamma\, Q_{\theta^-}(s', a^\star)
+\end{aligned}
+$$ {#eq-double}
+:::
+
+**In words.** The maximum of noisy estimates is on average at least as large as the largest true value, so Q-learning targets are biased upwards. Double DQN picks the next action with one network and scores it with the other.
+
+**Term by term.**
+
+- $\hat Q_a$: the estimate for action $a$ in the next state, with zero-mean noise. The action with the luckiest noise wins the max, so the noise does not average out.
+- First line: Jensen's inequality, since the maximum is a convex function.
+- $y^{\text{double}}$: the Double DQN target. If the two networks' errors are independent, the scoring network's error at the chosen action has mean zero.
+
+**Numeric check.** With $K$ actions of true value 0 and unit noise, the bias of the plain maximum is the expected maximum of $K$ standard normals: `{python} f"{THEORY[2]:.3f}"` for 2 actions ($1/\sqrt{\pi}$), `{python} f"{THEORY[8]:.3f}"` for 8, `{python} f"{THEORY[64]:.3f}"` for 64. The toy's measured biases are `{python} f"{BIAS[2][0]:.3f}"`, `{python} f"{BIAS[8][0]:.3f}"` and `{python} f"{BIAS[64][0]:.3f}"`; the double estimator's are `{python} f"{BIAS[2][1]:+.3f}"`, `{python} f"{BIAS[8][1]:+.3f}"` and `{python} f"{BIAS[64][1]:+.3f}"` (@fig-overestimation).
+
+```{python}
+#| label: fig-overestimation
+#| fig-cap: "Bias of the maximum over K noisy action-value estimates whose true values are all 0 (unit noise, 20,000 trials per point). Orange: the plain maximum, as in the Q-learning target; the line is the exact expected maximum of K standard normals. Blue: the double estimator, which picks the action with one set of estimates and scores it with an independent set."
+#| fig-alt: "Line chart with the number of actions K from 1 to 64 on a logarithmic x-axis and the bias on the y-axis. Orange dots on an orange curve rise from 0 at K = 1 to about 0.56 at 2, 1.42 at 8 and 2.34 at 64. Blue dots stay on the zero line for every K."
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+kk = np.unique(np.round(np.logspace(0, np.log10(64), 40)).astype(int))
+ax.plot(kk, [w4.expected_max_normal(k) for k in kk], color=ORANGE, lw=1.3)
+ax.plot(KS, [BIAS[k][0] for k in KS], "o", color=ORANGE, label="max of one estimate")
+ax.plot(KS, [BIAS[k][1] for k in KS], "o", color=BLUE, label="double estimator")
+ax.axhline(0, color=style.INK, lw=0.6)
+ax.set_xscale("log"); ax.set_xticks(KS); ax.set_xticklabels([str(k) for k in KS])
+ax.set_xlabel("number of actions K"); ax.set_ylabel("bias of the target"); ax.legend(fontsize=8)
+plt.show()
+```
+
+### Continuous actions
+
+::: {.key-equation data-name="Deterministic policy gradient (DDPG's actor update)"}
+$$
+\nabla_\phi J \approx \mathbb{E}_{s \sim \mathcal{D}} \Big[ \nabla_a Q_\theta(s, a)\big|_{a = \mu_\phi(s)}\; \nabla_\phi\, \mu_\phi(s) \Big]
+$$ {#eq-dpg}
+:::
+
+**In words.** Ask the critic which way to change the action to raise Q, and change the actor's weights so that its output moves that way.
+
+**Term by term.**
+
+- $\mu_\phi(s)$: the actor, a network that outputs a continuous action.
+- $\nabla_a Q_\theta(s, a)$: the critic's slope with respect to the action, at the actor's current choice.
+- $\nabla_\phi \mu_\phi(s)$: how the actor's output depends on its weights. The product is the chain rule; automatic differentiation computes it by backpropagating $Q_\theta(s, \mu_\phi(s))$ through both networks.
+- The critic itself is trained as in @eq-dqn, with the actor's action in place of the max.
+
+```{python}
+#| label: fig-argmax
+#| fig-cap: "Finding the best action in a 7-dimensional action space, with a Q-function that has a global peak (Q = 1) and a lower one (Q = 0.7). Left: the best Q found by uniform random sampling against the number of samples (mean of 40 runs, ±1 standard deviation), with the cross-entropy method at its cost of 640 evaluations. Right: where 200 runs of CEM and of gradient ascent from a random start end up."
+#| fig-alt: "Two panels. Left: on a logarithmic x-axis of Q evaluations from 64 to 64,000, a grey line for random sampling rises slowly from about 0.5 to about 0.9, with a shaded band; a single orange dot for CEM at 640 evaluations sits at about 0.93, well above the grey line at that cost. Right: grouped bars for three outcomes: global peak, lower peak, and in between. CEM: most runs at the global peak, a minority at the lower peak, a few in between. Gradient ascent: about 60 percent at the global peak, about 40 percent at the lower peak, almost none in between."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 3.0))
+m = np.array([rand_q[n].mean() for n in RAND_N]); sd = np.array([rand_q[n].std() for n in RAND_N])
+a1.fill_between(RAND_N, m - sd, m + sd, color=style.MUTED, alpha=0.25, lw=0)
+a1.plot(RAND_N, m, color=style.INK_SECONDARY, marker="o", ms=4, label="uniform samples")
+a1.errorbar([CEM_EVALS], [cem_q.mean()], yerr=[cem_q.std()], fmt="o", color=ORANGE, label="CEM")
+a1.set_xscale("log"); a1.set_ylim(0, 1.1); a1.set_xlabel("evaluations of Q"); a1.set_ylabel("best Q found")
+a1.legend(fontsize=8, loc="lower right")
+cats = ["global peak", "lower peak", "in between"]
+def shares(q):
+    return [at_peak(q), at_decoy(q), 1 - at_peak(q) - at_decoy(q)]
+x = np.arange(3)
+a2.bar(x - 0.18, shares(cem_q), 0.36, color=ORANGE, label="CEM")
+a2.bar(x + 0.18, shares(grad_q), 0.36, color=BLUE, label="gradient ascent")
+a2.set_xticks(x); a2.set_xticklabels(cats, fontsize=8); a2.set_ylabel("share of runs"); a2.set_ylim(0, 1)
+a2.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+```
+
+## Worked examples
+
+### Example 1: value iteration, sweep by sweep {#ex-vi}
+
+Value iteration on the warehouse grid with slip probability 0.2 and $\gamma = 0.95$. The table follows four cells: the cell just left of the goal, the middle of the short route, the middle of the top route, and the start.
+
+```{python}
+#| output: asis
+H = DP[0.2]["H"]
+cells = {"left of goal (2,5)": (2, 5), "short route (2,3)": (2, 3), "top route (0,3)": (0, 3), "start (2,0)": (2, 0)}
+print("| sweep | " + " | ".join(cells) + " |")
+print("|---:|" + "---:|" * len(cells))
+for k in (0, 1, 2, 3, 4, 6, 8, 10, 20, 50, len(H) - 1):
+    vals = " | ".join(f"{H[k][w4.INDEX[rc]]:.3f}" for rc in cells.values())
+    print(f"| {k} | {vals} |")
+```
+
+```{python}
+#| include: false
+Vf = DP[0.2]["V"]
+v_short, v_top = Vf[w4.INDEX[(2, 3)]], Vf[w4.INDEX[(0, 3)]]
+assert v_top > v_short        # with slips, the top route is the better place to be
+```
+
+After one sweep only the cell next to the goal has a value: one step from a +1 reward, less the chance of slipping. Each further sweep pushes value one cell further back. The start's value first becomes nonzero at sweep `{python} ripple[0.2]`, when the ripple arrives. The final values rank the two routes: the middle of the top route is worth `{python} f"{v_top:.3f}"`, the middle of the short route only `{python} f"{v_short:.3f}"`, because from there a slip can end in a hazard.
+
+### Example 2: two learners, one cliff {#ex-cliff}
+
+What each method has learned about the row just above the cliff, after 500 episodes with ε = 0.1 (mean of `{python} N_CLIFF` runs): the value $\max_a Q(s, a)$ of each cell in that row.
+
+```{python}
+#| output: asis
+row = w4.CLIFF_ROWS - 2
+vq = np.mean([Q[row].max(axis=1) for Q in CLIFF[0.1, "q"]["Q"]], axis=0)
+vs = np.mean([Q[row].max(axis=1) for Q in CLIFF[0.1, "sarsa"]["Q"]], axis=0)
+print("| column | Q-learning | SARSA | steps to goal along the edge |")
+print("|---:|---:|---:|---:|")
+for c in range(0, w4.CLIFF_COLS, 2):
+    print(f"| {c} | {vq[c]:.1f} | {vs[c]:.1f} | {w4.CLIFF_COLS - c} |")
+gap_mid = float(vq[w4.CLIFF_COLS // 2] - vs[w4.CLIFF_COLS // 2])
+assert gap_mid > 1
+```
+
+Q-learning's values are those of a perfect walker: about minus the number of steps left, because its target assumes the best action every time. SARSA's values along the edge are lower, by `{python} f"{gap_mid:.1f}"` in the middle of the row, because its target includes its own random moves, and 10% of those moves from this row step towards the cliff. Acting greedily on these values, SARSA avoids the row; Q-learning walks it.
+
+### Example 3: one noisy maximum {#ex-max}
+
+```{python}
+#| include: false
+ex_rng = np.random.default_rng(3)
+A = ex_rng.standard_normal(4); B = ex_rng.standard_normal(4)
+pick = int(A.argmax())
+```
+
+Four actions, all truly worth 0. One noisy estimate of each gives `{python} ", ".join(f"{v:+.2f}" for v in A)`. The plain target takes the largest, `{python} f"{A.max():+.2f}"` (action `{python} pick + 1`), an overestimate by exactly that amount. A second, independent set of estimates reads `{python} ", ".join(f"{v:+.2f}" for v in B)`. The double estimator keeps the first set's choice, action `{python} pick + 1`, but scores it with the second set: `{python} f"{B[pick]:+.2f}"`. Over many draws, that score is right on average, because the second set's noise has nothing to do with which action the first set picked.
+
+## Interactive
+
+### Value iteration, sweep by sweep
+
+```{python}
+#| include: false
+vi_json = {}
+for slip in SLIPS:
+    P, R = DP[slip]["P"], DP[slip]["R"]
+    H = DP[slip]["H"]
+    vi_json[str(slip)] = {"V": [np.round(V, 4) for V in H],
+                          "pol": [w4.greedy(P, R, V, GAMMA) for V in H]}
+write_json({
+    "layout": w4.LAYOUT, "cells": w4.CELLS, "goal": w4.GOAL, "hazards": sorted(w4.HAZARDS),
+    "start": w4.START, "slips": [str(s) for s in SLIPS], "runs": vi_json,
+    "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED,
+              "surface": style.SURFACE},
+}, "data/w04-vi.json")
+```
+
+Pick a slip probability and step through the sweeps. Cell colour is the current value estimate (blue positive, orange negative); arrows show the greedy action under the current values.
+
+```{ojs}
+vi = FileAttachment("data/w04-vi.json").json()
+viewof slipKey = Inputs.radio(vi.slips, {value: "0.2", label: "slip probability"})
+viewof sweep = Inputs.range([0, vi.runs[slipKey].V.length - 1], {step: 1, value: 0, label: "sweep"})
+```
+
+```{ojs}
+//| label: fig-vi-stepper
+//| fig-cap: "Value iteration on the warehouse grid: the value estimate of every cell after the chosen number of sweeps, and the greedy action it implies. G is the goal (+1), X a hazard (−1), S the start; black cells are walls."
+//| fig-alt: "Interactive grid of 5 rows and 7 columns with a radio choice of slip probability and a slider for the sweep number. Each free cell is coloured by its value, white near zero, deepening blue for positive values; hazard cells are orange, wall cells black. Arrows in each cell point in the greedy direction. At sweep 0 all cells are white. As the slider moves, blue spreads leftwards from the goal at the right end of the middle row, and the arrows organize into a route: along the middle row when the slip probability is 0, around the top row when it is 0.1 or more."
+{
+  const run = vi.runs[slipKey], k = Math.min(sweep, run.V.length - 1);
+  const V = run.V[k], pol = run.pol[k], arrows = ["↑", "→", "↓", "←"];
+  const nR = vi.layout.length, nC = vi.layout[0].length;
+  const cs = Math.min(64, Math.floor((Math.min(width, 640) - 20) / nC));
+  const color = d3.scaleLinear().domain([-1, 0, 1]).range([vi.style.orange, "#ffffff", vi.style.blue]);
+  const cells = [];
+  vi.layout.forEach((row, r) => [...row].forEach((ch, c) => cells.push({r, c, ch})));
+  const idx = new Map(vi.cells.map(([r, c], i) => [r * 100 + c, i]));
+  return html`<svg width="${nC * cs + 2}" height="${nR * cs + 2}" style="background:${vi.style.surface}">
+    ${cells.map(({r, c, ch}) => {
+      const i = idx.get(r * 100 + c), x = c * cs + 1, y = r * cs + 1;
+      if (ch === "#") return svg`<rect x="${x}" y="${y}" width="${cs}" height="${cs}" fill="${vi.style.ink}"/>`;
+      const term = i === vi.goal || vi.hazards.includes(i);
+      const fill = vi.hazards.includes(i) ? vi.style.orange : color(V[i]);
+      const label = i === vi.goal ? "G" : vi.hazards.includes(i) ? "X" : arrows[pol[i]];
+      return svg`<g><rect x="${x}" y="${y}" width="${cs}" height="${cs}" fill="${fill}" stroke="${vi.style.muted}"/>
+        <text x="${x + cs / 2}" y="${y + cs * 0.45}" text-anchor="middle" dominant-baseline="middle" font-size="${cs * 0.34}" fill="${vi.style.ink}">${label}</text>
+        ${term ? "" : svg`<text x="${x + cs / 2}" y="${y + cs * 0.82}" text-anchor="middle" font-size="${cs * 0.2}" fill="${vi.style.ink}">${V[i].toFixed(2)}</text>`}
+        ${i === vi.start ? svg`<text x="${x + 4}" y="${y + 12}" font-size="11" fill="${vi.style.ink}">S</text>` : ""}</g>`;
+    })}</svg>`;
+}
+```
+
+```{ojs}
+md`Sweep ${Math.min(sweep, vi.runs[slipKey].V.length - 1)} of ${vi.runs[slipKey].V.length - 1} · value of the start: **${vi.runs[slipKey].V[Math.min(sweep, vi.runs[slipKey].V.length - 1)][vi.start].toFixed(3)}**`
+```
+
+**What to try.** With slip probability 0, step from sweep 0: the goal's neighbour lights up at sweep 1, and the blue spreads one cell per sweep until it reaches the start at sweep `{python} ripple[0.0]`; the arrows then run straight along the middle row, past the hazards. Switch to 0.2 and do the same. The values are smaller, because slips waste steps, and the cells in the middle row next to the hazards end up worth less than the cells on the top row. The arrows from the start now point up and round. The last sweeps barely change the colours: they are the long geometric tail of @fig-dp.
+
+### Q-learning and SARSA: how much exploration?
+
+```{python}
+#| label: fig-cliff-slider
+#| fig-cap: "The greedy routes learned by Q-learning (orange) and SARSA (blue) on the cliff walk after 500 episodes, for the chosen exploration rate ε (the most common route across 20 runs), and the share of runs that learned each length of route."
+#| fig-alt: "Interactive figure with a slider for the exploration rate epsilon: 0.01, 0.05, 0.1, 0.2. It shows a 4-by-10 grid with the cliff along the bottom row between the start and the goal. An orange line marks Q-learning's route, which runs along the row just above the cliff at every setting. A blue line marks SARSA's route: close to the cliff at small epsilon and further away at larger epsilon."
+fig = go.Figure()
+summary = {}
+for i, eps in enumerate(EPS_LIST):
+    for m, col, name, off in (("q", ORANGE, "Q-learning", -0.08), ("sarsa", BLUE, "SARSA", 0.08)):
+        paths = [tuple(w4.greedy_path(Q)) for Q in CLIFF[eps, m]["Q"]]
+        common = max(set(paths), key=paths.count)
+        summary[eps, m] = (len(common) - 1, paths.count(common))
+        rc = np.array(common, dtype=float)
+        fig.add_trace(go.Scatter(x=rc[:, 1] + off, y=rc[:, 0] + off, mode="lines", line=dict(color=col, width=4),
+                                 name=f"{name}: {len(common) - 1} steps ({paths.count(common)}/{N_CLIFF} runs)",
+                                 visible=(i == 2), hoverinfo="skip"))
+fig.add_shape(type="rect", x0=0.5, x1=w4.CLIFF_COLS - 1.5, y0=2.5, y1=3.5, fillcolor=style.INK, opacity=0.75, line_width=0)
+fig.add_annotation(x=w4.CLIFF_COLS / 2 - 0.5, y=3, text="cliff", showarrow=False, font=dict(color="white"))
+fig.add_annotation(x=0, y=3.3, text="start", showarrow=False, font=dict(size=11))
+fig.add_annotation(x=w4.CLIFF_COLS - 1, y=3.3, text="goal", showarrow=False, font=dict(size=11))
+steps = [dict(method="update", label=f"{eps:g}", args=[{"visible": [j // 2 == i for j in range(2 * len(EPS_LIST))]}])
+         for i, eps in enumerate(EPS_LIST)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=360, margin=dict(l=20, r=20, t=30, b=20), legend=dict(orientation="h", y=1.15, x=0),
+                  sliders=[dict(active=2, steps=steps, pad=dict(t=10), currentvalue=dict(prefix="exploration ε: "))])
+fig.update_xaxes(range=[-0.5, w4.CLIFF_COLS - 0.5], showticklabels=False, showgrid=False, zeroline=False)
+fig.update_yaxes(range=[w4.CLIFF_ROWS - 0.5, -0.5], showticklabels=False, showgrid=False, zeroline=False,
+                 scaleanchor="x")
+fig.show()
+assert all(summary[eps, "q"][0] == edge_len for eps in EPS_LIST)
+sarsa_lens = [summary[eps, "sarsa"][0] for eps in EPS_LIST]
+assert sarsa_lens[0] <= sarsa_lens[-1]
+```
+
+**What to try.** Q-learning's route is the edge at every exploration rate: its values describe the optimal walker, whatever the explorer does. SARSA's route depends on ε: with ε = 0.01 it is `{python} sarsa_lens[0]` steps, at 0.1 it is `{python} sarsa_lens[2]`, and at 0.2 it is `{python} sarsa_lens[3]`. The more often its own random moves would push it off the edge, the further it stays from it. Neither is wrong: Q-learning learns the best route for a robot that will stop exploring, SARSA the best route for one that will keep exploring.
+
+### Overestimation, live
+
+Choose how many actions there are and how noisy their value estimates are. The browser draws 3,000 sets of estimates (all true values are 0) and shows where the maximum of one set lands, and where the double estimator lands.
+
+```{ojs}
+viewof nActions = Inputs.range([1, 64], {step: 1, value: 8, label: "actions K"})
+viewof noiseSd = Inputs.range([0.1, 2], {step: 0.1, value: 1, label: "noise std"})
+```
+
+```{ojs}
+draws = {
+  const rand = d3.randomNormal.source(d3.randomLcg(42))(0, noiseSd), out = [];
+  for (let t = 0; t < 3000; t++) {
+    let best = -Infinity, bi = 0;
+    for (let a = 0; a < nActions; a++) { const v = rand(); if (v > best) { best = v; bi = a; } }
+    out.push({single: best, double: rand()});     // the second set's value at the chosen action
+  }
+  return out;
+}
+```
+
+```{ojs}
+//| label: fig-overestimation-live
+//| fig-cap: "Distribution of the plain maximum (orange) and the double estimator (blue) over 3,000 draws for the chosen number of actions and noise level. The dashed line is the true maximum, 0; the solid lines are the two means."
+//| fig-alt: "Interactive histogram with sliders for the number of actions K and the noise standard deviation. Two overlapping histograms: a blue one centred on zero and an orange one shifted to the right. A dashed line marks zero. As K grows, the orange histogram moves further right and narrows; the blue one stays centred on zero. Larger noise widens both and pushes the orange one further right."
+{
+  const w = Math.min(width, 640), lim = 4 * noiseSd + 0.5;
+  const mean = k => d3.mean(draws, d => d[k]);
+  return Plot.plot({
+    width: w, height: 260, marginLeft: 44, style: {background: "#fcfcfb"},
+    x: {domain: [-lim, lim], label: "estimate of the best action's value"}, y: {label: "draws", grid: true},
+    marks: [
+      Plot.rectY(draws, Plot.binX({y: "count"}, {x: "double", fill: "#2a78d6", fillOpacity: 0.45, thresholds: 50})),
+      Plot.rectY(draws, Plot.binX({y: "count"}, {x: "single", fill: "#eb6834", fillOpacity: 0.45, thresholds: 50})),
+      Plot.ruleX([0], {stroke: "#0b0b0b", strokeDasharray: "4,3"}),
+      Plot.ruleX([mean("single")], {stroke: "#eb6834", strokeWidth: 2}),
+      Plot.ruleX([mean("double")], {stroke: "#2a78d6", strokeWidth: 2})
+    ]
+  });
+}
+```
+
+```{ojs}
+md`Mean of the plain maximum: **${d3.mean(draws, d => d.single).toFixed(3)}** · mean of the double estimator: **${d3.mean(draws, d => d.double).toFixed(3)}**`
+```
+
+**What to notice.** With one action there is nothing to choose and both estimators agree. Add actions and the orange distribution slides right: the maximum is a winner's curse, and the more contestants, the luckier the winner. Doubling the noise doubles the bias. The blue distribution stays centred on zero for every setting. The exact orange means for unit noise are in @fig-overestimation.
+
+## Algorithm & code
+
+The course's homework asks students to implement value iteration, policy iteration, DQN, PPO and SAC, so this page shows results for those, not code. The code below covers the two other ideas of the lecture: tabular TD control, and choosing a continuous action.
+
+### Q-learning and SARSA
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w4.cliff_step, w4.eps_greedy, w4.td_control)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+
+from rlc.toys import w04_rl as cliff     # the cliff walk on this page
+
+torch.manual_seed(0)
+gen = torch.Generator().manual_seed(0)
+
+
+def td_update(Q, s, a, r, s2, a2, done, method, alpha=0.5, gamma=1.0):
+    """One tabular update in place. Q: (rows, cols, 4) tensor.
+
+    Indexing with a tuple of ints gives a 0-d tensor; += on it writes
+    through to Q (it is a view), so no reassignment is needed."""
+    if done:
+        target = torch.tensor(r)
+    elif method == "q":
+        target = r + gamma * Q[s2].max()          # off-policy: best a'
+    else:
+        target = r + gamma * Q[s2][a2]            # on-policy: actual a'
+    Q[s][a] += alpha * (target - Q[s][a])
+
+
+def act(Q, s, eps):
+    if torch.rand(1, generator=gen).item() < eps:
+        return int(torch.randint(4, (1,), generator=gen))
+    return int(Q[s].argmax())                     # ties -> first index
+
+
+for method in ("q", "sarsa"):
+    Q = torch.zeros(cliff.CLIFF_ROWS, cliff.CLIFF_COLS, 4)
+    for _ in range(300):
+        s = cliff.CLIFF_START
+        a = act(Q, s, 0.1)
+        for _ in range(500):
+            s2, r, done = cliff.cliff_step(s, a)
+            a2 = act(Q, s2, 0.1)
+            td_update(Q, s, a, r, s2, a2, done, method)
+            s, a = s2, a2
+            if done:
+                break
+    path = cliff.greedy_path(Q.numpy())
+    assert path[-1] == cliff.CLIFF_GOAL           # greedy route reaches it
+    if method == "q":
+        assert len(path) - 1 == cliff.CLIFF_COLS + 1   # along the edge
+```
+:::
+
+The two methods differ in one line: the target. Everything else, including how they act, is shared.
+
+### Choosing a continuous action: CEM and an actor
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w4.cem_argmax)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import torch.nn as nn
+
+DIM = cliff.DIM                    # 7-dimensional action, as in the toy
+
+
+def critic(s, a):
+    """Stand-in for a trained Q-network: the toy's landscape, in torch,
+    shifted by the state. s: (B, 1), a: (B, 7) -> (B,)."""
+    peak = torch.full((DIM,), 0.5) + 0.1 * s           # (B, 7)
+    decoy = torch.full((DIM,), -0.5)
+    w2 = 2 * cliff.WIDTH ** 2
+    return (torch.exp(-((a - peak) ** 2).sum(-1) / w2)
+            + 0.7 * torch.exp(-((a - decoy) ** 2).sum(-1) / w2))
+
+
+@torch.no_grad()                   # action selection needs no gradients
+def cem_action(s, n=64, elite=8, iters=10):
+    """QT-Opt-style CEM for one state s: (1,) -> action (7,)."""
+    mu, std = torch.zeros(DIM), torch.full((DIM,), 0.6)
+    for _ in range(iters):
+        a = (mu + std * torch.randn(n, DIM)).clamp(-1, 1)   # (n, 7)
+        q = critic(s.expand(n, 1), a)                        # (n,)
+        best = a[q.topk(elite).indices]                      # (elite, 7)
+        mu, std = best.mean(0), best.std(0) + 1e-3
+    return mu
+
+
+s0 = torch.tensor([0.0])
+assert critic(s0[None], cem_action(s0)[None]).item() > 0.6   # a peak
+
+# DDPG's actor: learn the argmax instead of searching for it.
+actor = nn.Sequential(nn.Linear(1, 32), nn.Tanh(), nn.Linear(32, DIM),
+                      nn.Tanh())                    # actions in [-1, 1]
+nn.init.zeros_(actor[2].weight)
+with torch.no_grad():
+    actor[2].bias.fill_(0.3)                        # start near the peak
+opt = torch.optim.Adam(actor.parameters(), lr=1e-2)
+states = torch.rand(256, 1)                         # a batch from "replay"
+q_before = critic(states, actor(states)).mean().item()
+for _ in range(200):
+    # Maximize Q(s, mu(s)): backprop goes through the critic into the
+    # actor (eq. dpg). Only the actor's weights are in the optimizer.
+    loss = -critic(states, actor(states)).mean()
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+q_after = critic(states, actor(states)).mean().item()
+assert q_after > q_before and q_after > 0.99
+```
+:::
+
+CEM spends its effort at decision time: 640 evaluations of Q per action in this toy. The actor spends it during training, and then answers with one forward pass, but only where the critic's gradient leads: started near the lower peak, it would stay there.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(4))
+```
+
+## Guest spotlight
+
+**Aviral Kumar** (Carnegie Mellon University and Google DeepMind) asks what it would take to copy the recipe behind large language models in robot learning [▶ 02:08](https://youtu.be/fHHLmTu9sFk?t=128). For language models that recipe has three stages: pre-training on internet text, a **mid-training** stage that teaches behaviors useful for problem solving, such as long chains of thought that search, backtrack and retry, and **post-training** with reinforcement learning on the model's own attempts [▶ 03:40](https://youtu.be/fHHLmTu9sFk?t=220). Robot learning today has pre-training on expert demonstrations and fine-tuning on more of them, with no analogue of mid-training and no RL post-training [▶ 04:43](https://youtu.be/fHHLmTu9sFk?t=283).
+
+His proposal for mid-training is to collect **recovery and correction** data: let a policy run, and when it heads somewhere bad, have a person first back it up to a familiar state and then show the correct continuation [▶ 10:55](https://youtu.be/fHHLmTu9sFk?t=655). His argument is that recovering is easier to learn than solving the task from wherever the mistake left the robot, because there are many good states to go back to [▶ 12:27](https://youtu.be/fHHLmTu9sFk?t=747). The policies then retry the way reasoning models do, and success grows with the number of recoveries in an episode; on a shirt-hanging task he reports results comparable to a prior system trained on 89 hours of expert data, from 5 hours of this kind of data [▶ 17:05](https://youtu.be/fHHLmTu9sFk?t=1025).
+
+For post-training he describes **policy-agnostic RL**. Expressive policies (diffusion, flow matching, transformers that sample tokens) are hard to update with the usual actor-critic gradient through the policy's output [▶ 23:44](https://youtu.be/fHHLmTu9sFk?t=1424). Instead, improve the *actions*: sample several from the policy, keep the ones the Q-function rates highest, take gradient steps on those actions with respect to Q, and then train the policy to imitate the improved actions with its ordinary likelihood loss [▶ 24:45](https://youtu.be/fHHLmTu9sFk?t=1485). He reports fine-tuning the OpenVLA model on a real robot in about 40 minutes, with no demonstrations [▶ 26:16](https://youtu.be/fHHLmTu9sFk?t=1576).
+
+**How it connects to this week.** Policy-agnostic RL is this lecture's continuous-action problem in a new setting: its "keep the best samples" step is the sampling route of QT-Opt, its "gradient step on the action" is DDPG's $\nabla_a Q$, and it sidesteps DDPG's need to differentiate through the policy. Recovery data relates to Week 3's DAgger, with one difference: the human first goes back, then continues.
+
+## Solved problems
+
+**1. Bellman by hand.** A robot in state A can wait (reward 0, stay in A) or move to B (reward 0). In B, any action gives reward 1 and ends the episode. With $\gamma = 0.9$, what are $V^*(A)$, $V^*(B)$, and the optimal action in A?
+
+::: {.callout-tip collapse="true" title="Solution"}
+$V^*(B) = 1$ (one reward, then nothing). For A, @eq-bellman-opt: $V^*(A) = \max(0 + 0.9\,V^*(A),\; 0 + 0.9\,V^*(B))$. Waiting forever gives $V = 0.9 V$, so $V = 0$ along that branch; moving gives $0.9 \times 1 = 0.9$. So $V^*(A) = 0.9$ and the optimal action is to move. Value iteration finds this in two sweeps: $V_1 = (0, 1)$, $V_2 = (0.9, 1)$.
+:::
+
+**2. How many sweeps?** Value iteration starts at $V_0 = 0$, rewards are at most 1 in absolute value, and $\gamma = 0.95$. How many sweeps guarantee an error below $10^{-6}$? Why did the slip-free warehouse grid need far fewer?
+
+::: {.callout-tip collapse="true" title="Solution"}
+The initial error is at most $\max|V^*| \le 1/(1 - \gamma) = 20$. By @eq-vi the error after $k$ sweeps is at most $20 \cdot 0.95^k$; this is below $10^{-6}$ once $k > \ln(5 \times 10^{-8}) / \ln 0.95 \approx 328$. The bound is a worst case. On the slip-free grid every episode reaches a terminal state within a few steps, and after that many sweeps the values are exact: value iteration is then computing a finite-horizon answer. With slips the robot can bounce around for a long time, and the error really does shrink geometrically, as @fig-dp shows.
+:::
+
+**3. Grids, samples and actors.** A 7-joint arm's action is discretized into 10 levels per joint. How many Q-values must DQN's output layer have? How many evaluations of Q does CEM with 64 samples and 10 iterations need per action, and how many does a DDPG actor need?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Discretized: $10^7$ outputs, one per joint combination, which is impractical to train and to maximize. CEM: $64 \times 10 = 640$ evaluations of the Q-network per control step, affordable in a batch on a GPU but paid every step. DDPG: zero evaluations of Q at decision time; one forward pass of the actor. The cost moved into training, where the actor learns to follow $\nabla_a Q$ (@eq-dpg).
+:::
+
+**4. Which data can each learner use?** A lab has thousands of hours of logged robot data from an old controller and some human teleoperation. Can Q-learning learn from it? Can SARSA?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Q-learning: yes in principle. Its target $r + \gamma \max_{a'} Q(s', a')$ needs only $(s, a, r, s')$, not who chose $a$ or what came next, so any transitions can be replayed (@eq-q-learning). In practice, purely offline Q-learning struggles when the data cover few actions per state, because the max then queries actions it has never seen. Week 5 returns to this. SARSA: not directly, since its target needs the next action $a'$ *of the policy being evaluated*; with logged data it would learn the value of the old controller, not of a better one.
+:::
+
+**5. Two actions, one coin flip.** Two actions have true value 0 and estimates with independent unit Gaussian noise. What is the expected value of the larger estimate? What if the noise has standard deviation 0.5?
+
+::: {.callout-tip collapse="true" title="Solution"}
+For two independent standard normals, $\max(X, Y) = \frac{X + Y}{2} + \frac{|X - Y|}{2}$, and $X - Y \sim \mathcal{N}(0, 2)$, so $\mathbb{E}|X - Y| = \sqrt{2}\sqrt{2/\pi} = 2/\sqrt{\pi}$. Hence $\mathbb{E}[\max] = 1/\sqrt{\pi} \approx 0.564$, matching the toy's `{python} f"{BIAS[2][0]:.3f}"` (@eq-double). The bias scales with the noise: with standard deviation 0.5 it is $0.5/\sqrt{\pi} \approx 0.282$. It never averages away, because every Q-learning target takes such a maximum.
+:::
+
+## Recap
+
+1. **RL optimizes expectations, and expectations are smooth.** A stochastic policy turns a step reward into a smooth objective. *Why it matters:* it is the reason any RL algorithm can learn from success/failure signals, and the starting point of Week 5's policy gradients.
+2. **Values summarize the future, and the Bellman equation computes them one step at a time.** *Why it matters:* bootstrapping from the next state's value is what makes learning from single transitions possible.
+3. **With a model, dynamic programming finds the optimal policy.** Value iteration ripples values back from the rewards; policy iteration alternates evaluation and improvement and converges in few rounds. *Why it matters:* every later value-based method is an approximation of these updates.
+4. **Q-functions remove the model from acting, and Q-learning removes it from learning.** Q-learning is off-policy; SARSA is on-policy and more cautious while exploring. *Why it matters:* off-policy learning lets robots reuse every past transition, which is how real-robot RL (QT-Opt, HIL-SERL) becomes affordable.
+5. **Deep Q-learning needs stabilizers and fails in characteristic ways.** Replay buffers and target networks stabilize it; the maximum over noisy estimates overestimates, and double estimators fix it. *Why it matters:* these tricks recur in nearly every deep RL system for robots.
+6. **Continuous actions turn the max into a search.** Discretize with structure, search with CEM, or learn an actor. *Why it matters:* the same choice appears in Week 5's actor-critic methods and in fine-tuning large robot policies, as the guest talk shows.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Smoothed reward | $2\Phi\big(\frac{c - \mu}{\sigma}\big) - 1$ | @eq-smooth |
+| Value | $V^\pi(s) = \mathbb{E}[\sum_t \gamma^t r_t \mid s]$ | @eq-value |
+| Bellman ★ | $V = r + \gamma P V$ | @eq-bellman |
+| Bellman optimality ★ | $V^* = \max_a [r + \gamma P V^*]$ | @eq-bellman-opt |
+| Value iteration | $V_{k+1} = \max_a [r + \gamma P V_k]$ | @eq-vi |
+| Policy iteration | evaluate, then greedy | @eq-pi |
+| Optimal Q | $\pi^*(s) = \arg\max_a Q^*(s, a)$ | @eq-q |
+| Q-learning ★ | $Q \mathrel{+}= \alpha(r + \gamma \max Q' - Q)$ | @eq-q-learning |
+| SARSA | $Q \mathrel{+}= \alpha(r + \gamma Q(s', a') - Q)$ | @eq-sarsa |
+| DQN loss | $(r + \gamma \max Q_{\theta^-} - Q_\theta)^2$ | @eq-dqn |
+| Double target | $Q_{\theta^-}(s', \arg\max Q_\theta)$ | @eq-double |
+| DDPG actor | $\nabla_a Q \cdot \nabla_\phi \mu_\phi$ | @eq-dpg |
+
+**Common pitfalls.**
+
+- Treating the TD target as a label that should receive gradients. It is a fixed target; in PyTorch, compute it under `torch.no_grad()` or with `.detach()`.
+- Forgetting terminal states: the target at a terminal transition is just $r$.
+- Expecting Q-learning's greedy route to be safe while exploring; it optimizes for a robot that has stopped exploring.
+- Reading high Q-values as high performance: the max over noisy estimates is biased upward.
+- Assuming CEM or gradient ascent finds the global best action; both settle on the nearest good peak.
+- Exploring a real robot with random joint commands; add small noise to a sensible action instead.
+
+**Connections.** Week 2 gave the MDP and the objective; this week computed it with values. Week 3's DAgger reappears in HIL-SERL's human corrections and in the guest's recovery data. [Week 5](w05-reinforcement-learning-2.qmd) optimizes the policy directly with gradients and combines both ideas in actor-critic methods. In the ADM Companion: [value iteration]({{< var adm_url >}}/part2/ch07-exact-solution-methods.html#value-iteration) and [policy iteration]({{< var adm_url >}}/part2/ch07-exact-solution-methods.html#policy-iteration) with worked examples, and [Q-learning]({{< var adm_url >}}/part3/ch17-model-free-methods.html#q-learning) and [SARSA]({{< var adm_url >}}/part3/ch17-model-free-methods.html#sarsa) on a towpath next to a canal.
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(4))
+```
