@@ -15,7 +15,7 @@ from plotly.subplots import make_subplots
 
 from rlc import style
 from rlc.io import write_json
-from rlc.page import course_map_highlight, paper_cards, resources, show_source
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
 from rlc.toys import w03_imitation as w3
 
 style.apply()
@@ -141,6 +141,23 @@ Behavioral cloning is the dashcam student. You collect pairs: "the car was a lit
 ### One slip and you are somewhere new {#slip}
 
 The road toy on this page makes the analogy concrete. The expert keeps the car's heading along the road and, like most drivers, ignores small offsets from the centre line; only past `{python} f"{w3.DEADBAND:.1f}"` (in road half-widths of 1.0) does it steer back. Its demonstrations were recorded on a calm day, so the car never left that band and the data never show a steer-back. At deployment, each step has a `{python} f"{100 * w3.EPS:.1f}"`% chance of a gust that turns the car by `{python} f"{w3.GUST:.1f}"` rad.
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w03-drift",
+    caption=f"One gust, many clones, seen from above. The expert (black), the cloned policy of each of "
+            f"{n_calm} training seeds (orange) and the DAgger policy of the same seeds (blue) drive the "
+            f"same stretch of road; at step 10 one gust turns them all towards the edge.",
+    alt=f"Animation, about 17 seconds, looping. A curved grey road runs across the frame. A black dot "
+        f"and {2 * n_calm} coloured dots drive together along its centre line, leaving thin traces. "
+        f"An arrow marks a gust, and every car veers towards the edge. The black and all blue traces "
+        f"curve back into the road; several orange traces leave it, some curving far off the top or "
+        f"bottom of the frame. A caption says {n_bc_off} of {n_calm} cloned policies end off the road. "
+        f"Everything fades and the cars reappear at the start."))
+```
+
+**What to watch for.** All the cars start together on the centre line and stay together until the gust: before it, the cloned policies drive as well as the expert. The gust pushes every car towards the edge by about the same amount. From there the colours separate. The black expert and the blue DAgger cars turn back into the road. The orange clones fan out: some steer back by luck, some drift across the edge, and some turn sharply away, because nothing in their calm-day data said what to do there.
 
 ```{python}
 #| label: fig-one-gust
