@@ -1,6 +1,1120 @@
 ---
 title: "Week 2 · Robot Control & MDPs"
 subtitle: "Lecture of 23 February 2026 · guest: Abhishek Gupta"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w02_control as w2
+
+style.apply()
+BLUE, ORANGE = style.CATEGORICAL[0], style.CATEGORICAL[1]
+deg = np.rad2deg
+
+# --- Toy 1: the 2R arm and its configuration space ---------------------------
+Q_A, Q_B = np.deg2rad([-20.0, 30.0]), np.deg2rad([110.0, -40.0])
+BLOCKED = w2.c_obstacle()                       # (180, 180) booleans
+TH = w2.grid_angles()
+blocked_pct = 100 * float(BLOCKED.mean())
+CELL = 360 / w2.GRID
+rows_blocked = BLOCKED.any(axis=1)              # shoulder angles with any collision
+q1_lo = deg(TH[rows_blocked]).min() - CELL / 2  # cell edges, in degrees
+q1_hi = deg(TH[rows_blocked]).max() + CELL / 2
+rows_full = BLOCKED.all(axis=1)                 # ... and with every elbow angle blocked
+full_lo = deg(TH[rows_full]).min() - CELL / 2
+full_hi = deg(TH[rows_full]).max() + CELL / 2
+MARGIN = 6.0                                    # degrees beyond the bar
+below = TH < np.deg2rad(full_lo - MARGIN)
+above = TH > np.deg2rad(full_hi + MARGIN)
+assert np.all(TH[np.nonzero(BLOCKED[below])[1]] > 0)    # below the bar: only elbow > 0
+assert np.all(TH[np.nonzero(BLOCKED[above])[1]] < 0)    # above it: only elbow < 0
+cell_of = lambda d: int(np.argmin(np.abs(deg(TH) - d)))
+assert BLOCKED[cell_of(41)].all()                       # explorer: shoulder 40, any elbow
+assert BLOCKED[cell_of(71)].any() and np.all(TH[BLOCKED[cell_of(71)]] < 0)   # shoulder 70
+# Explorer: with the elbow at 30 deg, the shoulder angle where the arm first touches.
+j30 = int(np.argmin(np.abs(deg(TH) - 31)))
+enter30 = deg(TH[np.argmax(BLOCKED[:, j30] & (TH > Q_A[0]))]) - CELL / 2
+straight = w2.straight_path(Q_A, Q_B)
+hit = w2.collides(straight)
+hit_pct = 100 * float(hit.mean())
+path = w2.plan_path(Q_A, Q_B, BLOCKED)
+straight_moves = int(round(max(abs(deg(w2.wrap(Q_B - Q_A)))) / CELL))
+path_moves = len(path) - 1
+assert hit.any() and not w2.collides(path).any() and not w2.collides(Q_A) and not w2.collides(Q_B)
+assert path_moves > straight_moves
+assert path[-1, 0] < -np.pi       # the detour turns the shoulder the long way, through 180 deg
+
+IK_TARGET = np.array([0.3, 1.4])
+SOLS = w2.ik_analytic(IK_TARGET)                # row 0: q2 > 0; row 1: q2 < 0
+IK_STARTS = (np.array([0.0, 1.0]), np.array([1.5, -1.0]))
+ik_paths = [w2.ik_jacobian_transpose(q0, IK_TARGET) for q0 in IK_STARTS]
+ik_err = [np.linalg.norm(w2.fk(p)[1] - IK_TARGET, axis=1) for p in ik_paths]
+ik_mm = [int(np.argmax(e < 1e-3)) for e in ik_err]   # first iteration within 1 mm
+for p, s in zip(ik_paths, SOLS):
+    assert np.allclose(w2.wrap(p[-1]), s, atol=1e-4)
+
+# --- Toy 2: one joint, P / PD / PID -------------------------------------------
+RUNS = {k: w2.track(g) for k, g in w2.GAINS.items()}
+S = {k: w2.summary(r) for k, r in RUNS.items()}
+RUN_LERP = w2.track(w2.GAINS["PID"], scaling=w2.lerp)
+S_LERP, S_QUIN = w2.summary(RUN_LERP), S["PID"]
+sag = w2.p_only_sag()
+sag_guess = float(-w2.gravity_torque(w2.Q_END) / w2.GAINS["P"][0])
+du_ratio = S_LERP["max_du"] / S_QUIN["max_du"]
+F_LIST = [100, 50, 30, 25, 20, 15, 10]
+S_FREQ = {f: w2.summary(w2.track(w2.GAINS["PID"], freq=f)) for f in F_LIST}
+f_ok = min(f for f in F_LIST if S_FREQ[f]["hold_swing"] < 0.01)
+f_bad = max(f for f in F_LIST if S_FREQ[f]["hold_swing"] >= 0.01)
+assert S["P"]["hold_swing"] > 0.1 and S["PD"]["hold_swing"] < 1e-3
+e_p = RUNS["P"]["ref"] - RUNS["P"]["q"]
+t_p = RUNS["P"]["t"]
+p_growing = np.ptp(e_p[t_p >= 1.5]) > np.ptp(e_p[(t_p >= 1.0) & (t_p < 1.5)])
+assert p_growing                                  # P-only: the swings grow
+assert abs(S["PD"]["hold_mean"] - sag) < 5e-4 and abs(S["PID"]["hold_mean"]) < 0.1 * sag
+assert du_ratio > 3 and S_LERP["peak_u"] > S_QUIN["peak_u"]
+assert f_bad < f_ok and all(S_FREQ[f]["hold_swing"] < 0.01 for f in F_LIST if f >= f_ok)
+
+# --- Toy 3: the corridor -------------------------------------------------------
+FLIP0 = w2.flip_gamma_deterministic()
+SLIPS = [0.0, 0.1, 0.2, 0.3]
+FLIPS = [w2.flip_gamma(s) for s in SLIPS]
+assert abs(FLIPS[0] - FLIP0) < 1e-5 and np.all(np.diff(FLIPS) > 0)
+GAMMA, SLIP, H_ENUM = 0.9, 0.1, 14
+trajs = sorted(w2.enumerate_trajectories(w2.go_right, SLIP, H_ENUM), key=lambda x: -x[2])
+n_trajs = len(trajs)
+J_enum = sum(p * w2.discounted_return(r, GAMMA) for _, r, p in trajs)
+J_prop14 = w2.expected_return(w2.go_right, SLIP, GAMMA, horizon=H_ENUM)
+J_full = w2.expected_return(w2.go_right, SLIP, GAMMA)
+unfinished = sum(p for s, _, p in trajs if not w2.terminal(s[-1]))
+mc = w2.monte_carlo_return(w2.go_right, SLIP, GAMMA, 20000, np.random.default_rng(0))
+mc_se = float(mc.std(ddof=1) / np.sqrt(len(mc)))
+J_left = w2.expected_return(w2.go_left, SLIP, GAMMA)
+assert abs(J_enum - J_prop14) < 1e-12 and abs(mc.mean() - J_full) < 3 * mc_se
+assert J_full > J_left                          # at gamma 0.9 going right is better
+
+# --- Toy 4: random search, dense vs sparse -----------------------------------------
+RS = w2.random_search_study(n_seeds=20)
+N_RS = RS["dense"]["success"].shape[0]
+solved = {k: w2.first_solved(RS[k]["success"]) for k in RS}
+med = {k: float(np.nanmedian(solved[k])) for k in solved}
+never = {k: int(np.isnan(solved[k]).sum()) for k in solved}
+info10 = {k: 100 * float(RS[k]["informative"][:, :10].mean()) for k in RS}
+assert med["sparse"] > 5 * med["dense"] and info10["sparse"] < 10 and info10["dense"] > 90
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 2 · **Lecture:** [video](https://youtu.be/5-Bb84eTTqQ) · **Go deeper:** [ADM Ch 7, Markov decision processes]({{< var adm_url >}}/part2/ch07-exact-solution-methods.html#markov-decision-processes)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(2))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+Week 1 argued that robots need feedback: a policy that looks again at every step beats a plan executed blind. This week builds the vocabulary for both halves of that statement. The first half is **robot control**: how to describe a robot's body, where its hand is for given joint angles, which joint angles put the hand where you want it, and how motors follow a motion smoothly and accurately. The second half is the **Markov decision process (MDP)**: the mathematical frame in which a policy picks actions, the world responds, and rewards say how well it went. Every later week works inside this frame. Week 3 learns policies by copying an expert, Weeks 4 and 5 learn them from reward, and from Week 6 on the policies grow into large generative models.
+
+**The question this week answers:** how does a robot turn a goal into motor commands, and how do we describe the decision-making above that, for any robot, in one language?
+
+### The key ideas at a glance
+
+- **Rigid bodies and frames.** A robot is a chain of rigid parts. A part's pose is a position plus an orientation, stored as a $4 \times 4$ (or, in the plane, $3 \times 3$) matrix; multiplying these matrices converts coordinates between frames, such as from a camera on the roof to the car's base.
+- **Three spaces.** The **configuration space** holds every combination of joint angles; the **workspace** holds every point the hand can reach; the **task space** is where the job itself is defined. An arm with more joints than the task needs is **redundant**: it can move its elbow while keeping its hand still.
+- **Kinematics.** Forward kinematics (joint angles to hand pose) is a formula. Inverse kinematics (hand pose to joint angles) can have several answers or none; in practice it is solved by gradient steps using the **Jacobian**.
+- **Trajectories and PID.** A robot cannot jump to new joint angles. Quintic time scaling starts and ends a move with zero velocity and acceleration, unlike straight-line interpolation. A **PID controller** then makes the motors follow: the P term pulls towards the target, the D term damps, the I term cancels a steady load such as gravity.
+- **Policies, states and observations.** A policy $\pi_\theta(a_t \mid o_t)$ is a distribution over actions given what the robot observes. Unlike a classifier's mistake, a policy's action changes what it sees next.
+- **The MDP.** States, actions, transition probabilities and a reward: $(\mathcal{S}, \mathcal{A}, P, R)$. The goal is the policy with the highest **expected (discounted) return**. Whether rewards are **sparse** or **dense** can decide whether learning gets started at all.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Pose | Where a rigid body is and which way it faces |
+| Frame | A coordinate system attached to a body: the base, a camera, the gripper |
+| Link, joint, end effector | A rigid part, a connection that lets two parts move, and the tool at the end of the arm |
+| Degrees of freedom (DoF) | How many numbers it takes to pin down the robot's configuration |
+| Configuration space (C-space) | The set of all joint configurations |
+| Workspace, task space | Points the hand can reach, and the space the task is defined in |
+| Forward / inverse kinematics | Joint angles to hand pose, and hand pose back to joint angles |
+| Jacobian | How much the hand moves when each joint turns a little |
+| Waypoint | An intermediate target on the way from one configuration to the next |
+| PID controller | A feedback rule that turns tracking error into motor commands |
+| Policy | The rule that picks an action from what the robot observes |
+| State, observation | The complete description of the world, and the partial view the sensors give |
+| MDP | Markov decision process: states, actions, transitions and rewards |
+| Return, discount | Total reward of a run, and the factor that makes later rewards count for less |
+
+### After this week you can
+
+- Chain homogeneous transforms to move a point between frames, and count a robot's degrees of freedom.
+- Explain why an obstacle in the workspace becomes a strangely shaped region in configuration space, and why inverse kinematics can have two answers.
+- Say what each term of a PID controller does, and why a quintic time scaling is kinder to motors than linear interpolation.
+- Write down an MDP, the probability of a trajectory, and the expected return, and compute them for a small example.
+- Explain why a sparse reward can stall learning.
+
+{{< video https://youtu.be/5-Bb84eTTqQ >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+Think of driving to a friend's house. Somewhere in your head a decision is made: "turn left at the next corner". That is the policy. Your arms translate "turn left" into a steering-wheel angle: inverse kinematics. You turn the wheel smoothly rather than yanking it: a trajectory. And while you turn, you keep correcting, because the road is bumpy and the car drifts: feedback control. This lecture covers the bottom three layers first, then gives the top layer, the decisions, a precise mathematical form.
+:::
+
+```{dot}
+//| label: fig-control-stack
+//| fig-width: 4.1
+//| fig-height: 5.9
+//| fig-cap: "The layers between a decision and the motors. This week's control part covers the blue boxes; the MDP describes the orange one, the policy, and its loop through the world."
+//| fig-alt: "Flow diagram from top to bottom. 'Policy: picks the next target' leads to 'inverse kinematics: target pose to joint angles', then 'trajectory: smooth waypoints', then 'PID controller: error to torque', then 'motors and robot body', then 'world'. An arrow from the world back to the policy is labelled 'observation', and one from the robot back to the PID controller is labelled 'joint angles'."
+digraph stack {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.32;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  policy [label="policy\npicks the next target", fillcolor="#fbe1d6", color="#eb6834"];
+  ik [label="inverse kinematics\ntarget pose → joint angles"];
+  traj [label="trajectory\nsmooth waypoints"];
+  pid [label="PID controller\nerror → torque"];
+  robot [label="motors and robot body", fillcolor="#f0efec", color="#52514e"];
+  world [label="world", fillcolor="#f0efec", color="#52514e"];
+  policy -> ik [label=" target"];
+  ik -> traj [label=" goal angles"];
+  traj -> pid [label=" waypoints"];
+  pid -> robot [label=" torque"];
+  robot -> world [label=" acts"];
+  robot -> pid [label=" joint angles", constraint=false];
+  world -> policy [label=" observation", constraint=false];
+}
+```
+
+### A robot is a chain of rigid bodies {#rigid}
+
+Quadrupeds, drones, dexterous hands and arms look like different problems, but almost all of them can be described the same way: as rigid bodies moving through space [▶ 02:09](https://youtu.be/5-Bb84eTTqQ?t=129). "Rigid" means the distance between any two points on the body never changes, so one frame attached to the body tells you where all of it is [▶ 02:39](https://youtu.be/5-Bb84eTTqQ?t=159). On the ground, a pose takes three numbers (x, y and a heading), the group called SE(2); in space it takes six (three positions, plus roll, pitch and yaw), SE(3). In code a pose is a matrix that holds a rotation and a translation [▶ 03:41](https://youtu.be/5-Bb84eTTqQ?t=221), and a rotation matrix must be orthogonal with determinant 1, so it never stretches or mirrors the body [▶ 04:44](https://youtu.be/5-Bb84eTTqQ?t=284).
+
+The payoff is chaining. A self-driving car's lidar sees a pedestrian in *its own* frame; to decide whether to brake, the car needs the pedestrian in its *base* frame. Multiplying the matrices that relate the frames does the conversion [▶ 05:14](https://youtu.be/5-Bb84eTTqQ?t=314). [Worked example 1](#ex-frames) does it with numbers, and @eq-homogeneous gives the formula.
+
+### Joints, degrees of freedom and three spaces {#spaces}
+
+An arm or a humanoid is not one rigid body but several: **links** connected by **joints**, ending in an **end effector** such as a gripper [▶ 07:19](https://youtu.be/5-Bb84eTTqQ?t=439). The end effector shapes the action space: a suction gripper is on or off, a parallel gripper has one opening width, a dexterous hand can have more than 20 degrees of freedom [▶ 09:24](https://youtu.be/5-Bb84eTTqQ?t=564). Most robot joints are **revolute**: they rotate about one axis, like an elbow [▶ 10:27](https://youtu.be/5-Bb84eTTqQ?t=627).
+
+The **degrees of freedom** count how many independent numbers fix the robot's configuration [▶ 11:31](https://youtu.be/5-Bb84eTTqQ?t=691); the Grübler–Kutzbach formula (@eq-grubler) counts them from the links and joints [▶ 12:04](https://youtu.be/5-Bb84eTTqQ?t=724). Three spaces then matter:
+
+- The **configuration space** is the set of all joint configurations [▶ 12:35](https://youtu.be/5-Bb84eTTqQ?t=755). For an arm with two revolute joints it is not a flat square but a torus, because each angle wraps around: 359° and 1° are 2° apart, not 358° [▶ 13:05](https://youtu.be/5-Bb84eTTqQ?t=785). A network that takes joint angles as input has to respect that.
+- The **workspace** is the set of points the hand can reach [▶ 13:40](https://youtu.be/5-Bb84eTTqQ?t=820). The robot perceives the task here (the cup is on the table) but acts in configuration space (turn these joints).
+- The **task space** is where the objective lives, independent of the robot: for wiping a whiteboard, the board's surface [▶ 16:45](https://youtu.be/5-Bb84eTTqQ?t=1005). A 7-joint arm placing its hand in a 6-number pose has one joint to spare. That **redundancy** lets it swing its elbow while holding a mug perfectly still, which helps it avoid obstacles [▶ 18:54](https://youtu.be/5-Bb84eTTqQ?t=1134).
+
+### An obstacle becomes a shape in joint space {#c-obstacle}
+
+Put a round obstacle next to a two-joint arm. In the workspace it is a disc. In configuration space it is the set of all (shoulder, elbow) angle pairs at which some part of the arm touches the disc, and that set has a very different shape [▶ 14:43](https://youtu.be/5-Bb84eTTqQ?t=883). In the toy below, a disc of radius `{python} f"{w2.OBSTACLE_R:.2f}"` blocks `{python} f"{blocked_pct:.1f}"`% of all joint configurations, all at shoulder angles between `{python} f"{q1_lo:.0f}"`° and `{python} f"{q1_hi:.0f}"`°. Between `{python} f"{full_lo:.0f}"`° and `{python} f"{full_hi:.0f}"`° the upper arm itself reaches the disc, so every elbow angle is blocked: a bar across the whole square. More than `{python} f"{MARGIN:.0f}"`° away from the bar on either side, only the forearm can hit, and only when it is bent towards the disc: with a positive elbow angle below the bar, a negative one above it.
+
+The 1990s recipe for motion planning was to build exactly this picture, mark the forbidden region, and search the rest for a path [▶ 15:14](https://youtu.be/5-Bb84eTTqQ?t=914). Moving both joints at a steady rate from start to goal, a straight line in configuration space, sweeps the arm through the disc: `{python} f"{hit_pct:.0f}"`% of that line is blocked. A breadth-first search over the free cells finds a detour of `{python} path_moves` grid moves, against `{python} straight_moves` for the straight line: it turns the shoulder the other way, through 180°, and swings the arm around below the base. The recipe stops scaling as the number of joints grows: the grid has $180^n$ cells for $n$ joints. Learned policies instead pick up, from experience, which actions lead into trouble, without building the map [▶ 15:45](https://youtu.be/5-Bb84eTTqQ?t=945).
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w02-cspace",
+    caption="One obstacle, two pictures. Left: the arm and a round obstacle. Right: the arm's joint "
+            "angles as a dot in configuration space, where the obstacle appears as a grey region.",
+    alt=f"Animation, about 20 seconds, looping. Left: a two-link arm beside a grey disc. Right: a square "
+        f"with shoulder angle across and elbow angle up, and a black dot at the arm's angles. A grey shape "
+        f"fades into the square: a vertical bar with a lobe on each side. The dot moves in a straight line "
+        f"towards the bar while the arm swings up; when the dot reaches the grey shape the arm turns orange "
+        f"with its forearm in the disc. The arm fades back to its start, then the dot follows a blue path "
+        f"down and to the left, leaves the square's left edge, re-enters on the right, and stops at the goal "
+        f"while the arm swings round below its base to point up and to the left. A caption reads 'Detour: "
+        f"{path_moves} grid moves; straight line: {straight_moves}, but blocked'. Everything fades back to "
+        f"the start.",
+))
+```
+
+**What to watch for.** First the grey region fills in: every pair of joint angles at which some part of the arm touches the disc. Then both joints turn at a steady rate towards the goal. In the square the dot moves in a straight line, and the moment it reaches the grey region, the arm in the room turns orange with its forearm in the disc. The search's answer starts the dot in the opposite direction. It slides off the left edge of the square and reappears on the right, because a shoulder angle of -180° is the same as +180°; in the room, the arm swings round underneath its base and arrives from the far side. The detour takes `{python} path_moves` grid moves against the blocked line's `{python} straight_moves`, and it never touches grey.
+
+```{python}
+#| label: fig-cspace
+#| fig-cap: "One obstacle, two views. Left: the arm at its start (light grey) and goal (black) configurations beside a round obstacle, with the paths of the hand along the straight joint-space line (orange) and along the planned detour (blue). The orange arm is the first pose on the straight line that touches the disc: the hand passes it, but the links sweep through it. Right: the configuration space, shoulder angle across and elbow angle up, both wrapping around at ±180°. Grey cells are configurations where the arm touches the disc; the orange straight line crosses them, the blue path goes around."
+#| fig-alt: "Two panels. Left: a two-link arm drawn from a base at the origin pointing right and slightly down (start) and pointing up and to the left (goal), with a grey disc to the upper right of the base. An orange curve traced by the hand arcs around the right of the disc and over the top, and an orange arm drawn partway along it, pointing up and to the right, touches the edge of the disc. A blue hand path swings the other way, around the left and below the base. Right: a square plot of shoulder angle against elbow angle from -180 to 180 degrees. The grey forbidden region is a vertical bar across the full height at shoulder angles of about 32 to 46 degrees, with a lobe reaching to about -18 degrees at positive elbow angles and another reaching to about 94 degrees at negative elbow angles. An orange straight line from the start point to the goal point crosses the region; a blue path goes around it."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 3.6), gridspec_kw={"width_ratios": [1, 1]})
+circle = plt.Circle(w2.OBSTACLE, w2.OBSTACLE_R, color=style.MUTED, alpha=0.5, lw=0)
+a1.add_patch(circle)
+for q, col, alpha in ((Q_A, style.INK, 0.4), (Q_B, style.INK, 1.0), (straight[np.argmax(hit)], ORANGE, 0.8)):
+    elbow, hand = w2.fk(q)
+    a1.plot([0, elbow[0], hand[0]], [0, elbow[1], hand[1]], color=col, lw=2.5,
+            alpha=alpha, marker="o", ms=4)
+a1.plot(*w2.fk(straight)[1].T, color=ORANGE, lw=1.6, label="straight in joint space")
+a1.plot(*w2.fk(path)[1].T, color=BLUE, lw=1.6, label="planned detour")
+a1.set_aspect("equal"); a1.set_xlim(-1.9, 1.9); a1.set_ylim(-1.9, 1.9)
+a1.set_xlabel("x"); a1.set_ylabel("y"); a1.set_title("workspace", fontsize=10)
+fig.legend(*a1.get_legend_handles_labels(), fontsize=8, loc="lower center", ncol=2, frameon=False)
+a2.imshow(BLOCKED.T, origin="lower", extent=[-180, 180, -180, 180], cmap="Greys",
+          vmin=0, vmax=2.5, interpolation="nearest")
+a2.plot(deg(straight[:, 0]), deg(straight[:, 1]), color=ORANGE, lw=1.6)
+pw = deg(w2.wrap(path))
+breaks = np.flatnonzero(np.abs(np.diff(pw, axis=0)).max(axis=1) > 180) + 1
+for seg in np.split(pw, breaks):                 # don't draw across the seam
+    a2.plot(seg[:, 0], seg[:, 1], color=BLUE, lw=1.6)
+a2.plot(*deg(Q_A), "o", color=style.INK, ms=5); a2.plot(*deg(Q_B), "s", color=style.INK, ms=5)
+a2.set_xlim(-180, 180); a2.set_ylim(-180, 180)
+a2.set_xticks([-180, -90, 0, 90, 180]); a2.set_yticks([-180, -90, 0, 90, 180])
+a2.set_xlabel(r"shoulder $q_1$ (deg)"); a2.set_ylabel(r"elbow $q_2$ (deg)")
+a2.set_title("configuration space", fontsize=10)
+plt.tight_layout(rect=(0, 0.07, 1, 1)); plt.show()
+```
+
+### Forward is easy, inverse is a search {#kinematics}
+
+**Forward kinematics** answers: given all joint angles, where is the hand? Multiply the transforms along the chain and read off the answer; there is exactly one [▶ 19:24](https://youtu.be/5-Bb84eTTqQ?t=1164). **Inverse kinematics** asks the reverse, which is the question a policy usually poses: "put the hand *there*; which joint angles do that?" [▶ 19:55](https://youtu.be/5-Bb84eTTqQ?t=1195). The answer can be two configurations (elbow bent one way or the other), infinitely many (a redundant arm), or none (out of reach). For complex robots there is often no closed-form solution, so IK is solved as an optimization: measure the distance between the hand and the target, and nudge the joints downhill [▶ 20:58](https://youtu.be/5-Bb84eTTqQ?t=1258). The nudge uses the **Jacobian**, which says how much the hand moves when each joint turns a little [▶ 21:30](https://youtu.be/5-Bb84eTTqQ?t=1290). Which solution the descent finds depends on where it starts (@fig-ik).
+
+### Smooth moves and a controller that keeps correcting {#control}
+
+Knowing the goal angles is not enough: the robot cannot teleport. The simplest way to get there is **linear interpolation (LERP)**: split the move into evenly spaced waypoints [▶ 23:03](https://youtu.be/5-Bb84eTTqQ?t=1383). The trouble is at the ends. The joint jumps from rest to full speed in one step and stops just as abruptly, which demands huge accelerations and shakes the hardware [▶ 24:07](https://youtu.be/5-Bb84eTTqQ?t=1447). **Quintic time scaling** replaces the straight line with a fifth-degree polynomial whose velocity and acceleration are zero at both ends [▶ 24:38](https://youtu.be/5-Bb84eTTqQ?t=1478) (@eq-quintic, @fig-profiles).
+
+Even perfect waypoints are not followed perfectly: gravity, friction and imperfect motors push the joint off course. A **PID controller** corrects continuously [▶ 26:10](https://youtu.be/5-Bb84eTTqQ?t=1570). The lecture's picture: the proportional term is a spring that pulls harder the further off you are; the integral term is "anti-gravity", building up to cancel a steady load; the derivative term is a damper that stops overshoot [▶ 27:12](https://youtu.be/5-Bb84eTTqQ?t=1632). In this page's toy, a single joint lifts a rod against gravity. With only the spring, it swings back and forth through the whole move and the hold after it, over a range of `{python} f"{deg(S['P']['hold_swing']):.0f}"`° in the last half second, and the swings are still growing. Adding the damper stops the swinging but leaves the rod hanging `{python} f"{deg(S['PD']['hold_mean']):.1f}"`° low, and the integral term removes that sag (@fig-pid). With LERP waypoints instead of quintic ones, the controller's largest change of torque between two physics steps is `{python} f"{du_ratio:.1f}"` times larger.
+
+### From control to decisions {#decisions}
+
+Control makes a robot follow a path. Real tasks need more: a sequence of decisions toward a long-term goal in a world that is noisy and only partly known [▶ 28:14](https://youtu.be/5-Bb84eTTqQ?t=1694). The lecture's example is a two-armed robot cutting (toy) sushi, a precise, long task with 14 degrees of freedom to command many times a second, while low-level controllers make the motors follow [▶ 28:45](https://youtu.be/5-Bb84eTTqQ?t=1725).
+
+The decision rule is the **policy**. It looks like an image classifier: input in, scores over outputs out. A camera image of a snowy road goes in; probabilities for "left", "straight", "right" come out [▶ 30:51](https://youtu.be/5-Bb84eTTqQ?t=1851). The difference is consequential: a classifier that mistakes a cat for a dog leaves the cat unchanged, but a policy that turns left into a ditch changes everything it will see next [▶ 32:23](https://youtu.be/5-Bb84eTTqQ?t=1943). In general a policy outputs a distribution (a **stochastic** policy); a **deterministic** one puts all its probability on one action [▶ 32:55](https://youtu.be/5-Bb84eTTqQ?t=1975).
+
+What the policy sees is an **observation**, not the **state**. The state is the full truth (the car's exact position, speed, heading); the observation is what the camera makes of it, which changes with snow or darkness while the state does not [▶ 33:25](https://youtu.be/5-Bb84eTTqQ?t=2005). The state has the **Markov property**: once you know it, the past adds nothing to predicting the future [▶ 34:59](https://youtu.be/5-Bb84eTTqQ?t=2099). Observations usually do not.
+
+### The MDP: one language for every robot {#mdp-intuition}
+
+A **Markov decision process** packages this into four parts: the states, the actions, the transition probabilities, and a reward function [▶ 37:03](https://youtu.be/5-Bb84eTTqQ?t=2223). Its value is generality: the same learning algorithms then apply to a humanoid with 27 degrees of freedom and to chess [▶ 37:34](https://youtu.be/5-Bb84eTTqQ?t=2254).
+
+- **States and actions** can be discrete (squares on a chessboard, arrow keys) or continuous (joint angles, a VR controller's motion) [▶ 38:40](https://youtu.be/5-Bb84eTTqQ?t=2320). In a continuous space you cannot keep a table entry for every state, so you need function approximators such as neural networks.
+- **Transitions** are deterministic only in an ideal world. Turn the steering wheel 5° on ice and the car may not follow the arc you expect, so robotics models the next state as a random draw [▶ 39:11](https://youtu.be/5-Bb84eTTqQ?t=2351).
+- **Rewards** can be **sparse**, such as 1 for lifting the object and 0 otherwise, or **dense**, such as minus the hand's distance to the object. The lecturer's pick-and-place agent failed with the sparse reward and learned with the dense one [▶ 40:45](https://youtu.be/5-Bb84eTTqQ?t=2445). This page's random-search toy shows why: with a sparse reward, almost every trial scores 0, and comparing zeros teaches nothing (@fig-random-search).
+
+A run of the policy is a **trajectory**: state, action, state, action, and so on. Its probability multiplies the chance of the start state, the policy's choice at each step, and the world's response [▶ 42:20](https://youtu.be/5-Bb84eTTqQ?t=2540). Tasks have a **horizon**: a fixed number of steps, or until the episode ends [▶ 42:50](https://youtu.be/5-Bb84eTTqQ?t=2570). Over an endless horizon, rewards are **discounted** by a factor $\gamma$ per step so the total stays finite and nearer rewards count more [▶ 44:23](https://youtu.be/5-Bb84eTTqQ?t=2663). The goal is then the policy with the highest expected discounted return [▶ 44:54](https://youtu.be/5-Bb84eTTqQ?t=2694).
+
+The discount is not a technicality: it changes which behavior is best. In the corridor toy below, a robot can walk 2 cells left to a reward of 1 or 6 cells right to a reward of 10. Going right is better only when $\gamma$ is above `{python} f"{FLIP0:.3f}"`. If each move slips the wrong way with probability 0.2, the far reward takes longer to reach on average, and the threshold rises to `{python} f"{FLIPS[2]:.3f}"` (@eq-flip).
+
+## Key concepts & formulae
+
+The lecture writes $s_t$ for the state, $o_t$ for the observation and $a_t$ for the action at step $t$, following dynamic programming; optimal control writes $x_t$ and $u_t$, and a cost $c(x, u) = -r(s, a)$ [▶ 36:03](https://youtu.be/5-Bb84eTTqQ?t=2163). The ADM book writes the transition model as $T(s' \mid s, a)$ where the lecture writes $P(s_{t+1} \mid s_t, a_t)$, and the value of a policy as $U^\pi$.
+
+### Poses and frames
+
+::: {.key-equation data-name="Homogeneous transform in the plane, SE(2)"}
+$$
+\begin{gathered}
+T = \begin{bmatrix} \cos\theta & -\sin\theta & t_x \\ \sin\theta & \cos\theta & t_y \\ 0 & 0 & 1 \end{bmatrix} \\[4pt]
+\begin{bmatrix} \mathbf{p}^{\text{base}} \\ 1 \end{bmatrix} = T_{\text{base}\leftarrow\text{sensor}} \begin{bmatrix} \mathbf{p}^{\text{sensor}} \\ 1 \end{bmatrix}
+\end{gathered}
+$$ {#eq-homogeneous}
+:::
+
+**In words.** One matrix stores a rotation by $\theta$ and a shift by $(t_x, t_y)$. Multiplying a point, written with an extra 1, by the matrix that relates two frames gives the same point's coordinates in the other frame.
+
+**Term by term.**
+
+- The top-left $2 \times 2$ block is the rotation $R$; the last column is the translation $\mathbf{t}$.
+- The extra 1 lets one matrix product apply both the rotation and the shift.
+- $T_{\text{base}\leftarrow\text{sensor}}$: the sensor's pose in the base frame. Chains compose by multiplication: $T_{\text{world}\leftarrow\text{sensor}} = T_{\text{world}\leftarrow\text{base}}\, T_{\text{base}\leftarrow\text{sensor}}$.
+- In 3D, SE(3) uses a $4 \times 4$ matrix with a $3 \times 3$ rotation, 6 degrees of freedom in all.
+- A valid rotation satisfies $R^\top R = I$ and $\det R = 1$: it keeps lengths and does not mirror.
+
+### Degrees of freedom
+
+::: {.key-equation data-name="Grübler–Kutzbach formula"}
+$$
+\text{dof} = m\,(N - 1 - J) + \sum_{i=1}^{J} f_i
+$$ {#eq-grubler}
+:::
+
+**In words.** Start with the freedom every moving link would have on its own, then take away what each joint forbids.
+
+**Term by term.**
+
+- $m$: freedoms of one rigid body, 3 in the plane and 6 in space.
+- $N$: number of links, counting the fixed base (which has no freedom, hence $N - 1$).
+- $J$: number of joints; joint $i$ allows $f_i$ freedoms (1 for revolute or prismatic, 3 for spherical) and so removes $m - f_i$.
+- The lecture writes it as $m(N - 1) - \sum_i c_i$ with $c_i = m - f_i$ constraints per joint, which is the same thing.
+
+**Quick check.** The two-joint arm on this page: $m = 3$, $N = 3$ (base and two links), $J = 2$, $f_i = 1$, so $\text{dof} = 3 \cdot 0 + 2 = 2$. A 7-joint arm such as the Franka: $m = 6$, $N = 8$, $J = 7$, so $\text{dof} = 0 + 7 = 7$, one more than a 6-number hand pose needs.
+
+### Kinematics
+
+::: {.key-equation data-name="Forward and inverse kinematics"}
+$$
+x = f(q), \qquad q \in f^{-1}(x) = \{\, q : f(q) = x \,\}
+$$ {#eq-kinematics}
+:::
+
+**In words.** Forward kinematics is a function from joint angles to hand pose. Its inverse is a *set*: all joint configurations that put the hand at $x$, which may hold several, infinitely many, or no elements.
+
+**Term by term.**
+
+- $q$: the joint configuration, a point in configuration space.
+- $x$: the hand's pose (here just its position in the plane).
+- $f$: deterministic but not one-to-one, so it has no ordinary inverse.
+
+::: {.key-equation data-name="Inverse kinematics by gradient descent"}
+$$
+\begin{aligned}
+L(q) &= \tfrac12 \lVert f(q) - x^{\text{target}} \rVert^2 \\
+q &\leftarrow q - \alpha\, J(q)^\top \big(f(q) - x^{\text{target}}\big)
+\end{aligned}
+$$ {#eq-ik-step}
+:::
+
+**In words.** Measure how far the hand is from the target, and move every joint a little in the direction that shrinks that distance fastest.
+
+**Term by term.**
+
+- $J(q) = \partial f / \partial q$: the Jacobian. Column $j$ is the hand's velocity per unit speed of joint $j$.
+- $f(q) - x^{\text{target}}$: the hand's error vector $e$.
+- $J^\top e$: the gradient of $L$ by the chain rule; each joint gets the share of the error it can fix.
+- $\alpha$: the step size. Too large and the joints overshoot; too small and convergence is slow.
+
+**Why it holds.** $L = \frac12 e^\top e$ with $e = f(q) - x^{\text{target}}$, so $\partial L / \partial q = (\partial e / \partial q)^\top e = J^\top e$. Descent along $-J^\top e$ lowers $L$ for a small enough $\alpha$. It finds *a* solution, the one in whose basin it starts.
+
+**Quick check.** For the target $(0.3, 1.4)$ the exact solutions are $(q_1, q_2) =$ (`{python} f"{deg(SOLS[0, 0]):.1f}"`°, `{python} f"{deg(SOLS[0, 1]):.1f}"`°) and (`{python} f"{deg(SOLS[1, 0]):.1f}"`°, `{python} f"{deg(SOLS[1, 1]):.1f}"`°). Gradient descent with $\alpha = 0.3$ started from (0°, `{python} f"{deg(1.0):.0f}"`°) reaches the first, within 1 mm after `{python} ik_mm[0]` steps; started from (`{python} f"{deg(1.5):.0f}"`°, `{python} f"{deg(-1.0):.0f}"`°) it reaches the second, after `{python} ik_mm[1]` steps.
+
+```{python}
+#| label: fig-ik
+#| fig-cap: "Inverse kinematics by Jacobian-transpose steps, from two starting configurations. Left: the two arms the descent ends at, one per start, both with the hand on the target (cross). Right: the hand's distance to the target at each step (log scale). Each run converges to the solution nearest its start."
+#| fig-alt: "Two panels. Left: two two-link arms from the same base at the origin with their hands on a cross at (0.3, 1.4); the blue arm bends its elbow one way and the orange arm the other way. Right: two curves of hand error against iteration on a logarithmic y-axis from about 1 down to below 0.000001, falling steadily over 200 iterations; the blue curve starts higher and drops faster at first."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 3.0))
+for p, col, lab in zip(ik_paths, (BLUE, ORANGE), ("start A", "start B")):
+    elbow, hand = w2.fk(p[-1])
+    a1.plot([0, elbow[0], hand[0]], [0, elbow[1], hand[1]], color=col, lw=2.5, marker="o", ms=4,
+            label=f"{lab}: ({deg(w2.wrap(p[-1][0])):.0f}, {deg(p[-1][1]):.0f}) deg")
+a1.plot(*IK_TARGET, "x", color=style.INK, ms=9, mew=2)
+a1.set_aspect("equal"); a1.set_xlim(-1.0, 1.4); a1.set_ylim(-0.2, 1.7)
+a1.set_xlabel("x"); a1.set_ylabel("y"); a1.legend(fontsize=7, loc="lower right")
+for e, col, lab in zip(ik_err, (BLUE, ORANGE), ("start A", "start B")):
+    a2.semilogy(e, color=col, label=lab)
+a2.axhline(1e-3, color=style.MUTED, ls="--", lw=1)
+a2.text(195, 1.4e-3, "1 mm", ha="right", fontsize=8, color=style.INK_SECONDARY)
+a2.set_xlabel("iteration"); a2.set_ylabel("hand error"); a2.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+```
+
+### Trajectories
+
+::: {.key-equation data-name="Quintic time scaling"}
+$$
+\begin{aligned}
+q(s) &= q^{\text{start}} + \big(q^{\text{target}} - q^{\text{start}}\big)\, f(s) \\
+f(s) &= 10 s^3 - 15 s^4 + 6 s^5
+\end{aligned}
+$$ {#eq-quintic}
+:::
+
+**In words.** Every joint moves along the straight line from start to target in angle, but its progress along that line follows a smooth S-curve in time instead of a constant rate.
+
+**Term by term.**
+
+- $s = t / T_{\text{move}} \in [0, 1]$: the share of the move's time used so far.
+- $f(s)$: the share of the distance covered. LERP is $f(s) = s$.
+- The six coefficients of a fifth-degree polynomial are fixed by six conditions: $f(0) = 0$, $f(1) = 1$, and zero velocity and zero acceleration at both ends.
+
+**Why it holds.** $f'(s) = 30 s^2 - 60 s^3 + 30 s^4 = 30 s^2 (1 - s)^2$, which is 0 at both ends, and $f''(s) = 60 s - 180 s^2 + 120 s^3 = 60 s (1 - s)(1 - 2s)$, also 0 at both ends. The price: the peak speed, at $s = \frac12$, is $f'(\frac12) = 1.875$ times LERP's constant speed.
+
+```{python}
+#| label: fig-profiles
+#| fig-cap: "The reference for one 90° joint move in 1 s, then a hold. LERP (orange) reaches full speed instantly and stops instantly, so its acceleration is a spike at each end (drawn here as the finite-difference acceleration at 1 ms steps, clipped). The quintic scaling (blue) starts and ends at rest, with a peak speed 1.875 times higher."
+#| fig-alt: "Three stacked panels sharing a time axis from -0.1 to 1.2 seconds. Top, angle: the orange line rises straight from -30 to 60 degrees; the blue S-curve rises slowly, then fast, then slowly. Middle, velocity: orange is a flat block at 90 degrees per second; blue is a smooth hump peaking near 169. Bottom, acceleration: orange is zero except for tall spikes at 0 and 1 second, clipped at the panel edge; blue is a smooth wave, positive then negative."
+tt = np.arange(-0.1, 1.2, w2.SIM_DT)            # start before the move, at rest
+fig, axes = plt.subplots(3, 1, figsize=(6.4, 4.6), sharex=True)
+for sc, col, lab in ((w2.lerp, ORANGE, "LERP"), (w2.quintic, BLUE, "quintic")):
+    q = deg(w2.reference(tt, sc))
+    v = np.gradient(q, tt); acc = np.gradient(v, tt)
+    axes[0].plot(tt, q, color=col, label=lab)
+    axes[1].plot(tt, v, color=col)
+    axes[2].plot(tt, np.clip(acc, -1500, 1500), color=col)
+axes[0].set_ylabel("angle (deg)"); axes[1].set_ylabel("deg/s"); axes[2].set_ylabel(r"deg/s$^2$")
+axes[2].set_ylim(-1600, 1600); axes[2].set_xlabel("time (s)")
+axes[0].legend(fontsize=8, loc="lower right")
+plt.tight_layout(); plt.show()
+```
+
+### Feedback control
+
+::: {.key-equation .famous data-name="PID control (discrete form)"}
+$$
+\begin{aligned}
+e_k &= q^{\text{desired}}_k - q^{\text{measured}}_k \\
+u_k &= K_p\, e_k + K_i \sum_{j=0}^{k} e_j\, \Delta t + K_d\, \frac{e_k - e_{k-1}}{\Delta t}
+\end{aligned}
+$$ {#eq-pid}
+:::
+
+**In words.** Every control step, measure how far the joint is from where it should be, and command a torque made of three parts: one proportional to the error, one proportional to the error accumulated so far, and one proportional to how fast the error is changing.
+
+**Term by term.**
+
+- $e_k$: tracking error at control step $k$.
+- $K_p e_k$: the spring. Alone it pulls the joint to the target and lets it swing past.
+- $K_i \sum e_j \Delta t$: the anti-gravity term. As long as any error persists, it keeps growing, until it supplies the steady torque the load needs.
+- $K_d (e_k - e_{k-1})/\Delta t$: the damper. It opposes changes of the error, which stops oscillation.
+- $\Delta t = 1/f$: the control period. The damper reacts only once per period; the lecture's slide warns that if $f$ is too low, it reacts too late.
+
+**Why P alone sags under gravity.** Once the joint stops, the motor must hold the rod up: $K_p e = m g \frac{l}{2} \cos(q^{\text{target}} - e)$, the gravity torque at the angle actually reached. In the toy ($m =$ `{python} f"{w2.MASS:.0f}"` kg, $l =$ `{python} f"{w2.LENGTH:.1f}"` m, $K_p =$ `{python} f"{w2.GAINS['P'][0]:.0f}"`, target 60°), ignoring the $-e$ inside the cosine gives $e \approx$ `{python} f"{sag_guess:.4f}"` rad; solving it exactly gives `{python} f"{sag:.4f}"` rad (`{python} f"{deg(sag):.2f}"`°), and the PD controller in the simulation settles at `{python} f"{S['PD']['hold_mean']:.4f}"` rad. The integral term brings that to `{python} f"{S['PID']['hold_mean']:+.4f}"` rad.
+
+```{python}
+#| label: fig-pid
+#| fig-cap: "One joint lifting a rod from -30° to 60° in 1 s against gravity, controlled at 100 Hz. Left: tracking error for P, PD and PID control on the quintic reference. P swings for the whole 2 s, with growing swings; PD settles with a steady sag; PID removes it. Right: the PID controller's torque with LERP (orange) and quintic (blue) waypoints; LERP's sudden start and stop show up as torque jumps."
+#| fig-alt: "Two panels against time from 0 to 2 seconds. Left: three error curves in degrees. The P curve oscillates widely, between about -8 and +14 degrees, for the whole 2 seconds. The PD curve rises during the move and then flattens at about 2.5 degrees. The PID curve rises a little during the move and returns to zero. Right: two torque curves in newton-metres. The orange LERP curve jumps up at time 0 and drops sharply at 1 second; the blue quintic curve rises and falls smoothly. Both end near the same holding torque."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 2.9))
+for k, col, ls in (("P", style.MUTED, "-"), ("PD", ORANGE, "-"), ("PID", BLUE, "-")):
+    r = RUNS[k]
+    a1.plot(r["t"], deg(r["ref"] - r["q"]), color=col, lw=1.4, ls=ls, label=k)
+a1.axhline(0, color=style.INK, lw=0.6)
+a1.set_xlabel("time (s)"); a1.set_ylabel("error (deg)"); a1.legend(fontsize=8)
+for r, col, lab in ((RUN_LERP, ORANGE, "LERP"), (RUNS["PID"], BLUE, "quintic")):
+    a2.plot(r["t"], r["u"], color=col, lw=1.4, label=lab)
+a2.set_xlabel("time (s)"); a2.set_ylabel("torque (N m)"); a2.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+```
+
+### Policies and the Markov property
+
+::: {.key-equation data-name="Policy and Markov property"}
+$$
+\begin{aligned}
+a_t &\sim \pi_\theta(a_t \mid o_t) \\
+p(s_{t+1} \mid s_t, a_t, s_{t-1}, a_{t-1}, \dots) &= p(s_{t+1} \mid s_t, a_t)
+\end{aligned}
+$$ {#eq-markov}
+:::
+
+**In words.** The policy draws an action from a distribution that depends on what it observes now. The world's next state depends on the current state and action only; how the robot got there adds nothing.
+
+**Term by term.**
+
+- $\pi_\theta$: the policy, a network with weights $\theta$. Fully observable: it conditions on $s_t$; partially observable (the usual case): on $o_t$.
+- $p(s_{t+1} \mid s_t, a_t)$: the transition function, or dynamics.
+- The Markov property holds for states by definition: a state is a description complete enough that it holds. Observations, such as a camera image of a snowy road, usually lack something (speed, what is hidden), so policies often look at a short history.
+
+```{dot}
+//| label: fig-mdp-graph
+//| fig-width: 5.3
+//| fig-height: 2.4
+//| fig-cap: "The graphical model behind the lecture's notation. States produce observations through a lossy mapping; the policy turns an observation into an action; the state and action together determine the next state. Given s2, s1 tells you nothing more about s3."
+//| fig-alt: "Diagram with three columns for time steps 1, 2, 3. In each column a state node s connects downwards to an observation node o, labelled 'lossy'. Each observation connects to an action node a labelled 'policy'. Each state and its action both point to the next column's state, labelled 'dynamics'."
+digraph mdp {
+  rankdir=LR; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.4; ranksep=0.55;
+  node [shape=circle, style=filled, fillcolor="#f0efec", color="#52514e", fontname="Helvetica", fontsize=11, width=0.45, fixedsize=true];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  s1 [label="s1"]; s2 [label="s2"]; s3 [label="s3"];
+  o1 [label="o1", fillcolor="#cde2fb", color="#2a78d6"]; o2 [label="o2", fillcolor="#cde2fb", color="#2a78d6"];
+  a1 [label="a1", fillcolor="#fbe1d6", color="#eb6834"]; a2 [label="a2", fillcolor="#fbe1d6", color="#eb6834"];
+  { rank=same; s1; o1; a1; }
+  { rank=same; s2; o2; a2; }
+  s1 -> o1 [label=" lossy"]; o1 -> a1 [label=" policy"];
+  s2 -> o2 [label=" lossy"]; o2 -> a2 [label=" policy"];
+  s1 -> s2 [label=" dynamics"]; a1 -> s2;
+  s2 -> s3 [label=" dynamics"]; a2 -> s3;
+}
+```
+
+### Markov decision processes
+
+::: {.key-equation data-name="Markov decision process"}
+$$
+\begin{aligned}
+\mathcal{M} &= (\mathcal{S}, \mathcal{A}, P, R) \\
+s_{t+1} &\sim P(\cdot \mid s_t, a_t), \qquad r_t = R(s_t, a_t, s_{t+1})
+\end{aligned}
+$$ {#eq-mdp}
+:::
+
+**In words.** A problem is an MDP once you say what the states are, what the actions are, how the world responds to an action (as probabilities), and what reward each step earns.
+
+**Term by term.**
+
+- $\mathcal{S}$, $\mathcal{A}$: state and action spaces, discrete or continuous.
+- $P$: transition probabilities; a deterministic world is the special case $s_{t+1} = f(s_t, a_t)$.
+- $R$: the reward function, from states and actions to a number.
+
+::: {.key-equation data-name="Probability of a trajectory"}
+$$
+p_\pi(\tau) = p(s_0) \prod_{t=0}^{T-1} \pi(a_t \mid s_t)\, P(s_{t+1} \mid s_t, a_t)
+$$ {#eq-traj-prob}
+:::
+
+**In words.** The chance of one particular run is the chance of its start state, times the chance the policy chose each action, times the chance the world answered each action the way it did.
+
+**Term by term.**
+
+- $\tau = (s_0, a_0, s_1, a_1, \dots, s_T)$: a trajectory.
+- $p(s_0)$: the initial-state distribution.
+- The product holds because of the Markov property: each factor needs only the current state and action.
+
+::: {.key-equation .famous data-name="The reinforcement learning objective"}
+$$
+\begin{aligned}
+G(\tau) &= \sum_{t \ge 0} \gamma^t r_t, \qquad 0 \le \gamma < 1 \\
+J(\pi) &= \mathbb{E}_{\tau \sim p_\pi}\big[\, G(\tau) \,\big] \\
+\pi^\star &= \arg\max_\pi J(\pi)
+\end{aligned}
+$$ {#eq-objective}
+:::
+
+**In words.** Score a run by adding up its rewards, each shrunk by $\gamma$ for every step of waiting. Score a policy by the average run score over everything that can happen. The best policy has the highest score.
+
+**Term by term.**
+
+- $G(\tau)$: the (discounted) return of one trajectory. For a finite horizon $T$ the sum stops at $T - 1$ and $\gamma$ may be 1.
+- $\gamma$: the discount factor. With $\gamma < 1$ and bounded rewards the sum is finite; $1/(1-\gamma)$ is a rough "effective horizon" (10 steps for $\gamma = 0.9$).
+- $J(\pi)$: the expected return, an average over trajectories weighted by @eq-traj-prob.
+- $\pi^\star$: an optimal policy.
+
+**Numeric check.** In the corridor toy with slip probability 0.1 and $\gamma = 0.9$, the policy "always go right" has $J =$ `{python} f"{J_full:.4f}"`. Averaging over `{python} f"{len(mc):,}"` simulated episodes gives `{python} f"{mc.mean():.4f}"` ± `{python} f"{mc_se:.4f}"`. [Worked example 3](#ex-trajectories) adds up the trajectories one by one.
+
+::: {.key-equation data-name="When the far reward wins"}
+$$
+\begin{aligned}
+& \gamma^{d_{\text{near}}-1} R_{\text{near}} < \gamma^{d_{\text{far}}-1} R_{\text{far}} \\
+\iff\; & \gamma > \gamma^\dagger = \Big(\frac{R_{\text{near}}}{R_{\text{far}}}\Big)^{1/(d_{\text{far}} - d_{\text{near}})}
+\end{aligned}
+$$ {#eq-flip}
+:::
+
+**In words.** Without slips, the near reward arrives after $d_{\text{near}}$ steps and the far one after $d_{\text{far}}$. Going far pays off when the discount over the extra steps shrinks the big reward less than the ratio between the two rewards.
+
+**Term by term.**
+
+- $d_{\text{near}} = 2$, $d_{\text{far}} = 6$: steps to each end of the corridor; the reward of step $d$ is discounted by $\gamma^{d-1}$.
+- $R_{\text{near}} = 1$, $R_{\text{far}} = 10$: the two rewards.
+- $\gamma^\dagger$: the switch point, here $0.1^{1/4} =$ `{python} f"{FLIP0:.4f}"`.
+
+**With slips** there is no closed form, so the toy finds the switch point by bisection on $J(\text{right}) - J(\text{left})$: `{python} f"{FLIPS[0]:.3f}"`, `{python} f"{FLIPS[1]:.3f}"`, `{python} f"{FLIPS[2]:.3f}"` and `{python} f"{FLIPS[3]:.3f}"` for slip probabilities 0, 0.1, 0.2 and 0.3. Slips delay the far reward more than the near one, so a more patient agent is needed to prefer it.
+
+### Random search: learning from returns alone
+
+::: {.key-equation data-name="Basic random search update"}
+$$
+\theta \leftarrow \theta + \frac{\alpha}{N} \sum_{k=1}^{N} \big[\, r(\pi_{\theta + \nu\delta_k}) - r(\pi_{\theta - \nu\delta_k}) \,\big]\, \delta_k
+$$ {#eq-brs}
+:::
+
+**In words.** Try the policy with its weights nudged a little in a random direction and in the opposite direction; if one side scores better, step that way. Average over several random directions.
+
+**Term by term.**
+
+- $\delta_k$: a random direction in weight space, with standard normal entries; $N$ of them per update.
+- $\nu$: how far to nudge; $\alpha$: the step size.
+- $r(\pi)$: the return of one episode with policy $\pi$.
+- The bracket divided by $2\nu$ estimates the slope of the return along $\delta_k$ (a finite difference), so the sum estimates a gradient of a smoothed return (Mania, Guy & Recht 2018, Sec. 3).
+
+**What a sparse reward does to it.** If both nudged policies fail, the bracket is $0 - 0$ and direction $k$ contributes nothing. In the toy, with the robot starting still, only `{python} f"{info10['sparse']:.1f}"`% of the sparse-reward pairs in the first 10 iterations differ at all, against `{python} f"{info10['dense']:.0f}"`% with the dense reward.
+
+## Worked examples
+
+### Example 1: where is the pedestrian? {#ex-frames}
+
+```{python}
+#| include: false
+T_bc = w2.homogeneous(np.deg2rad(20.0), 1.5, 0.3)     # camera on the car
+T_wb = w2.homogeneous(np.deg2rad(90.0), 10.0, 5.0)    # car in the world
+p_cam = np.array([6.0, -1.0, 1.0])
+p_base = T_bc @ p_cam
+p_world = T_wb @ p_base
+T_wc = T_wb @ T_bc
+assert np.allclose(T_wc @ p_cam, p_world)
+
+def mat(T):
+    rows = [" & ".join(f"{v:.3f}" for v in r) for r in T]
+    return r"\begin{bmatrix} " + r" \\ ".join(rows) + r" \end{bmatrix}"
+```
+
+A camera sits on a car's roof, 1.5 m ahead of the base frame's origin and 0.3 m to the left, turned 20° to the left. It sees a pedestrian 6 m ahead of it and 1 m to its right: $\mathbf{p}^{\text{cam}} = (6, -1)$. The car itself is at $(10, 5)$ in the world, facing along the world's $y$-axis (heading 90°).
+
+```{python}
+#| output: asis
+print(f"$$T_{{\\text{{base}}\\leftarrow\\text{{cam}}}} = {mat(T_bc)}$$\n")
+print(f"$$T_{{\\text{{world}}\\leftarrow\\text{{base}}}} = {mat(T_wb)}$$\n")
+```
+
+| Step | Result |
+|:---|:---|
+| Pedestrian in the camera frame | (`{python} f"{p_cam[0]:.2f}"`, `{python} f"{p_cam[1]:.2f}"`) |
+| times $T_{\text{base}\leftarrow\text{cam}}$: in the car's base frame | (`{python} f"{p_base[0]:.2f}"`, `{python} f"{p_base[1]:.2f}"`) |
+| times $T_{\text{world}\leftarrow\text{base}}$: in the world | (`{python} f"{p_world[0]:.2f}"`, `{python} f"{p_world[1]:.2f}"`) |
+
+In the base frame the pedestrian is `{python} f"{p_base[0]:.2f}"` m ahead and `{python} f"{p_base[1]:+.2f}"` m to the side: the camera's 20° turn moves the point to the left, and its mounting offsets shift it. Multiplying the two matrices first, $T_{\text{world}\leftarrow\text{cam}} = T_{\text{world}\leftarrow\text{base}} T_{\text{base}\leftarrow\text{cam}}$, gives the same world point in one step; that product is what a robot's software stores for every sensor.
+
+### Example 2: inverse kinematics, step by step {#ex-ik}
+
+Jacobian-transpose descent (@eq-ik-step, $\alpha = 0.3$) on the target $(0.3, 1.4)$ from start A, $q = (0°, 57°)$:
+
+```{python}
+#| output: asis
+p, e = ik_paths[0], ik_err[0]
+print("| step | $q_1$ (deg) | $q_2$ (deg) | hand $x$ | hand $y$ | error |")
+print("|---:|---:|---:|---:|---:|---:|")
+for k in (0, 1, 2, 3, 5, 10, 20, 50, 100, 200):
+    hx, hy = w2.fk(p[k])[1]
+    print(f"| {k} | {deg(p[k][0]):.1f} | {deg(p[k][1]):.1f} | {hx:.3f} | {hy:.3f} | {e[k]:.2e} |")
+```
+
+The first step is the largest: the error is big, so $J^\top e$ is big, and the shoulder swings up by `{python} f"{deg(ik_paths[0][1][0] - ik_paths[0][0][0]):.0f}"`°. As the hand closes in, the error and so the step shrink, and progress slows: the last millimetres take most of the iterations. That slow finish is why practical solvers use better steps, such as damped least squares or Newton-type updates.
+
+### Example 3: adding up trajectories {#ex-trajectories}
+
+The corridor has cells 0 to 8; the robot starts in cell 2, entering cell 0 pays 1 and entering cell 8 pays 10, and either ends the episode. The policy always chooses "right"; each move slips left with probability `{python} SLIP`. With $\gamma = 0.9$, the most likely trajectories (up to `{python} H_ENUM` steps) are:
+
+```{python}
+#| output: asis
+print("| cells visited | $p_\\pi(\\tau)$ | return $G$ |")
+print("|:---|---:|---:|")
+for states, rewards, p in trajs[:6]:
+    print(f"| {' → '.join(map(str, states))} | {p:.4f} | {w2.discounted_return(rewards, GAMMA):.3f} |")
+```
+
+The top row is the clean run, $0.9^6$ likely, worth $0.9^5 \times 10$. One slip anywhere costs two steps, and two slips at the start send the robot to the near reward. Enumerating all `{python} f"{n_trajs:,}"` trajectories of up to `{python} H_ENUM` steps and summing $p_\pi(\tau)\, G(\tau)$ gives $J =$ `{python} f"{J_enum:.4f}"`; the trajectories still unfinished after `{python} H_ENUM` steps carry probability `{python} f"{unfinished:.1e}"`, and letting them run on raises $J$ to `{python} f"{J_full:.4f}"`. The same total comes out of a cheaper calculation that carries the probability of each cell forward step by step (`expected_return` in the code below), and from simulation (`{python} f"{mc.mean():.4f}"` ± `{python} f"{mc_se:.4f}"`). "Always go left" scores `{python} f"{J_left:.4f}"` here, so at $\gamma = 0.9$ the far reward is worth the walk.
+
+## Interactive
+
+### Configuration-space explorer
+
+```{python}
+#| include: false
+bl = BLOCKED.astype(int)
+write_json({
+    "n": w2.GRID, "l1": w2.L1, "l2": w2.L2,
+    "obstacle": [float(w2.OBSTACLE[0]), float(w2.OBSTACLE[1]), w2.OBSTACLE_R],
+    "blocked": ["".join(map(str, row)) for row in bl],          # [i][j]: q1 i, q2 j
+    "path": np.round(deg(w2.wrap(path[::2])), 1),
+    "straight": np.round(deg(straight[::5]), 1),
+    "start": np.round(deg(Q_A), 1), "goal": np.round(deg(Q_B), 1),
+    "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED,
+              "surface": style.SURFACE, "neutral": style.DIVERGING[1]},
+}, "data/w02-cspace.json")
+```
+
+Move the two joint sliders. Left: the arm and the obstacle. Right: the configuration space, where grey cells are the configurations that touch the obstacle and the dot is the arm's current configuration. Tick the boxes to overlay the straight joint-space line and the planned detour of @fig-cspace.
+
+```{ojs}
+cs = FileAttachment("data/w02-cspace.json").json()
+viewof q1 = Inputs.range([-180, 180], {step: 2, value: -20, label: "shoulder q1 (deg)"})
+viewof q2 = Inputs.range([-180, 180], {step: 2, value: 30, label: "elbow q2 (deg)"})
+viewof overlays = Inputs.checkbox(["straight line", "planned detour"], {label: "show"})
+```
+
+```{ojs}
+arm = {
+  const r = Math.PI / 180, a1 = q1 * r, a12 = (q1 + q2) * r;
+  const elbow = [cs.l1 * Math.cos(a1), cs.l1 * Math.sin(a1)];
+  const hand = [elbow[0] + cs.l2 * Math.cos(a12), elbow[1] + cs.l2 * Math.sin(a12)];
+  // Distance from the obstacle centre to a segment a-b.
+  const dist = (a, b) => {
+    const [cx, cy] = cs.obstacle, abx = b[0] - a[0], aby = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((cx - a[0]) * abx + (cy - a[1]) * aby) / (abx * abx + aby * aby)));
+    return Math.hypot(cx - a[0] - t * abx, cy - a[1] - t * aby);
+  };
+  const hit = dist([0, 0], elbow) < cs.obstacle[2] || dist(elbow, hand) < cs.obstacle[2];
+  return {elbow, hand, hit};
+}
+blockedCells = {
+  const cell = 360 / cs.n, out = [];
+  cs.blocked.forEach((row, i) => { for (let j = 0; j < cs.n; j++) if (row[j] === "1")
+    out.push({x1: -180 + i * cell, x2: -180 + (i + 1) * cell, y1: -180 + j * cell, y2: -180 + (j + 1) * cell}); });
+  return out;
+}
+```
+
+```{ojs}
+//| label: fig-cspace-explorer
+//| fig-cap: "The arm in the workspace (left) and its configuration in configuration space (right). The arm and the dot turn orange when the arm touches the obstacle."
+//| fig-alt: "Interactive figure with sliders for the shoulder and elbow angles and checkboxes for two overlays. Left: a two-link arm from the origin and a grey disc; the arm is drawn dark, or orange when it touches the disc. Right: a square of shoulder angle against elbow angle from -180 to 180 degrees with a grey band of forbidden configurations; a dot marks the current angles and is orange inside the band. Optional overlays draw an orange straight line and a blue detour between the start and goal configurations."
+{
+  const w = Math.min(width, 640), side = Math.max(220, Math.floor((w - 20) / 2)), wide = 2 * side + 20 <= w;
+  const col = arm.hit ? cs.style.orange : cs.style.ink;
+  const ws = Plot.plot({
+    width: side, height: side, marginLeft: 36, marginBottom: 32, style: {background: cs.style.surface},
+    x: {domain: [-1.9, 1.9], label: "x"}, y: {domain: [-1.9, 1.9], label: "y"},
+    marks: [
+      Plot.line(d3.range(61).map(k => [cs.obstacle[0] + cs.obstacle[2] * Math.cos(k * Math.PI / 30),
+                                        cs.obstacle[1] + cs.obstacle[2] * Math.sin(k * Math.PI / 30)]),
+                {fill: cs.style.neutral, stroke: cs.style.muted}),
+      Plot.line([[0, 0], arm.elbow, arm.hand], {stroke: col, strokeWidth: 4}),
+      Plot.dot([[0, 0], arm.elbow, arm.hand], {fill: col, r: 4})
+    ]
+  });
+  const marks = [Plot.rect(blockedCells, {x1: "x1", x2: "x2", y1: "y1", y2: "y2", fill: cs.style.muted, fillOpacity: 0.55})];
+  if (overlays.includes("straight line")) marks.push(Plot.line(cs.straight, {stroke: cs.style.orange, strokeWidth: 2}));
+  if (overlays.includes("planned detour")) marks.push(Plot.dot(cs.path, {fill: cs.style.blue, r: 1.6}));
+  marks.push(Plot.dot([[q1, q2]], {fill: col, stroke: "white", r: 6}));
+  const cfg = Plot.plot({
+    width: side, height: side, marginLeft: 44, marginBottom: 32, style: {background: cs.style.surface},
+    x: {domain: [-180, 180], label: "shoulder q1 (deg)", ticks: [-180, -90, 0, 90, 180]},
+    y: {domain: [-180, 180], label: "elbow q2 (deg)", ticks: [-180, -90, 0, 90, 180]},
+    marks
+  });
+  return html`<div style="display:flex; flex-wrap:wrap; gap:20px">${ws}${cfg}</div>`;
+}
+```
+
+```{ojs}
+md`Hand at (${arm.hand[0].toFixed(2)}, ${arm.hand[1].toFixed(2)}) · **${arm.hit ? "touching the obstacle" : "clear of the obstacle"}**`
+```
+
+**What to try.** Start at the defaults, the start configuration of @fig-cspace. Raise the shoulder angle with the elbow fixed at 30°: at a shoulder angle of `{python} f"{enter30:.0f}"`° the forearm reaches the disc and the dot enters the grey region. Now set the shoulder to 40° and move the elbow through its whole range: the arm touches the disc at every elbow angle, because the upper arm alone already passes through it. At a shoulder angle of 70°, only bending the elbow downwards (negative angles) brings the forearm into the disc. Tick both overlays: the straight line cuts through the grey region, the planned detour stays in white cells, and where the detour reaches an edge of the square it continues on the opposite edge, because the angles wrap around.
+
+### PID tuner
+
+```{python}
+#| include: false
+write_json({
+    "mass": w2.MASS, "length": w2.LENGTH, "inertia": w2.INERTIA, "g": w2.G,
+    "friction": w2.FRICTION, "dt": w2.SIM_DT, "q0": w2.Q_START, "q1": w2.Q_END,
+    "moveT": w2.MOVE_T, "total": w2.T_TOTAL, "hold": w2.HOLD,
+    "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED,
+              "surface": style.SURFACE},
+}, "data/w02-pid.json")
+```
+
+Set the gains, the control frequency, the waypoint scaling, and whether gravity acts. The simulation is the same as the toy's: a 1 kg, 0.5 m rod lifted from -30° to 60° in 1 s, then held, with the physics stepped every millisecond and the controller updating at the chosen frequency.
+
+```{ojs}
+pid = FileAttachment("data/w02-pid.json").json()
+viewof Kp = Inputs.range([0, 80], {step: 1, value: 30, label: "Kp"})
+viewof Ki = Inputs.range([0, 150], {step: 5, value: 60, label: "Ki"})
+viewof Kd = Inputs.range([0, 6], {step: 0.25, value: 2, label: "Kd"})
+viewof freq = Inputs.select([100, 50, 30, 25, 20, 15, 10], {value: 100, label: "control Hz"})
+viewof scaling = Inputs.radio(["quintic", "LERP"], {value: "quintic", label: "waypoints"})
+viewof gravityOn = Inputs.toggle({label: "gravity", value: true})
+```
+
+```{ojs}
+// The same discrete PID and physics as rlc.toys.w02_control.track().
+sim = {
+  const nSub = Math.round(1 / (freq * pid.dt)), dtc = nSub * pid.dt, n = Math.round(pid.total / pid.dt);
+  const f = s => scaling === "LERP" ? s : 10 * s ** 3 - 15 * s ** 4 + 6 * s ** 5;
+  const ref = t => pid.q0 + (pid.q1 - pid.q0) * f(Math.min(1, Math.max(0, t / pid.moveT)));
+  let q = pid.q0, qd = 0, integ = 0, ePrev = 0, u = 0;
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    const t = k * pid.dt;
+    if (k % nSub === 0) {
+      const e = ref(t) - q;
+      integ += e * dtc;
+      u = Kp * e + Ki * integ + Kd * (e - ePrev) / dtc;
+      ePrev = e;
+    }
+    const grav = gravityOn ? -pid.mass * pid.g * (pid.length / 2) * Math.cos(q) : 0;
+    qd += (u - pid.friction * qd + grav) / pid.inertia * pid.dt;
+    q += qd * pid.dt;
+    if (!isFinite(q) || Math.abs(q) > 1e3) return {rows: out, unstable: true};
+    if (k % 5 === 0) out.push({t, ref: ref(t) * 180 / Math.PI, q: q * 180 / Math.PI, u});
+  }
+  const tail = out.filter(d => d.t >= pid.total - pid.hold).map(d => d.ref - d.q);
+  return {rows: out, unstable: false, mean: d3.mean(tail), swing: d3.max(tail) - d3.min(tail)};
+}
+```
+
+```{ojs}
+//| label: fig-pid-tuner
+//| fig-cap: "Reference (dashed) and actual joint angle (top) and motor torque (bottom) for the chosen gains, control frequency and waypoint scaling."
+//| fig-alt: "Interactive figure with sliders for Kp, Ki and Kd, a menu for the control frequency, a choice of quintic or LERP waypoints, and a gravity toggle. The top chart shows the joint angle in degrees over 2 seconds as a solid line against a dashed reference rising from -30 to 60 degrees; the bottom chart shows the motor torque. With the defaults the angle follows the reference closely; with Kd at zero it oscillates; at 20 Hz or below it swings wildly or diverges."
+{
+  const w = Math.min(width, 640), rows = sim.rows.map(d => ({...d, u: Math.max(-20, Math.min(20, d.u))}));
+  const top = Plot.plot({
+    width: w, height: 220, marginLeft: 48, style: {background: pid.style.surface},
+    x: {domain: [0, pid.total], label: null}, y: {domain: [-60, 100], label: "angle (deg)", grid: true},
+    marks: [
+      Plot.line(rows, {x: "t", y: "ref", stroke: pid.style.muted, strokeDasharray: "5,3"}),
+      Plot.line(rows, {x: "t", y: d => Math.max(-60, Math.min(100, d.q)), stroke: pid.style.blue, strokeWidth: 2})
+    ]
+  });
+  const bottom = Plot.plot({
+    width: w, height: 160, marginLeft: 48, style: {background: pid.style.surface},
+    x: {domain: [0, pid.total], label: "time (s)"}, y: {domain: [-20, 20], label: "torque (N m)", grid: true},
+    marks: [Plot.ruleY([0], {stroke: pid.style.ink}), Plot.line(rows, {x: "t", y: "u", stroke: pid.style.orange, strokeWidth: 1.5})]
+  });
+  return html`<div>${top}${bottom}</div>`;
+}
+```
+
+```{ojs}
+md`${sim.unstable ? "**Unstable:** the joint diverged." : `Over the last ${pid.hold} s: mean error **${sim.mean.toFixed(2)}°**, swing **${sim.swing.toFixed(2)}°**.`}`
+```
+
+**What to try.** The defaults are the toy's PID gains; the mean error over the hold is essentially zero. Set $K_i$ to 0: the arm settles `{python} f"{deg(S['PD']['hold_mean']):.1f}"`° low, the gravity sag of @eq-pid. Then set $K_d$ to 0 as well: the arm swings for the whole hold, because nothing damps the spring. Restore the defaults and lower the control frequency: at `{python} f_ok` Hz the tracking is still fine, at `{python} f_bad` Hz the damper acts too late and the joint swings wildly, and at 10 Hz it diverges. Finally switch to LERP and watch the torque jump at 0 s and 1 s; turn gravity off to see that the integral term is no longer needed.
+
+### Near or far: the discount factor
+
+```{python}
+#| label: fig-discount-slider
+#| fig-cap: "Expected return of the two corridor policies against the discount factor γ, for the chosen slip probability. Where the lines cross, the better policy switches from 'go left' (near reward 1) to 'go right' (far reward 10)."
+#| fig-alt: "Interactive line chart with a slider for the slip probability (0, 0.1, 0.2, 0.3). The x-axis is the discount factor from 0.3 to 0.99, the y-axis the expected return. The orange 'go left' line rises gently from about 0.3 to about 1; the blue 'go right' line starts near zero and rises steeply to about 9.5. They cross near 0.56 at zero slip; a dashed vertical line marks the crossing, which moves right as the slip probability increases."
+GAMMAS = np.round(np.linspace(0.3, 0.99, 70), 4)
+fig = go.Figure()
+curves = {}
+for i, slip in enumerate(SLIPS):
+    jl = [w2.expected_return(w2.go_left, slip, g, horizon=400) for g in GAMMAS]
+    jr = [w2.expected_return(w2.go_right, slip, g, horizon=400) for g in GAMMAS]
+    curves[slip] = (np.array(jl), np.array(jr))
+    fig.add_trace(go.Scatter(x=GAMMAS, y=np.round(jl, 4), name="go left (near, 1)", line=dict(color=ORANGE, width=2.5),
+                             visible=(i == 0), showlegend=True, hovertemplate="γ=%{x:.2f}<br>J=%{y:.3f}<extra>left</extra>"))
+    fig.add_trace(go.Scatter(x=GAMMAS, y=np.round(jr, 4), name="go right (far, 10)", line=dict(color=BLUE, width=2.5),
+                             visible=(i == 0), showlegend=True, hovertemplate="γ=%{x:.2f}<br>J=%{y:.3f}<extra>right</extra>"))
+    fig.add_trace(go.Scatter(x=[FLIPS[i], FLIPS[i]], y=[0, 10], mode="lines", name=f"switch at γ = {FLIPS[i]:.3f}",
+                             line=dict(color=style.INK_SECONDARY, dash="dash", width=1), visible=(i == 0), hoverinfo="skip"))
+steps = [dict(method="update", label=f"{s:g}", args=[{"visible": [j // 3 == i for j in range(3 * len(SLIPS))]}])
+         for i, s in enumerate(SLIPS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=420, margin=dict(l=60, r=20, t=30, b=40),
+                  legend=dict(orientation="h", y=1.12, x=0),
+                  sliders=[dict(active=0, steps=steps, pad=dict(t=40), currentvalue=dict(prefix="slip probability: "))])
+fig.update_xaxes(title_text="discount factor γ", range=[0.3, 0.99])
+fig.update_yaxes(title_text="expected return J", range=[0, 10])
+assert max(c.max() for pair in curves.values() for c in pair) < 10
+fig.show()
+for i, slip in enumerate(SLIPS):           # the crossing on the grid matches the bisection
+    jl, jr = curves[slip]
+    g_cross = GAMMAS[np.argmax(jr > jl)]
+    assert abs(g_cross - FLIPS[i]) < 0.011
+```
+
+**What to try.** At slip 0 the lines cross at $\gamma =$ `{python} f"{FLIPS[0]:.3f}"`, the value from @eq-flip: a more short-sighted agent takes the sure small reward, a more patient one walks to the big one. Raise the slip probability. Both lines drop, but "go right" drops more, since every slip on the long walk costs two steps, and the crossing moves right to `{python} f"{FLIPS[3]:.3f}"` at slip 0.3. Nothing about the task changed except the noise and the discount, yet the best behavior did.
+
+## Algorithm & code
+
+### Expected return, two ways
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w2.discounted_return, w2.enumerate_trajectories, w2.expected_return)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.distributions import Categorical, Normal
+
+from rlc.toys import w02_control as corridor   # the corridor toy on this page
+
+torch.manual_seed(0)
+
+# A stochastic policy for discrete actions: logits -> Categorical.
+# obs: (B, 4) features; 4 actions (left, right, straight, backward).
+policy = nn.Sequential(nn.Linear(4, 32), nn.ReLU(), nn.Linear(32, 4))
+obs = torch.randn(5, 4)                          # (B=5, 4)
+dist = Categorical(logits=policy(obs))           # one distribution per row
+a = dist.sample()                                # (5,) action indices
+logp = dist.log_prob(a)                          # (5,) log pi(a | o)
+greedy = dist.probs.argmax(dim=-1)               # the deterministic version
+assert a.shape == logp.shape == greedy.shape == (5,)
+assert torch.allclose(dist.probs.sum(-1), torch.ones(5))
+
+# A stochastic policy for continuous actions: a Gaussian per dimension.
+mean_net = nn.Linear(4, 7)                       # 7 joint velocities
+log_std = nn.Parameter(torch.zeros(7))           # learned, state-independent
+gauss = Normal(mean_net(obs), log_std.exp())     # batch shape (5, 7)
+assert gauss.sample().shape == (5, 7)
+
+
+def discounted_return(rewards, gamma):
+    """G = sum_t gamma^t r_t for rewards (T,); the powers are a vector."""
+    t = torch.arange(len(rewards), dtype=rewards.dtype)
+    return (gamma ** t * rewards).sum()
+
+
+r = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 10.0])
+assert torch.isclose(discounted_return(r, 0.9),
+                     torch.tensor(corridor.discounted_return(r.tolist(), 0.9)))
+```
+
+```{.python .snippet}
+# Monte Carlo estimate of J(pi) for "always go right" in the corridor:
+# sample episodes, average their discounted returns.
+gen = torch.Generator().manual_seed(0)
+slip, gamma, n = 0.1, 0.9, 4000
+returns = torch.empty(n)
+for i in range(n):
+    s, rewards = corridor.START_CELL, []
+    while not corridor.terminal(s):
+        slipped = torch.rand(1, generator=gen).item() < slip
+        s += -corridor.RIGHT if slipped else corridor.RIGHT
+        rewards.append(corridor.R_FAR if s == corridor.N_CELLS - 1
+                       else corridor.R_NEAR if s == 0 else 0.0)
+    returns[i] = discounted_return(torch.tensor(rewards), gamma)
+
+exact = corridor.expected_return(corridor.go_right, slip, gamma)
+se = returns.std() / n ** 0.5                    # standard error of the mean
+assert abs(returns.mean().item() - exact) < 3 * se.item()
+```
+:::
+
+`enumerate_trajectories` is @eq-traj-prob made literal: it walks every branch of the world's randomness and multiplies the probabilities along the way. `expected_return` reaches the same number by carrying the probability of each cell forward one step at a time, so its cost grows with the horizon instead of exponentially in it. The PyTorch sketch shows the two kinds of policy the lecture distinguishes, a categorical one for discrete actions and a Gaussian one for continuous actions, and a Monte Carlo estimate of $J(\pi)$.
+
+### Basic random search
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w2.reach_episode, w2.basic_random_search)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
+
+from rlc.toys.w02_control import REACH_TOL, reach_episode, success_rate
+
+# A linear policy a = W (g - x), no bias: the toy's M as a torch module.
+lin = nn.Linear(2, 2, bias=False)
+nn.init.zeros_(lin.weight)
+rng = np.random.default_rng(0)
+
+
+def episode_reward(theta, sparse=False):
+    """Load the flat parameters into the module, run one toy episode."""
+    vector_to_parameters(theta, lin.parameters())
+    return reach_episode(lin.weight.detach().numpy(), rng, sparse)[0]
+
+
+nu, alpha, n_dirs = 0.05, 0.5, 8
+with torch.no_grad():               # random search needs no gradients
+    theta = parameters_to_vector(lin.parameters())        # (4,)
+    for _ in range(3):
+        deltas = torch.randn(n_dirs, theta.numel())       # (N, 4)
+        diffs = torch.tensor([episode_reward(theta + nu * d)
+                              - episode_reward(theta - nu * d)
+                              for d in deltas])           # (N,)
+        # (N,) @ (N, 4) -> (4,): sum_k (r+ - r-) delta_k
+        theta = theta + alpha / n_dirs * diffs @ deltas
+    vector_to_parameters(theta, lin.parameters())
+
+W = lin.weight.detach().numpy()     # a Parameter needs detach() before numpy()
+assert success_rate(W, rng) > 0.8   # dense reward: a few iterations suffice
+```
+:::
+
+```{python}
+#| label: fig-random-search
+#| fig-cap: "Basic random search on the reaching toy, 20 seeds per reward. Left: success rate of the current policy after each iteration (mean over seeds; shaded: ±1 standard error). Right: share of direction pairs whose two episodes scored differently, the pairs that carry any information. With the sparse reward almost every pair scores the same: 0 and 0 at first, 1 and 1 once the policy works."
+#| fig-alt: "Two panels against iteration from 0 to 80. Left: the blue dense-reward curve jumps from 0 to 1 within the first iteration or two and stays there. The orange sparse-reward curve starts at 0 and climbs gradually, passing 0.5 around iteration 16 and approaching 1 by iteration 80, with a wide shaded band. Right: the blue dense curve sits at 1 throughout. The orange sparse curve stays below about 0.1 throughout."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 2.9))
+for k, col in (("dense", BLUE), ("sparse", ORANGE)):
+    sc = RS[k]["success"]; m = sc.mean(0); se = sc.std(0, ddof=1) / np.sqrt(N_RS)
+    it = np.arange(len(m))
+    a1.fill_between(it, m - se, m + se, color=col, alpha=0.2, lw=0)
+    a1.plot(it, m, color=col, label=f"{k} reward")
+    inf = RS[k]["informative"].mean(0)
+    a2.plot(np.arange(1, len(inf) + 1), inf, color=col, label=k)
+a1.set_xlabel("iteration"); a1.set_ylabel("success rate"); a1.set_ylim(-0.03, 1.03); a1.legend(fontsize=8)
+a2.set_xlabel("iteration"); a2.set_ylabel("informative pairs"); a2.set_ylim(-0.03, 1.03)
+plt.tight_layout(); plt.show()
+```
+
+With the dense reward, every pair of nudged policies scores differently, the update always points somewhere useful, and the median seed first reaches a 90% success rate after `{python} f"{med['dense']:.0f}"` iteration(s). With the sparse reward the policy starts by not moving, its small nudges almost never reach the goal, and the update is zero until one does: the median seed needs `{python} f"{med['sparse']:.0f}"` iterations, and the slowest `{python} f"{np.nanmax(solved['sparse']):.0f}"` (`{python} never['sparse']` of `{python} N_RS` seeds never get there within 80). Same algorithm, same task, same goal; only the reward's shape differs.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(2))
+```
+
+## Guest spotlight
+
+**Abhishek Gupta** (University of Washington) wants robots that work in messy homes without anyone engineering each new setting, and calls himself a "lazy" roboticist who would rather automate that effort away [▶ 01:01](https://youtu.be/aG8NPTPhwkE?t=61). Language and vision models grew on data that people produce anyway, through the web; robots have no such passive stream, and teleoperation is expensive [▶ 03:37](https://youtu.be/aG8NPTPhwkE?t=217). His answer is cheaper "off-domain" data, here from simulation. Simulation offers cheap samples, privileged information, easy resets and faster-than-real-time parallel runs, but it only *seems* cheap: someone has to build the environment, generate behavior in it, and tune it to match reality [▶ 06:13](https://youtu.be/aG8NPTPhwkE?t=373).
+
+The talk removes each of those costs in turn. **Real-to-sim**: from a short phone video of a kitchen, Gaussian splatting reconstructs the scene and foundation models segment and articulate its cabinets and drawers, giving an interactive simulated copy in minutes instead of days [▶ 09:47](https://youtu.be/aG8NPTPhwkE?t=587). Such copies also serve as test beds: policies trained on real data can be evaluated in them, and their simulated and real success rates correlate well, though not perfectly [▶ 12:21](https://youtu.be/aG8NPTPhwkE?t=741). **Behavior without demonstrations or reward design**: because a simulator can be reset to *any* state, reinforcement learning can start close to the goal, where even a sparse reward is easy to find, and work outwards; with broad resets, the same code learns contact-rich assembly with only a success signal [▶ 18:06](https://youtu.be/aG8NPTPhwkE?t=1086). **Sim-to-real without hand-tuning**: keep the long-horizon structure learned in simulation, and fix the short-horizon physics with a world model fine-tuned on a little autonomously collected real data, about 15 minutes in his examples [▶ 23:16](https://youtu.be/aG8NPTPhwkE?t=1396).
+
+**How it connects to this week.** The talk is about the MDP's ingredients. Real-to-sim builds the state space and transitions; resets change the initial-state distribution $p(s_0)$ in @eq-traj-prob, which is what makes a sparse reward workable, the same problem the random-search toy shows; and the sim-to-real step corrects the transition model $P$ where simulation gets it wrong.
+
+## Solved problems
+
+**1. Count the freedoms.** A planar arm has three revolute joints in a chain. How many degrees of freedom does it have, and is it redundant for placing its hand at a point in the plane? What about placing the hand at a point *and* setting the gripper's angle?
+
+::: {.callout-tip collapse="true" title="Solution"}
+@eq-grubler with $m = 3$, $N = 4$ (base plus three links), $J = 3$, $f_i = 1$: $\text{dof} = 3(4 - 1 - 3) + 3 = 3$. A point in the plane is 2 numbers, so one freedom is left over: the arm is redundant and can move its elbows while the hand stays put (null-space motion). Point plus angle is 3 numbers, matching the 3 freedoms exactly: generically a finite number of solutions (up to two, elbow up or down), and no redundancy.
+:::
+
+**2. Back into the sensor frame.** In [Example 1](#ex-frames), a traffic light is at $(12, 30)$ in the world. Where is it in the camera frame?
+
+::: {.callout-tip collapse="true" title="Solution"}
+```{python}
+#| output: asis
+p_light = np.linalg.inv(T_wc) @ np.array([12.0, 30.0, 1.0])
+print(f"Invert the chain: $\\mathbf{{p}}^{{\\text{{cam}}}} = T_{{\\text{{world}}\\leftarrow\\text{{cam}}}}^{{-1}}\\, \\mathbf{{p}}^{{\\text{{world}}}}$. "
+      f"Numerically the light is at ({p_light[0]:.2f}, {p_light[1]:.2f}) in the camera frame: "
+      f"{p_light[0]:.1f} m ahead of the camera and {abs(p_light[1]):.1f} m to its {'left' if p_light[1] > 0 else 'right'}. "
+      "The inverse of a rigid transform is cheap: $T^{-1}$ has rotation $R^\\top$ and translation $-R^\\top \\mathbf{t}$, so no general matrix inverse is needed.")
+```
+:::
+
+**3. How fast at the midpoint?** A joint must turn 90° in 1.5 s, starting and ending at rest. What peak speed does a quintic time scaling need, and what speed would LERP use?
+
+::: {.callout-tip collapse="true" title="Solution"}
+LERP moves at a constant $90° / 1.5\,\text{s} = 60°/\text{s}$, but it would have to jump to that speed instantly. With @eq-quintic, the speed is $\frac{\Delta q}{T_{\text{move}}} f'(s)$, and $f'$ peaks at $s = \frac12$ with $f'(\frac12) = 30 \cdot \frac14 \cdot \frac14 = 1.875$. So the peak is $1.875 \times 60 = 112.5°/\text{s}$. Check the motor's speed limit against this figure, not against the average.
+:::
+
+**4. A closer call.** In a corridor with no slips, a reward of 2 is 1 step away and a reward of 5 is 4 steps away. For which discount factors is the far reward better? Is $\gamma = 0.9$ in that range?
+
+::: {.callout-tip collapse="true" title="Solution"}
+@eq-flip: the far reward wins when $\gamma^{3} > 2/5$, that is $\gamma > 0.4^{1/3} \approx 0.737$. With $\gamma = 0.9$: near is worth $2$, far is worth $0.9^3 \times 5 = 3.645$, so far wins. With $\gamma = 0.7$: far is worth $0.343 \times 5 = 1.715 < 2$, so near wins.
+:::
+
+**5. How often does a sparse reward speak?** Suppose a randomly nudged policy succeeds with probability $p = 0.02$, independently for each episode. What is the chance that one pair $(+\nu\delta, -\nu\delta)$ gives a nonzero update, and that at least one of 8 pairs does?
+
+::: {.callout-tip collapse="true" title="Solution"}
+A pair is informative when exactly one of its two episodes succeeds: $2p(1-p) = 2 \times 0.02 \times 0.98 = 0.0392$. At least one of 8 pairs: $1 - (1 - 0.0392)^8 \approx 0.27$. So about three iterations in four make no update at all, and the ones that do rest on a single lucky episode, which is why sparse-reward random search is slow and noisy. Two remedies appear this week: a dense reward that grades partial progress, and, in the guest talk, resets that start the robot where success is likely.
+:::
+
+## Recap
+
+1. **A robot is a chain of rigid bodies, and frames are matrices.** Homogeneous transforms move points between frames by multiplication. *Why it matters:* every observation a policy uses (a camera, a lidar) arrives in some frame and must be converted to the one the robot acts in.
+2. **The robot acts in configuration space, but tasks live in the workspace.** Forward kinematics maps one to the other; inverse kinematics maps back, with several answers or none, and is solved by Jacobian-based descent. Obstacles become oddly shaped regions in configuration space. *Why it matters:* when a policy outputs a target hand pose, IK and its ambiguities sit between that output and the motors.
+3. **Smooth references and feedback make motion happen.** Quintic scaling avoids LERP's infinite accelerations; PID's spring, damper and integral each fix a specific failure, and a slow loop undoes the damper. *Why it matters:* learned policies usually sit on top of exactly this layer, sending targets at a few hertz to controllers that run much faster.
+4. **The MDP is the shared language.** States, actions, transition probabilities and rewards; trajectories have probabilities; a policy is scored by its expected discounted return. *Why it matters:* imitation learning (Week 3), reinforcement learning (Weeks 4–5) and the large policies of later weeks are all ways of finding a good $\pi$ in this frame.
+5. **The reward's shape and the discount decide what is learnable and what is best.** A sparse reward can leave a learner without signal, and the discount factor can flip the optimal behavior. *Why it matters:* reward design and exploration are the central practical problems of Weeks 4 and 5.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Homogeneous transform | $\mathbf{p}' = T\, \mathbf{p}$ | @eq-homogeneous |
+| Grübler–Kutzbach | $m(N{-}1{-}J) + \sum f_i$ | @eq-grubler |
+| Kinematics | $x = f(q)$ | @eq-kinematics |
+| Jacobian IK step | $q \mathrel{-}= \alpha J^\top e$ | @eq-ik-step |
+| Quintic scaling | $10s^3 - 15s^4 + 6s^5$ | @eq-quintic |
+| PID ★ | $K_p e + K_i \textstyle\sum e \Delta t + K_d \dot e$ | @eq-pid |
+| Markov property | $p(s_{t+1} \mid s_t, a_t)$ | @eq-markov |
+| Trajectory probability | $p(s_0) \prod_t \pi P$ | @eq-traj-prob |
+| RL objective ★ | $\max_\pi \mathbb{E}[\sum_t \gamma^t r_t]$ | @eq-objective |
+| Near vs far | $(R_{\text{near}}/R_{\text{far}})^{1/\Delta d}$ | @eq-flip |
+| Random search | $\theta \mathrel{+}= \frac{\alpha}{N} \sum_k \Delta r_k \delta_k$ | @eq-brs |
+
+**Common pitfalls.**
+
+- Treating joint angles as ordinary numbers: 359° and 1° are neighbours. Wrap differences, or feed a network $(\cos q, \sin q)$.
+- Expecting IK to return *the* answer. It returns one of several, depending on the start, or fails silently near the edge of the workspace.
+- Interpolating linearly between distant waypoints and sending the result straight to the motors.
+- Tuning PID gains at one control frequency and running at another.
+- Confusing the observation with the state, and assuming a single camera frame is Markov.
+- Reading a flat learning curve under a sparse reward as "the algorithm is broken"; it may simply have no signal yet.
+
+**Connections.** Week 1 motivated feedback; this week gave it a mathematical home. [Week 3](w03-imitation-learning.qmd) learns $\pi$ from demonstrations and shows what goes wrong when the policy's own trajectories differ from the expert's. Weeks 4 and 5 learn $\pi$ from rewards, including policy gradients built on the trajectory probability @eq-traj-prob. In the ADM Companion: [MDPs and discounting]({{< var adm_url >}}/part2/ch07-exact-solution-methods.html#discounting-later-rewards-count-for-less), and how to compute optimal policies exactly when the model is known, by value and policy iteration.
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(2))
+```
