@@ -74,7 +74,7 @@
     youtube: fHHLmTu9sFk
     duration_s: 2165
   homework: {name: "hw4: Reinforcement learning", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw4_reinforcement_learning"}
-  papers: [evolution-strategies, pushing-grasping, hil-serl]
+  papers: [evolution-strategies, pushing-grasping, hil-serl, dqn, double-dqn, qt-opt, ddpg]
 
 - week: 5
   date: 2026-03-16

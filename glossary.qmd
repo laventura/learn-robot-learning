@@ -65,6 +65,23 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | Distribution shift | Test-time states differ from the states in the training data |
 | Causal confusion | A policy relies on a correlate of the expert's action instead of its cause |
 
+## Week 4 · Reinforcement Learning I
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $V^\pi(s)$ | Value of state $s$: expected discounted return when starting there and following $\pi$ (ADM writes $U^\pi$) |
+| $V^*(s)$, $\pi^*$ | Optimal value function, and a policy that achieves it |
+| $Q^\pi(s, a)$, $Q^*(s, a)$ | Action value: expected return after taking $a$ in $s$, then following $\pi$ (or acting optimally) |
+| $\mathcal{T}$ | Bellman (optimality) operator: one sweep of value iteration |
+| TD target | $r + \gamma \max_{a'} Q(s', a')$ (Q-learning) or $r + \gamma Q(s', a')$ (SARSA): a one-sample estimate of $Q(s, a)$ |
+| $\alpha$ | Learning rate of a tabular update |
+| $\varepsilon$-greedy | Act randomly with probability $\varepsilon$, otherwise take the best action |
+| On-policy, off-policy | Learning the value of the policy that collects the data, versus of another (usually the greedy) policy |
+| $\theta$, $\theta^-$ | Weights of the Q-network and of its slowly updated target copy |
+| $\mathcal{D}$ | Replay buffer of stored transitions $(s, a, r, s')$ |
+| $\mu_\phi(s)$ | DDPG's actor: a network that outputs the action directly |
+| CEM | Cross-entropy method: sample, keep the best, refit a Gaussian, repeat |
+
 ## Week 6 · Generative Models
 
 | Symbol or term | Meaning |
@@ -93,6 +110,9 @@ Symbols that mean different things in different weeks.
 | $t$ | Continuous flow-matching time from noise ($t = 0$) to data ($t = 1$) | 6 |
 | $\alpha_i$ | Signal kept by one diffusion step, $1 - \beta_i$ | 6 |
 | $\alpha$ | Step size of a gradient or random-search update | 2 |
+| $\alpha$ | Learning rate of a tabular TD update | 4 |
+| $\varepsilon$ | Exploration probability of an $\varepsilon$-greedy policy | 4 |
+| $\mu$ | Mean of a Gaussian policy, or DDPG's deterministic actor $\mu_\phi(s)$ | 4 |
 | $T$ | A homogeneous transform (a $3 \times 3$ or $4 \times 4$ matrix) | 2 |
 | $T$ | Task length (horizon) in steps | 3 |
 | $T$ | Number of diffusion steps | 6 |

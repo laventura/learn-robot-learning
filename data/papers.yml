@@ -188,11 +188,15 @@
   title: "Evolution Strategies as a Scalable Alternative to Reinforcement Learning"
   authors: "Salimans, Ho, Chen, Sidor & Sutskever"
   year: 2017
-  venue: "arXiv"
+  venue: "arXiv"            # a preprint; no conference or journal version
   url: https://arxiv.org/abs/1703.03864
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Trains neural-network policies without value functions or backpropagation through time: perturb the weights with Gaussian noise, run each perturbed policy, and move the weights towards the perturbations that scored well. Its appeal is that it parallelizes almost perfectly across many machines."
+  contributions:
+    - "Workers share random seeds, so each needs to send only one number, the return of its perturbed policy; this scaled to over a thousand workers with near-linear speed-ups (Abstract, Sec. 1)."
+    - "With 1,440 CPU workers, ES solved the MuJoCo 3D humanoid task in under 10 minutes (Sec. 1)."
+    - "On Atari it matched A3C's final scores on most games using 3 to 10 times as much data, while skipping backpropagation and value functions (Sec. 1)."
+    - "As a black-box method it is unaffected by action frequency, delayed rewards and long horizons, and needs no discounting (Abstract)."
+  connects_to: "The scaled-up relative of Week 2's random search; this week's value-based methods take the opposite route, exploiting the MDP's step-by-step structure."
 
 - id: pushing-grasping
   role: discussion
@@ -202,21 +206,85 @@
   year: 2018
   venue: "IROS"
   url: https://arxiv.org/abs/1803.09956
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Learns when to push and when to grasp in cluttered piles by Q-learning, rewarded only for successful grasps. Two fully convolutional networks score every pixel of a top-down image as a place to push or to grasp, at several gripper orientations, and the robot takes the best-scoring action."
+  contributions:
+    - "Actions as pixels: each network outputs a dense map of Q-values over end-effector positions and orientations, so the argmax over actions is an argmax over an image (Abstract, Sec. 1)."
+    - "Pushing emerges without being rewarded directly: the Q-function values pushes that make later grasps succeed (Abstract)."
+    - "Fully self-supervised by trial and error, it learns in a few hours of training and beats baseline grasping systems in simulation and on a real robot, including on new objects (Abstract)."
+  connects_to: "The lecture's example of handling a large action space by discretizing it in a way that matches the geometry of the task."
 
 - id: hil-serl
   role: discussion
   weeks: [4]
   title: "Precise and Dexterous Robotic Manipulation via Human-in-the-Loop Reinforcement Learning"
   authors: "Luo, Xu, Wu & Levine"
-  year: 2024
-  venue: "arXiv"            # TODO(venue): believed later in Science Robotics (2025); not confirmed
+  year: 2025
+  venue: "Science Robotics" # Sci. Robot. 10, eads5033 (2025), doi 10.1126/scirobotics.ads5033; arXiv 2024
   url: https://arxiv.org/abs/2410.21845
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "A system that trains vision-based manipulation policies with reinforcement learning directly on real robots, in hours. It combines a sample-efficient off-policy RL algorithm with human demonstrations and with corrections a person makes during training, plus a pretrained visual backbone."
+  contributions:
+    - "Near-perfect success rates and fast cycle times on dynamic, precise and dual-arm tasks within 1 to 2.5 hours of real-world training (Abstract)."
+    - "On average twice the success rate and 1.8 times faster execution than imitation-learning baselines and earlier RL approaches (Abstract)."
+    - "Off-policy learning lets demonstrations, human corrections and the robot's own experience share one replay buffer (Sec. 1)."
+  connects_to: "Off-policy Q-learning with a replay buffer, this week's core machinery, made practical on real hardware; human corrections echo DAgger from Week 3."
+
+- id: dqn
+  role: lecture
+  weeks: [4]
+  title: "Human-level control through deep reinforcement learning"
+  authors: "Mnih et al."
+  year: 2015
+  venue: "Nature"           # Nature 518, 529-533, doi 10.1038/nature14236
+  url: https://www.nature.com/articles/nature14236
+  summary: "The deep Q-network (DQN): Q-learning with a convolutional network that reads raw game frames and outputs one Q-value per action. One algorithm, network and set of hyperparameters learned 49 Atari games from pixels and the score alone."
+  contributions:
+    - "Experience replay: store transitions and train on random minibatches of them, which breaks the correlation between consecutive samples (Abstract)."
+    - "A separate target network, updated only periodically, computes the learning targets and stabilizes training (Abstract)."
+    - "Performance comparable to a professional human games tester across the set of games (Abstract)."
+  connects_to: "The lecture's bridge from tabular Q-learning to deep RL, and the source of the replay buffer and target network."
+
+- id: double-dqn
+  role: lecture
+  weeks: [4]
+  title: "Deep Reinforcement Learning with Double Q-learning"
+  authors: "van Hasselt, Guez & Silver"
+  year: 2016
+  venue: "AAAI"             # arXiv comment: AAAI 2016
+  url: https://arxiv.org/abs/1509.06461
+  summary: "Shows that DQN systematically overestimates action values on Atari, and fixes it by letting the online network choose the next action while the target network scores it."
+  contributions:
+    - "Evidence that DQN's overestimations are common and harm performance in several Atari games (Abstract)."
+    - "Double DQN: a one-line change to the target that decouples choosing the best action from evaluating it (Abstract)."
+    - "Lower value estimates and much better scores on several games (Abstract)."
+  connects_to: "The overestimation toy on this page: the maximum of noisy estimates is biased upward, and a second, independent estimate removes the bias."
+
+- id: qt-opt
+  role: lecture
+  weeks: [4]
+  title: "QT-Opt: Scalable Deep Reinforcement Learning for Vision-Based Robotic Manipulation"
+  authors: "Kalashnikov et al."
+  year: 2018
+  venue: "CoRL"             # arXiv comment: CoRL 2018 camera ready
+  url: https://arxiv.org/abs/1806.10293
+  summary: "Closed-loop grasping from an over-the-shoulder RGB camera, learned by Q-learning from over 580,000 real grasp attempts. Continuous actions are handled by picking the action with the cross-entropy method on the Q-function."
+  contributions:
+    - "A Q-function with over 1.2 million parameters reaches 96% grasp success on unseen objects (Abstract)."
+    - "Learned behaviors include regrasping, probing objects, pushing them into better positions before grasping, and reacting to disturbances (Abstract)."
+  connects_to: "The lecture's example of the sampling route to the argmax over continuous actions: the cross-entropy method at every control step."
+
+- id: ddpg
+  role: lecture
+  weeks: [4]
+  title: "Continuous control with deep reinforcement learning"
+  authors: "Lillicrap et al."
+  year: 2016
+  venue: "ICLR"             # mlanthology.org/iclr/2016/lillicrap2016iclr-continuous
+  url: https://arxiv.org/abs/1509.02971
+  summary: "Deep deterministic policy gradient (DDPG): an actor network outputs the action directly and is trained to maximize a Q-network critic, so continuous actions need no search at test time."
+  contributions:
+    - "An actor-critic, model-free algorithm based on the deterministic policy gradient that carries DQN's ideas to continuous action spaces (Abstract)."
+    - "One algorithm, architecture and set of hyperparameters solved more than 20 simulated physics tasks, some directly from pixels (Abstract)."
+  connects_to: "The lecture's third route to the argmax over actions: learn it with a second network instead of searching for it."
 
 # --- Week 5 · Reinforcement Learning II -----------------------------------
 - id: visuomotor-policies
