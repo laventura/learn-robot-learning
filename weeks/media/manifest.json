@@ -1,4 +1,10 @@
 {
+  "w01-doorway": {
+    "bytes": 393042,
+    "hash": "4618e15782dbcc62",
+    "render_seconds": 3.2,
+    "seconds": 15.3
+  },
   "w03-drift": {
     "bytes": 288360,
     "hash": "d1a592b9f201dc07",
