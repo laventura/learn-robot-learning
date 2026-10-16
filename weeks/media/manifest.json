@@ -17,6 +17,12 @@
     "render_seconds": 78.8,
     "seconds": 17.0
   },
+  "w04-ripple": {
+    "bytes": 382756,
+    "hash": "77d91c381996512f",
+    "render_seconds": 4.0,
+    "seconds": 21.9
+  },
   "w06-denoise": {
     "bytes": 1002554,
     "hash": "fdf7e5250fab51cd",
