@@ -312,11 +312,11 @@
   title: "Diffusion Policy: Visuomotor Policy Learning via Action Diffusion"
   authors: "Chi et al."
   year: 2023
-  venue: "arXiv"            # TODO(venue): believed RSS 2023, with a later journal version; not confirmed
+  venue: "RSS"              # roboticsproceedings.org/rss19/p026; the arXiv link is the extended version cited below
   url: https://arxiv.org/abs/2303.04137
   summary: "Represents a robot's visuomotor policy as a conditional diffusion process: starting from noise, it denoises a whole sequence of future actions, conditioned on the current observations. This handles demonstrations with several valid ways of doing a task, and trains stably."
   contributions:
-    - "Across 15 tasks from 4 manipulation benchmarks, an average improvement of 46.9% over prior state-of-the-art methods (Abstract)."
+    - "Across 15 tasks from 4 manipulation benchmarks, an average improvement of 46.9% over prior state-of-the-art methods (Abstract of the extended arXiv version)."
     - "Practical ingredients for real robots: receding-horizon control over predicted action sequences, visual conditioning, and a time-series diffusion transformer (Abstract)."
     - "An analysis of why it works: multimodal action distributions, high-dimensional action sequences, and training stability (Sec. 4)."
   connects_to: "The lecture's main case study and this week's guest speaker's work; the conditional version of the toy on this page."
@@ -327,7 +327,7 @@
   title: "Flow Matching for Generative Modeling"
   authors: "Lipman, Chen, Ben-Hamu, Nickel & Le"
   year: 2023
-  venue: "arXiv"            # TODO(venue): believed ICLR 2023; the PDF says "Preprint"
+  venue: "ICLR"             # mlanthology.org/iclr/2023/lipman2023iclr-flow; the arXiv PDF says "Preprint"
   url: https://arxiv.org/abs/2210.02747
   summary: "Trains a continuous normalizing flow by regressing a velocity field along simple, fixed paths from noise to data, with no simulation during training. Diffusion paths are one special case; straight-line (optimal-transport) paths train and sample faster."
   contributions:
