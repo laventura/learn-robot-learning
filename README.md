@@ -21,6 +21,7 @@ uv run quarto render                                # build the site into _site/
 uv run pytest                                       # tests
 uv run python tools/check_snippets.py [--week 3]    # run the PyTorch snippets
 uv run python tools/check_links.py                  # data files + "▶ mm:ss" watch links
+uv run python tools/check_week.py 6                 # count a week page against the checklist
 uv run python tools/check_freeze.py                 # cached results match the sources
 uv run quarto publish gh-pages                      # deploy
 ```
@@ -56,6 +57,7 @@ Not needed to build the site, only to gather sources and check pages.
 - `templates/_week.qmd`: skeleton for a week page.
 - `tools/check_snippets.py`: runs the PyTorch code shown on the pages.
 - `tools/check_links.py`: validates the data files and every timestamped watch link.
+- `tools/check_week.py`: counts a week page's sections, figures, equations, links and problems against the definition of done.
 - `tools/clean_transcript.py`: turns YouTube auto-captions into readable text with `[mm:ss]` markers.
 - `tools/check_freeze.py`: finds pages whose cached results no longer match their source.
 - `_freeze/`: cached execution results, committed so the site rebuilds without running code.
