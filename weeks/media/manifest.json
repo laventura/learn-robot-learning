@@ -5,6 +5,12 @@
     "render_seconds": 3.2,
     "seconds": 15.3
   },
+  "w02-cspace": {
+    "bytes": 290796,
+    "hash": "cf93f6490e139281",
+    "render_seconds": 3.5,
+    "seconds": 20.5
+  },
   "w03-drift": {
     "bytes": 288360,
     "hash": "d1a592b9f201dc07",
