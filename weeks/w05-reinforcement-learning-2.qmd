@@ -1,6 +1,1015 @@
 ---
 title: "Week 5 · Reinforcement Learning II"
 subtitle: "Lecture of 16 March 2026 · guest: Andrew Wagenmaker"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w05_pg as w5
+
+style.apply()
+BLUE, ORANGE, GREEN = style.CATEGORICAL[0], style.CATEGORICAL[1], style.CATEGORICAL[2]
+EST_COLORS = dict(zip(w5.ESTIMATORS, (style.MUTED, ORANGE, BLUE, GREEN)))
+
+# --- Toy 1: four gradient estimators on the 1-D reach ----------------------------
+K_EVAL, N_BATCH, REPS = 0.3, 16, 3000
+J_EVAL, G_TRUE = w5.true_gradient(K_EVAL, np.random.default_rng(0))
+OFFSETS = [0.0, 1.0, 10.0, 100.0]
+est_rng = np.random.default_rng(1)
+EST = {}
+for c in OFFSETS:
+    draws = [w5.gradient_estimates(K_EVAL, N_BATCH, est_rng, c) for _ in range(REPS)]
+    EST[c] = {n: np.array([d[n] for d in draws]) for n in w5.ESTIMATORS}
+STD = {c: {n: float(EST[c][n].std()) for n in w5.ESTIMATORS} for c in OFFSETS}
+for c in OFFSETS:                       # every estimator is unbiased (within 4 standard errors)
+    assert all(abs(EST[c][n].mean() - G_TRUE) < 4 * STD[c][n] / np.sqrt(REPS) for n in w5.ESTIMATORS)
+ladder = [STD[0.0][n] for n in w5.ESTIMATORS]
+assert all(a > b for a, b in zip(ladder, ladder[1:]))          # each fix lowers the spread
+assert STD[100.0]["full return"] > 100 * STD[0.0]["full return"]
+assert all(abs(STD[100.0][n] / STD[0.0][n] - 1) < 0.15 for n in w5.ESTIMATORS[2:])
+J_STAR = -w5.T * w5.SIGMA**2                                     # k = 1: straight to the goal
+share = lambda c, n: abs(G_TRUE) / STD[c][n]                     # signal relative to noise
+
+N_LEARN = 20
+LEARN = {c: {n: np.array([w5.reinforce_reach(n, np.random.default_rng(s), c=c) for s in range(N_LEARN)])
+             for n in w5.ESTIMATORS} for c in (0.0, 10.0)}
+near = lambda c, n: float(np.mean(np.abs(LEARN[c][n][:, -1] - 1) < 0.1))
+assert near(0.0, "full return") >= 0.85 and all(near(c, n) == 1.0 for c in (0.0, 10.0) for n in w5.ESTIMATORS[2:])
+assert near(10.0, "full return") <= 0.2 and near(10.0, "reward-to-go") <= 0.3
+
+# --- Toy 2: reusing each batch K times ---------------------------------------------
+KS, N_SEEDS = [1, 2, 5, 10, 20, 50, 100], 50
+REUSE = {(K, clip): np.array([w5.reuse_run(K, clip, s)["J"] for s in range(N_SEEDS)])
+         for K in KS for clip in (False, True)}
+final = lambda K, clip: REUSE[K, clip][:, -1]
+lost = lambda K, clip: float(np.mean(final(K, clip) < 0.05))
+assert all(lost(K, True) == 0 for K in KS)                       # clipped runs never lose the bump
+assert all(lost(K, False) == 0 for K in (1, 2, 5)) and lost(20, False) >= 0.15
+assert final(10, True).mean() > 4 * final(1, True).mean()          # reuse is far more data-efficient
+assert np.argmax([final(K, False).mean() for K in KS]) == KS.index(5)  # unclipped: best at K = 5
+# The failure, traced: the first seed (0, 1, ...) whose unclipped K = 20 run ends below 0.05.
+fail_seed = next(s for s in range(N_SEEDS) if REUSE[20, False][s, -1] < 0.05)
+FAIL = w5.reuse_run(20, False, fail_seed)
+fail_b = int(np.argmax(FAIL["J"][1:] < 0.05))                     # the batch whose update lost it
+fail_jump = abs(FAIL["mu"][fail_b + 1] - FAIL["mu"][fail_b]) / FAIL["sigma"][fail_b]
+assert FAIL["max_ratio"][fail_b] < 1e-3 and fail_jump > 10 and FAIL["J"][fail_b + 1:].max() < 0.05
+# How far sigma shrinks with K = 20, over all seeds, after 20 batches (before most failures).
+SIG20 = {clip: float(np.median([w5.reuse_run(20, clip, s)["sigma"][20] for s in range(N_SEEDS)]))
+         for clip in (False, True)}
+assert SIG20[False] < 0.6 * SIG20[True]
+
+ESS_SHIFTS, ESS_T = [0.1, 0.2, 0.3], np.arange(1, 101)
+ess_rng = np.random.default_rng(3)
+ESS_MC = {T: (lambda wts: float(wts.mean() ** 2 / np.mean(wts**2)))(w5.trajectory_weights(T, 0.2, 200_000, ess_rng))
+          for T in (1, 10, 50, 100)}
+assert all(abs(ESS_MC[T] - w5.trajectory_weight_ess(T, 0.2)) < 0.02 for T in ESS_MC)
+
+# The clip explorer's batch, and the surrogates it shows: seed 0's first batch.
+HERO = w5.reuse_run(10, True, 0, keep=True)
+a0, r0, adv0 = HERO["batches"][0]
+lp0 = w5.log_prob(a0, w5.MU0, np.log(w5.SIGMA0))
+grid = [(m, s) for m in np.linspace(-1, 4, 101) for s in np.geomspace(0.02, 2, 60)]
+surr = np.array([w5.surrogates(a0, adv0, lp0, m, s) for m, s in grid])
+iu, ic = int(surr[:, 0].argmax()), int(surr[:, 1].argmax())
+UNCLIP_AT, CLIP_AT = grid[iu], grid[ic]
+assert np.isclose(UNCLIP_AT[1], 0.02)                             # the unclipped optimum is at the grid's edge
+assert abs(UNCLIP_AT[0] - a0[adv0.argmax()]) < 0.1                # ... on the batch's best sample
+assert abs(CLIP_AT[0] - w5.MU0) < 0.3 and 0.8 < CLIP_AT[1] < 1.5  # the clipped one stays close to the old policy
+
+# --- Toy 3: score function versus reparameterization -------------------------------
+NS, MU_R, SIG_R = [4, 16, 64], 0.5, 0.5
+rp_rng = np.random.default_rng(11)
+RP = {}
+for n in NS:
+    draws = [w5.mu_gradient_estimates(MU_R, SIG_R, n, rp_rng) for _ in range(20_000)]
+    RP[n] = {k: np.array([d[k] for d in draws]) for k in draws[0]}
+G_R = w5.mu_gradient_exact(MU_R, SIG_R)
+rp_ratio = {n: float(RP[n]["reparameterization"].std() / RP[n]["score function"].std()) for n in NS}
+assert all(0.4 < v < 0.55 for v in rp_ratio.values())
+assert all(abs(RP[n][k].mean() - G_R) < 4 * RP[n][k].std() / np.sqrt(20_000) for n in NS for k in RP[n])
+
+# --- The hero clip: seed 0, K = 10, clipped ---------------------------------------
+hero_peak_b = int(np.argmax(HERO["sigma"]))
+assert HERO["sigma"][hero_peak_b] > 1.2 and HERO["sigma"][-1] < 0.2   # widens, then narrows
+assert HERO["J"][-1] > 0.95
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 5 · **Lecture:** [video](https://youtu.be/AdTGz8YnnlE) · **Go deeper:** [ADM Ch 11, the likelihood ratio]({{< var adm_url >}}/part2/ch11-policy-gradient-estimation.html#the-likelihood-ratio), [ADM Ch 12, PPO's clamped surrogate]({{< var adm_url >}}/part2/ch12-policy-gradient-optimization.html#clamped-surrogate-ppo) and [ADM Ch 13, actor-critic]({{< var adm_url >}}/part2/ch13-actor-critic-methods.html#actor-critic)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(5))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+[Week 4](w04-reinforcement-learning-1.qmd) learned what every action is worth, a Q-function, and acted by taking the best one. That needs a maximum over actions, which is hard when actions are continuous and high-dimensional [▶ 01:30](https://youtu.be/AdTGz8YnnlE?t=90). This week skips the detour: give the policy parameters $\theta$ and adjust them directly, so that actions which led to high reward become more likely [▶ 02:02](https://youtu.be/AdTGz8YnnlE?t=122). These are **policy-gradient** methods. The lecture builds them up one fix at a time, from the simplest (REINFORCE) to the two algorithms most used in robotics today, PPO and SAC, and ends by bringing value functions back as critics.
+
+**The question this week answers:** how do you follow the gradient of expected reward when you cannot differentiate through the world, and how do you make that gradient precise and cheap enough in samples for a robot?
+
+### The key ideas at a glance
+
+- **The log-derivative trick.** The gradient of expected return can be written as an expectation, which samples can estimate, and the unknown dynamics drop out of it. The result is the **policy gradient**: imitation of your own actions, weighted by how well they turned out.
+- **Variance is the enemy.** The plain estimator (REINFORCE) is unbiased but noisy. **Reward-to-go** stops crediting actions for rewards that came before them; a **baseline** subtracts what was expected anyway. Neither changes the average gradient; both shrink its noise.
+- **The advantage.** The best baseline is the state's value, which turns the weight into the **advantage** $A = Q - V$: how much better this action was than usual.
+- **Reusing data.** Plain policy gradients must discard each batch after one step. **Importance sampling** reweights old samples so they can be reused, but only while the new policy stays close to the old one.
+- **Staying close.** An **entropy bonus** keeps the policy from becoming deterministic; **TRPO** limits each update with a KL divergence; **PPO** clips the importance ratio, which is simple and scales.
+- **Actor-critic.** PPO learns a value function alongside the policy. **SAC** learns a Q-function off-policy from a replay buffer and trains the actor through it with the **reparameterization trick**: the most sample-efficient of the lecture's methods.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Policy gradient | The gradient of expected return with respect to the policy's parameters |
+| Score function | $\nabla_\theta \log \pi_\theta(a \mid s)$: which way to move $\theta$ to make $a$ more likely |
+| REINFORCE | The plain Monte Carlo policy-gradient algorithm (Williams, 1992) |
+| Reward-to-go | The sum of rewards from step $t$ to the end of the episode |
+| Baseline | A number subtracted from the return to reduce variance without bias |
+| Advantage $A^\pi(s, a)$ | $Q^\pi(s, a) - V^\pi(s)$: how much better $a$ is than the policy's average in $s$ |
+| On-policy | Each gradient step needs fresh data from the current policy |
+| Importance ratio | $\pi_{\theta'}(a \mid s) / \pi_\theta(a \mid s)$: reweights old samples for a new policy |
+| Entropy $\mathcal{H}$ | How spread out the policy's action distribution is |
+| Trust region | A limit on how far one update may move the policy |
+| Actor, critic | The policy, and the learned value function that scores it |
+| Reparameterization | Writing a sample as $a = \mu + \sigma \varepsilon$, so gradients can flow through it |
+
+### After this week you can
+
+- Derive the policy gradient with the log-derivative trick, and explain why the dynamics drop out.
+- Explain why reward-to-go and baselines reduce variance without biasing the gradient.
+- Define the advantage, and say how an actor-critic uses a learned value function.
+- Use importance sampling to reuse a batch, and explain why trajectory-level weights explode with the horizon.
+- Compare TRPO's KL constraint and PPO's clipped ratio, and say what each buys.
+- Explain what makes SAC off-policy and what the reparameterization trick is for.
+
+{{< video https://youtu.be/AdTGz8YnnlE >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+Think of coaching a basketball player by watching games rather than drills. You cannot tell them the exact muscle commands for a better shot; you can only see which possessions ended in points. A sensible coach says "more of what you did on the possessions that went well, less of what you did on the ones that went badly". A good coach adds three refinements. Judge each decision only by what happened *after* it. Compare a possession with how possessions usually go, not with zero, so that an ordinary basket is not celebrated. And change the playbook a little at a time, because the film from last week shows how the old playbook played, not the new one. Those three refinements are reward-to-go, the baseline (advantage) and the trust region.
+:::
+
+### Make good trajectories more likely {#pg-intuition}
+
+Parameterize the policy as $\pi_\theta(a \mid s)$, for example a network that outputs the mean of a Gaussian over actions. Its quality is the expected return $J(\theta)$ over the trajectories it produces. You can estimate $J(\theta)$ by running the robot $N$ times and averaging the returns; because the samples must come from the current policy, this is an **on-policy** estimate [▶ 04:37](https://youtu.be/AdTGz8YnnlE?t=277).
+
+Improving $\theta$ needs the gradient of $J$, and the obvious route is blocked: the return depends on $\theta$ through the robot's sampled actions and the world's response, and you cannot backpropagate through the physical world [▶ 05:38](https://youtu.be/AdTGz8YnnlE?t=338). The way round it is the **log-derivative trick**: $\nabla_\theta p_\theta = p_\theta \nabla_\theta \log p_\theta$ turns the gradient of an expectation into an expectation of something you can compute for each sample [▶ 07:44](https://youtu.be/AdTGz8YnnlE?t=464). The sampling stays non-differentiable, but $\theta$ now appears inside the expectation, where samples can estimate it [▶ 10:19](https://youtu.be/AdTGz8YnnlE?t=619). Better still, the log of a trajectory's probability is a sum: start state, policy terms, dynamics terms. Only the policy terms depend on $\theta$, so the unknown dynamics drop out of the gradient [▶ 11:51](https://youtu.be/AdTGz8YnnlE?t=711). The result (@eq-pg) gives the algorithm **REINFORCE** (Williams, 1992): roll out, compute the gradient, step, roll out again [▶ 13:25](https://youtu.be/AdTGz8YnnlE?t=805).
+
+The lecture's intuition compares it with behavior cloning [▶ 14:58](https://youtu.be/AdTGz8YnnlE?t=898). The BC gradient raises the log-probability of every demonstrated action equally. The policy gradient does the same for the robot's *own* actions, but weights each trajectory by its return: good trajectories are pushed up, bad ones down.
+
+### Credit only the future {#rtg-intuition}
+
+An arm reaches towards a cup, moves well for most of the way, and overshoots at the end. REINFORCE multiplies every action's score by the episode's total return, so it penalizes the good early actions as much as the overshoot [▶ 16:00](https://youtu.be/AdTGz8YnnlE?t=960). Causality says an action at step $t$ cannot have affected rewards before $t$. Weighting each action by the **reward-to-go**, the rewards from $t$ onwards, removes those irrelevant terms: the average gradient is unchanged, the noise is lower [▶ 17:03](https://youtu.be/AdTGz8YnnlE?t=1023).
+
+### Better or worse than usual? {#baseline-intuition}
+
+Now two reaches: one overshoots and scores 99, one is perfect and scores 101. REINFORCE pushes *both* up, by amounts proportional to 99 and 101; the useful signal is the difference of 2, buried under a common 100 [▶ 18:06](https://youtu.be/AdTGz8YnnlE?t=1086). Subtracting a **baseline** $b = 100$, the average return, gives weights $-1$ and $+1$: the overshoot is discouraged and the perfect reach encouraged [▶ 19:40](https://youtu.be/AdTGz8YnnlE?t=1180). This is not cheating: a constant baseline leaves the expected gradient exactly unchanged and only removes noise [▶ 21:13](https://youtu.be/AdTGz8YnnlE?t=1273).
+
+This page's reach toy makes the point with numbers. A point robot on a line starts at 0 and has `{python} w5.T` steps to reach a goal at 1; its policy moves by $k$ times the remaining error, plus Gaussian noise of standard deviation `{python} w5.SIGMA`. The reward per step is minus the squared distance to the goal, plus a constant bonus $c$ (think of a reward for every step the robot stays upright). The bonus changes nothing about which gain is best, $k = 1$. It does change the noise. From batches of `{python} N_BATCH` episodes at $k =$ `{python} K_EVAL`, the true gradient is `{python} f"{G_TRUE:.2f}"`. With $c = 0$ the four estimators of @fig-variance have standard deviations `{python} ", ".join(f"{STD[0.0][n]:.2f}" for n in w5.ESTIMATORS)`: each fix helps. With $c = 100$ the full-return estimator's spread grows to `{python} f"{STD[100.0]['full return']:,.0f}"`, so the signal is `{python} f"{100 * share(100.0, 'full return'):.1f}"`% of the noise, while the estimators with a baseline stay at `{python} f"{STD[100.0]['minus mean baseline']:.2f}"` and `{python} f"{STD[100.0]['minus fitted V']:.2f}"`.
+
+### The advantage {#advantage-intuition}
+
+Look at what the reward-to-go estimates: the expected sum of future rewards after taking $a_t$ in $s_t$ and following the policy, which is exactly $Q^\pi(s_t, a_t)$. The reward-to-go is a one-sample, noisy estimate of Q [▶ 22:14](https://youtu.be/AdTGz8YnnlE?t=1334). The natural baseline for a state is what the policy expects there on average, $V^\pi(s_t)$. Their difference is the **advantage**: positive if the action did better than usual from this state, negative if worse [▶ 22:47](https://youtu.be/AdTGz8YnnlE?t=1367). A state-dependent baseline accounts for how hard each state is; in the reach toy, a value function fitted on a separate batch beats the mean baseline (`{python} f"{STD[0.0]['minus fitted V']:.2f}"` against `{python} f"{STD[0.0]['minus mean baseline']:.2f}"`).
+
+### Reusing data: importance sampling {#is-intuition}
+
+Every estimate so far assumes the samples came from the current policy. After one gradient step the policy has changed, so the batch must be thrown away and a new one collected. For a real robot, where every episode costs time and wear, that is wasteful [▶ 24:53](https://youtu.be/AdTGz8YnnlE?t=1493). **Importance sampling** estimates an expectation under one distribution using samples from another, by weighting each sample by the ratio of the two probabilities [▶ 25:54](https://youtu.be/AdTGz8YnnlE?t=1554). Two caveats. The old policy must give nonzero probability wherever the new one does, or the ratio is undefined; and the estimate is only reliable while the two distributions are close [▶ 27:28](https://youtu.be/AdTGz8YnnlE?t=1648).
+
+For whole trajectories the dynamics cancel again, leaving a product of per-step ratios [▶ 28:30](https://youtu.be/AdTGz8YnnlE?t=1710). Products of many factors explode or vanish: the variance grows exponentially with the horizon [▶ 30:03](https://youtu.be/AdTGz8YnnlE?t=1803). If each step's ratio compares two Gaussians whose means differ by 0.2 standard deviations, the trajectory weight's effective sample size is `{python} f"{100 * w5.trajectory_weight_ess(10, 0.2):.0f}"`% of the batch after 10 steps and `{python} f"{100 * w5.trajectory_weight_ess(100, 0.2):.1f}"`% after 100 (@fig-ess). So in practice each time step is reweighted by its own action ratio only, ignoring how the state distribution changed; TRPO and PPO justify that approximation by keeping updates small [▶ 31:36](https://youtu.be/AdTGz8YnnlE?t=1896). With it, one batch can serve several gradient steps [▶ 32:37](https://youtu.be/AdTGz8YnnlE?t=1957).
+
+### How far may one batch move the policy? {#trust-intuition}
+
+If the new policy puts probability on actions the old policy never took, the ratio is meaningless. An **entropy bonus** in the objective keeps the policy spread out, so that its support does not collapse [▶ 33:40](https://youtu.be/AdTGz8YnnlE?t=2020). If the policy moves too far within one batch, ratios explode: an action the old policy took with probability 0.005 that the new policy takes with probability 0.10 gets weight 20 [▶ 35:45](https://youtu.be/AdTGz8YnnlE?t=2145). **TRPO** maximizes the reweighted advantage subject to a bound on the KL divergence between old and new policies [▶ 36:46](https://youtu.be/AdTGz8YnnlE?t=2206). It comes with a guarantee that each update does not make the policy worse, but the constraint needs second-order information about the KL divergence, which is expensive for large networks [▶ 37:50](https://youtu.be/AdTGz8YnnlE?t=2270). **PPO** gets most of the stability with a first-order trick: clip the ratio to $[1 - \epsilon, 1 + \epsilon]$ inside the objective, and take the minimum with the unclipped term [▶ 40:29](https://youtu.be/AdTGz8YnnlE?t=2429). It works with ordinary optimizers such as Adam, which is why it also trains large language models (RLHF, GRPO); it gives up the guarantee and still needs many fresh samples [▶ 41:02](https://youtu.be/AdTGz8YnnlE?t=2462).
+
+The reuse toy measures what clipping buys. A one-step task with a continuous action: a Gaussian policy starting at $\mathcal{N}(0, 1)$, and a reward bump at $a = 2$, observed with noise. Each run collects 30 batches of 32 samples and takes $K$ gradient steps on each batch, over `{python} N_SEEDS` seeds. One step per batch, the on-policy method, reaches an average expected reward of only `{python} f"{final(1, True).mean():.2f}"` (the best possible is 1). Reuse helps a lot: with $K = 10$ clipped steps per batch it reaches `{python} f"{final(10, True).mean():.2f}"`. Without the clip, more reuse becomes harmful. At $K = 20$, `{python} f"{100 * lost(20, False):.0f}"`% of the runs lose the bump entirely (expected reward below 0.05), and `{python} f"{100 * lost(100, False):.0f}"`% at $K = 100$; with the clip, none do at any $K$ (@fig-reuse).
+
+```{python}
+#| include: false
+hero_sig_peak, hero_sig_end = float(HERO["sigma"][hero_peak_b]), float(HERO["sigma"][-1])
+hero_mu_end = float(HERO["mu"][-1])
+hero_narrow = next(b for b in range(hero_peak_b, 31) if HERO["sigma"][b] < HERO["sigma"][0])   # as in the scene
+
+
+def blue_shares(lo, hi):
+    """Share of blue (above-average) samples on the bump's slope and off it, batches lo..hi."""
+    on = np.concatenate([w5.bump(a) > 0.3 for a, _, _ in HERO["batches"][lo - 1:hi]])
+    blue = np.concatenate([adv > 0 for _, _, adv in HERO["batches"][lo - 1:hi]])
+    return float(blue[on].mean()), (float(blue[~on].mean()) if (~on).any() else None), float(on.mean())
+
+
+early_on, early_off, _ = blue_shares(1, 10)
+late_on, _, late_cover = blue_shares(21, 30)
+step_early = float(np.mean(np.abs(np.diff(HERO["mu"][:11]))))
+step_late = float(np.mean(np.abs(np.diff(HERO["mu"][20:]))))
+assert early_on > 0.8 and early_off < 0.5 and late_cover == 1.0 and abs(late_on - 0.5) < 0.1
+assert step_late < 0.3 * step_early
+a_lo, a_hi = float(HERO["batches"][0][0].min()), float(HERO["batches"][0][0].max())
+assert a_hi < w5.BUMP_AT - 0.5                           # the first batch never reaches the bump's top
+```
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w05-batches",
+    caption="PPO-style learning on the one-step task: each batch of 32 actions is coloured by its advantage, "
+            "and the policy moves a short way towards the better ones before the next batch is drawn.",
+    alt=f"Animation, about 29 seconds, looping. Two bands share an action axis from −3 to 4. The upper band shows a "
+        f"grey reward bump peaking at action 2; the lower band shows the policy, a blue bell curve, low and wide, "
+        f"centred at 0. Thirty batches follow one another; in each, 32 dots appear in the upper band at the sampled "
+        f"actions and the heights of their noisy rewards, blue if better than the batch average and orange if worse, "
+        f"and then the bell curve moves. For about ten batches the dots are spread far to the left of the bump and "
+        f"the curve drifts right. From batch {hero_narrow} the caption reads 'Once it covers the bump, it narrows', "
+        f"and the curve becomes a tall, thin peak over action 2, with the dots bunched on the bump, blue above "
+        f"orange. A counter shows the batch number and the expected reward, rising from {HERO['J'][0]:.2f} to "
+        f"{HERO['J'][-1]:.2f}. The curve then slides back to its starting position.",
+))
+```
+
+**What to watch for.** In the first batch the samples spread from `{python} f"{a_lo:.1f}"` to `{python} f"{a_hi:.1f}"`, none near the top of the bump. Far from the bump every reward is just noise, so blue and orange dots are mixed: off the bump, only `{python} f"{100 * early_off:.0f}"`% of the first ten batches' samples are blue. The few samples that land on the bump's slope are blue `{python} f"{100 * early_on:.0f}"`% of the time, and they do the pulling: the curve drifts right, and it even widens slightly, to a standard deviation of `{python} f"{hero_sig_peak:.2f}"` at batch `{python} hero_peak_b`, since spreading out reaches more of the bump. From batch `{python} hero_narrow` the curve covers the bump and narrows. In the last ten batches every sample lands on the bump and blue sits *above* orange: which samples beat the average is now mostly noise (`{python} f"{100 * late_on:.0f}"`% are blue), the pulls largely cancel, and the mean moves `{python} f"{step_late:.3f}"` per batch, against `{python} f"{step_early:.3f}"` in the first ten. After 30 batches the policy has standard deviation `{python} f"{hero_sig_end:.2f}"`, is centred at `{python} f"{hero_mu_end:.2f}"`, and the counter's expected reward has risen from `{python} f"{HERO['J'][0]:.2f}"` to `{python} f"{HERO['J'][-1]:.2f}"`.
+
+### Actor and critic {#ac-intuition}
+
+PPO's full objective has three terms: the clipped policy objective, a squared error that trains a value function, and the entropy bonus [▶ 43:05](https://youtu.be/AdTGz8YnnlE?t=2585). The policy is the **actor**; the value function, which supplies the advantages, is the **critic**. Together they form an **actor-critic**: direct optimization of the behavior you care about, with a learned baseline to keep the variance low [▶ 44:37](https://youtu.be/AdTGz8YnnlE?t=2677). The critic learns by temporal-difference updates, bootstrapping from its own next-state estimate instead of waiting for the episode to end: more sample-efficient, at the cost of a small bias [▶ 45:39](https://youtu.be/AdTGz8YnnlE?t=2739). Since the critic is only needed during training, in simulation it can be given privileged information, such as exact object poses, that the deployed policy never sees [▶ 46:09](https://youtu.be/AdTGz8YnnlE?t=2769).
+
+The lecture's robot examples: quadruped locomotion over rough terrain trained with TRPO in simulation and transferred to the real robot [▶ 39:25](https://youtu.be/AdTGz8YnnlE?t=2365), and OpenAI's Rubik's-cube hand, 24 degrees of freedom, trained with PPO and heavy randomization of the simulator, with the cube's pose estimated by a separate vision network [▶ 42:05](https://youtu.be/AdTGz8YnnlE?t=2525).
+
+### Fully off-policy: SAC {#sac-intuition}
+
+**Soft actor-critic** closes the lecture's arc from on-policy to off-policy. Its critic is a Q-function trained by TD updates on a replay buffer, as in DQN [▶ 47:13](https://youtu.be/AdTGz8YnnlE?t=2833). Its actor maximizes the critic's score plus an entropy bonus; the bonus also enters the critic's target, which favours states with many good ways to proceed [▶ 48:16](https://youtu.be/AdTGz8YnnlE?t=2896). The key move is that the actor takes old *states* from the buffer but asks the *current* policy what it would do there, and lets the critic estimate how good that new action is: the critic acts as a learned simulator [▶ 48:47](https://youtu.be/AdTGz8YnnlE?t=2927). To pass the critic's gradient back through the sampled action, SAC writes the sample as $a = \mu_\theta(s) + \sigma_\theta(s)\,\varepsilon$ with fixed noise $\varepsilon$: the **reparameterization trick** [▶ 49:17](https://youtu.be/AdTGz8YnnlE?t=2957). In this page's third toy, that pathwise gradient has `{python} f"{rp_ratio[16]:.2f}"` times the standard deviation of the score-function gradient for the same samples (@fig-reparam).
+
+```{dot}
+//| label: fig-lineage
+//| fig-width: 5.0
+//| fig-height: 6.6
+//| fig-cap: "The lecture's path from REINFORCE to SAC. Each box is a method; each arrow names the problem the next method solves. The left column fights variance, the right column makes better use of data."
+//| fig-alt: "Flow diagram. 'REINFORCE: log-derivative trick; Monte Carlo returns' leads, labelled 'credits the past', to 'reward-to-go', which leads, labelled 'common offset', to 'baseline, advantage A = Q − V'. From REINFORCE an arrow labelled 'one step per batch' leads to 'importance sampling: reuse a batch', which leads, labelled 'policy drifts', to 'TRPO: KL constraint', which leads, labelled 'second-order cost', to 'PPO: clipped ratio'. The advantage box and PPO both point, labelled 'learned critic', to 'actor-critic: PPO with a value function'. That leads, labelled 'still near on-policy', to 'SAC: Q-function on a replay buffer, entropy, reparameterization', highlighted in orange."
+digraph lineage {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.42;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  rf [label="REINFORCE\nlog-derivative trick\nMonte Carlo returns", fillcolor="#f0efec", color="#52514e"];
+  rtg [label="reward-to-go"];
+  base [label="baseline\nadvantage A = Q − V"];
+  is [label="importance sampling\nreuse a batch"];
+  trpo [label="TRPO\nKL constraint"];
+  ppo [label="PPO\nclipped ratio"];
+  ac [label="actor-critic\nPPO with a value function"];
+  sac [label="SAC\nQ on a replay buffer\nentropy · reparameterization", fillcolor="#fbe1d6", color="#eb6834"];
+  rf -> rtg [label=" credits the past"];
+  rtg -> base [label=" common offset"];
+  rf -> is [label=" one step per batch"];
+  is -> trpo [label=" policy drifts"];
+  trpo -> ppo [label=" second-order cost"];
+  base -> ac [label=" learned critic"];
+  ppo -> ac;
+  ac -> sac [label=" still near on-policy"];
+}
+```
+
+## Key concepts & formulae
+
+The lecture's notation: $\pi_\theta(a \mid s)$ for the policy, $p_\theta(\tau)$ for the distribution over trajectories $\tau = (s_0, a_0, s_1, \dots)$, $R(\tau)$ for a trajectory's return and $J(\theta)$ for the expected return; $\theta'$ is the new policy, $\theta$ the one that collected the data. The ADM book writes $U(\theta)$ for $J(\theta)$ and calls PPO's clipped objective the clamped surrogate.
+
+### The policy gradient
+
+::: {.key-equation data-name="Objective and trajectory distribution"}
+$$
+\begin{aligned}
+J(\theta) &= \mathbb{E}_{\tau \sim p_\theta(\tau)}\big[R(\tau)\big] \\
+p_\theta(\tau) &= p(s_0) \textstyle\prod_{t} \pi_\theta(a_t \mid s_t)\, P(s_{t+1} \mid s_t, a_t)
+\end{aligned}
+$$ {#eq-objective}
+:::
+
+**In words.** A policy is as good as the average return of the trajectories it produces. A trajectory's probability is the start-state probability times, at every step, the policy's probability of its action and the world's probability of the next state.
+
+**Term by term.**
+
+- $R(\tau) = \sum_t \gamma^t r_t$: the (discounted) return of one trajectory, as in [Week 2](w02-robot-control-mdps.qmd).
+- $\pi_\theta$: the only factor we control. $p(s_0)$ and $P$ are the world's, unknown to us.
+- The lecture estimates $J$ by averaging the returns of $N$ rollouts [▶ 04:37](https://youtu.be/AdTGz8YnnlE?t=277).
+
+::: {.key-equation data-name="Log-derivative trick"}
+$$
+\nabla_\theta p_\theta(\tau) = p_\theta(\tau)\, \nabla_\theta \log p_\theta(\tau)
+$$ {#eq-logtrick}
+:::
+
+**In words.** The gradient of a probability equals the probability times the gradient of its logarithm.
+
+**Term by term.**
+
+- It is the chain rule, $\nabla \log p = \nabla p / p$, rearranged.
+- Its use: in $\nabla J = \int \nabla_\theta p_\theta(\tau) R(\tau)\, d\tau$ the integrand is not a probability times something, so samples cannot estimate it. After the trick it is $p_\theta(\tau)$ times something, which is an expectation [▶ 09:15](https://youtu.be/AdTGz8YnnlE?t=555).
+
+::: {.key-equation .famous data-name="Policy gradient theorem (REINFORCE)"}
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim p_\theta}\Big[\textstyle\sum_{t} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\; R(\tau)\Big]
+$$ {#eq-pg}
+:::
+
+**In words.** To find which way to move $\theta$, take each sampled trajectory, ask which direction makes its actions more likely, and weight that direction by the trajectory's return. Average over trajectories.
+
+**Term by term.**
+
+- $\nabla_\theta \log \pi_\theta(a_t \mid s_t)$: the score of one action. For a Gaussian policy with mean $\mu_\theta(s)$ and standard deviation $\sigma$ it is $\frac{a_t - \mu_\theta(s_t)}{\sigma^2}\, \nabla_\theta \mu_\theta(s_t)$: the noise that was drawn, times how $\theta$ moves the mean.
+- $R(\tau)$: the weight. With $R \equiv 1$ this would be behavior cloning on the robot's own actions [▶ 14:58](https://youtu.be/AdTGz8YnnlE?t=898).
+- No $P(s_{t+1} \mid s_t, a_t)$ appears: the method is model-free.
+
+**Why it holds.** Apply @eq-logtrick to $\nabla J = \int \nabla_\theta p_\theta(\tau) R(\tau)\, d\tau$ to get $\mathbb{E}[\nabla_\theta \log p_\theta(\tau)\, R(\tau)]$. By @eq-objective, $\log p_\theta(\tau) = \log p(s_0) + \sum_t \log \pi_\theta(a_t \mid s_t) + \sum_t \log P(s_{t+1} \mid s_t, a_t)$; the first and last terms do not depend on $\theta$, so their gradients vanish [▶ 12:55](https://youtu.be/AdTGz8YnnlE?t=775).
+
+**Numeric check.** In the reach toy at $k =$ `{python} K_EVAL`, the average of @eq-pg over many batches of `{python} N_BATCH` is `{python} f"{EST[0.0]['full return'].mean():.2f}"`, against a true gradient of `{python} f"{G_TRUE:.2f}"` (from 2 million episodes).
+
+### Less variance, same gradient
+
+::: {.key-equation data-name="Reward-to-go with a baseline"}
+$$
+\nabla_\theta J(\theta) = \mathbb{E}\Big[\textstyle\sum_{t} \nabla_\theta \log \pi_\theta(a_t \mid s_t) \big(\textstyle\sum_{t' \ge t} r_{t'} - b\big)\Big]
+$$ {#eq-rtg}
+:::
+
+**In words.** Weight each action by the rewards that came after it, minus a baseline. The expected gradient is the same as in @eq-pg; the noise is lower.
+
+**Term by term.**
+
+- $\sum_{t' \ge t} r_{t'}$: the reward-to-go. Rewards before $t$ are dropped: on average they contribute nothing, because the action at $t$ cannot have caused them [▶ 17:03](https://youtu.be/AdTGz8YnnlE?t=1023).
+- $b$: the baseline, for example the batch's average return [▶ 19:40](https://youtu.be/AdTGz8YnnlE?t=1180). It may depend on the state, but not on the action.
+
+**Why it holds.** For any $b$ that does not depend on $a_t$: $\mathbb{E}_{a \sim \pi_\theta}[\nabla_\theta \log \pi_\theta(a \mid s)\, b] = b \int \nabla_\theta \pi_\theta(a \mid s)\, da = b\, \nabla_\theta \int \pi_\theta(a \mid s)\, da = b\, \nabla_\theta 1 = 0$. The same argument removes past rewards, which are fixed by the time $a_t$ is drawn.
+
+**Numeric check.** A baseline must not use the episode it is subtracted from: the reach toy's first version used the batch mean including the episode itself and a value function fitted on the same batch, and both estimates came out biased. The page's version uses the mean of the *other* episodes and a value function fitted on a separate batch; all four averages agree with the true gradient within four standard errors, at every offset $c$.
+
+::: {.key-equation data-name="Advantage"}
+$$
+\begin{aligned}
+A^\pi(s, a) &= Q^\pi(s, a) - V^\pi(s) \\
+\nabla_\theta J(\theta) &= \mathbb{E}\Big[\textstyle\sum_{t} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\; A^\pi(s_t, a_t)\Big]
+\end{aligned}
+$$ {#eq-advantage}
+:::
+
+**In words.** How much better taking $a$ in $s$ is than what the policy does on average there. Using it as the weight pushes up better-than-usual actions and pushes down worse-than-usual ones.
+
+**Term by term.**
+
+- $Q^\pi(s_t, a_t)$: the expected reward-to-go; the observed reward-to-go is one noisy sample of it [▶ 22:14](https://youtu.be/AdTGz8YnnlE?t=1334).
+- $V^\pi(s) = \mathbb{E}_{a \sim \pi}[Q^\pi(s, a)]$: the state-dependent baseline. In practice a learned critic estimates it.
+- $\mathbb{E}_{a \sim \pi}[A^\pi(s, a)] = 0$: on average, the policy is exactly as good as itself.
+
+```{python}
+#| label: fig-variance
+#| fig-cap: "Spread of four gradient estimators on the reach toy (standard deviation over 3,000 batches of 16 episodes, at gain k = 0.3), as a constant bonus c is added to every step's reward. All four have the same mean, the true gradient (dashed). The full return and the reward-to-go carry the bonus into their weights, so their noise grows with c; the two baselines remove it."
+#| fig-alt: "Line chart with the reward offset c on the x-axis (0, 1, 10, 100) and the standard deviation of the gradient estimate on a logarithmic y-axis. A grey line for the full return and an orange line for the reward-to-go start near 8.6 and 6.1 at c = 0 and rise steeply to about 1,500 and 1,200 at c = 100. A blue line for the mean baseline and a green line for the fitted value function stay flat, near 4.3 and 3.9. A dashed horizontal line marks the true gradient, about 8.8."
+fig, ax = plt.subplots(figsize=(6.4, 3.2))
+xs = np.arange(len(OFFSETS))
+for n in w5.ESTIMATORS:
+    ax.plot(xs, [STD[c][n] for c in OFFSETS], marker="o", color=EST_COLORS[n], lw=1.8, label=n)
+ax.axhline(abs(G_TRUE), color=style.INK, lw=0.8, ls="--")
+ax.text(xs[-1], abs(G_TRUE) * 1.15, "true gradient", ha="right", fontsize=8, color=style.INK)
+ax.set_yscale("log"); ax.set_xticks(xs); ax.set_xticklabels([f"{c:g}" for c in OFFSETS])
+ax.set_xlabel("constant bonus c added to every reward"); ax.set_ylabel("std of the gradient estimate")
+ax.legend(fontsize=8, loc="upper left")
+plt.show()
+```
+
+### Reusing data
+
+::: {.key-equation data-name="Importance sampling"}
+$$
+\mathbb{E}_{x \sim p}\big[f(x)\big] = \mathbb{E}_{x \sim q}\Big[\frac{p(x)}{q(x)}\, f(x)\Big]
+$$ {#eq-is}
+:::
+
+**In words.** An average under $p$ can be computed from samples of $q$, if each sample is weighted by how much more (or less) likely it is under $p$ than under $q$.
+
+**Term by term.**
+
+- $p$: the new policy's distribution, the one we want to evaluate; $q$: the old policy's, which produced the data.
+- $p(x)/q(x)$: the importance weight. Its average under $q$ is 1.
+- Requires $q(x) > 0$ wherever $p(x) > 0$; otherwise the weight is undefined [▶ 27:28](https://youtu.be/AdTGz8YnnlE?t=1648).
+
+**Why it holds.** Multiply and divide by $q(x)$ inside the integral: $\int p(x) f(x)\, dx = \int q(x) \frac{p(x)}{q(x)} f(x)\, dx$, the same "multiply by one" step as @eq-logtrick.
+
+::: {.key-equation data-name="Off-policy policy gradient (per-step ratio)"}
+$$
+\nabla_{\theta'} J(\theta') \approx \mathbb{E}_{(s_t, a_t) \sim \pi_\theta}\Big[\frac{\pi_{\theta'}(a_t \mid s_t)}{\pi_\theta(a_t \mid s_t)}\; \nabla_{\theta'} \log \pi_{\theta'}(a_t \mid s_t)\; A^{\pi_\theta}(s_t, a_t)\Big]
+$$ {#eq-offpolicy}
+:::
+
+**In words.** Reuse the old policy's samples for the new policy's gradient, weighting each step by its own action ratio.
+
+**Term by term.**
+
+- The exact weight for a whole trajectory is $\prod_t \pi_{\theta'}(a_t \mid s_t) / \pi_\theta(a_t \mid s_t)$, whose variance grows exponentially with the horizon (@fig-ess).
+- The per-step version also needs the ratio of state distributions under the two policies, which would require the dynamics; it is approximated by 1 [▶ 31:36](https://youtu.be/AdTGz8YnnlE?t=1896). That is accurate only while $\theta'$ stays near $\theta$.
+- At $\theta' = \theta$ the ratio is 1 and this is @eq-advantage.
+
+**Numeric check.** When each step's two Gaussians have means $\delta$ standard deviations apart, each ratio has $\mathbb{E}[w^2] = e^{\delta^2}$, so the trajectory weight has $\mathbb{E}[w^2] = e^{T\delta^2}$ and an effective sample size of $e^{-T\delta^2}$ of the batch. For $\delta = 0.2$ and $T = 50$ that is `{python} f"{w5.trajectory_weight_ess(50, 0.2):.3f}"`; sampled weights give `{python} f"{ESS_MC[50]:.3f}"`.
+
+```{python}
+#| label: fig-ess
+#| fig-cap: "Why whole-trajectory importance weights fail. The effective sample size (as a share of the batch) of a product of T per-step ratios, when each step's old and new Gaussian policies differ in mean by δ standard deviations. Lines: the closed form e^(−Tδ²); dots: 200,000 sampled trajectories for δ = 0.2."
+#| fig-alt: "Line chart with horizon T from 1 to 100 on the x-axis and effective sample size from 0 to 1 on the y-axis. Three decaying curves: for delta 0.1 it falls to about 0.37 at T = 100, for 0.2 to about 0.13 at T = 50 and 0.02 at 100, for 0.3 to about 0.41 at T = 10 and nearly 0 by T = 50. Four dots at T = 1, 10, 50 and 100 sit on the delta 0.2 curve."
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+for sh, col in zip(ESS_SHIFTS, (GREEN, BLUE, ORANGE)):
+    ax.plot(ESS_T, w5.trajectory_weight_ess(ESS_T, sh), color=col, lw=1.8, label=rf"$\delta$ = {sh}")
+ax.plot(list(ESS_MC), list(ESS_MC.values()), "o", color=BLUE, ms=5)
+ax.set_xlabel("horizon T (steps)"); ax.set_ylabel("effective sample size / N"); ax.set_ylim(0, 1.02)
+ax.legend(fontsize=8)
+plt.show()
+```
+
+### Keeping the policy close
+
+::: {.key-equation data-name="Entropy bonus"}
+$$
+\begin{aligned}
+L(\theta') &= L_{\text{PG}}(\theta') + \beta\, \mathcal{H}\big(\pi_{\theta'}(\cdot \mid s)\big) \\
+\mathcal{H}_{\text{Gauss}} &= \tfrac{d}{2}\big(1 + \log 2\pi\big) + \textstyle\sum_{i=1}^{d} \log \sigma_i
+\end{aligned}
+$$ {#eq-entropy}
+:::
+
+**In words.** Reward the policy for staying spread out, so it keeps giving some probability to actions it is not currently favouring.
+
+**Term by term.**
+
+- $\beta$: the temperature; larger means more spread, near 0 means greedy [▶ 34:11](https://youtu.be/AdTGz8YnnlE?t=2051).
+- For discrete actions, $\mathcal{H} = -\sum_a \pi(a) \log \pi(a)$ (Shannon entropy); for a Gaussian over $d$ action dimensions, the second line, which depends only on the standard deviations [▶ 34:43](https://youtu.be/AdTGz8YnnlE?t=2083).
+- With a Gaussian over an unbounded action space, the bonus grows without limit as $\sigma$ grows, so a large $\beta$ can make the policy ever wider. SAC squashes its actions into a bounded range with $\tanh$, which keeps the entropy bounded.
+
+::: {.key-equation .famous data-name="Trust region policy optimization (TRPO)"}
+$$
+\begin{aligned}
+\max_{\theta'}\; & \mathbb{E}_{s, a \sim \pi_\theta}\Big[\frac{\pi_{\theta'}(a \mid s)}{\pi_\theta(a \mid s)}\, A^{\pi_\theta}(s, a)\Big] \\
+\text{subject to}\; & \mathbb{E}_{s}\big[D_{\text{KL}}\big(\pi_\theta(\cdot \mid s) \,\big\|\, \pi_{\theta'}(\cdot \mid s)\big)\big] \le \delta
+\end{aligned}
+$$ {#eq-trpo}
+:::
+
+**In words.** Improve the reweighted advantage as much as possible, but never let the new policy's action distribution move further than $\delta$ from the old one, measured by KL divergence.
+
+**Term by term.**
+
+- The objective is the off-policy surrogate whose gradient is @eq-offpolicy.
+- $D_{\text{KL}}$: how different two distributions are; it is zero only when they are equal, and it becomes very large if the new policy gives almost no probability to actions the old one took.
+- $\delta$: the trust-region size. Solving the constrained problem needs the Fisher information matrix (second derivatives of the KL), whose size is the number of parameters squared; TRPO approximates it with conjugate gradients [▶ 38:23](https://youtu.be/AdTGz8YnnlE?t=2303).
+
+::: {.key-equation .famous data-name="PPO clipped objective"}
+$$
+\begin{aligned}
+\rho &= \pi_{\theta'}(a \mid s) / \pi_\theta(a \mid s) \\
+L^{\text{CLIP}}(\theta') &= \mathbb{E}\big[\min\big(\rho A,\; \operatorname{clip}(\rho, 1 - \epsilon, 1 + \epsilon)\, A\big)\big]
+\end{aligned}
+$$ {#eq-ppo}
+:::
+
+**In words.** Use the reweighted advantage, but stop rewarding a sample once its ratio has moved more than $\epsilon$ in the direction its advantage favours.
+
+**Term by term.**
+
+- $A$: the advantage $A^{\pi_\theta}(s, a)$, from the critic.
+- $A > 0$: the term grows with $\rho$ only up to $1 + \epsilon$; beyond that its gradient is zero. $A < 0$: likewise below $1 - \epsilon$.
+- The $\min$ keeps the unclipped term when it is *lower*: a sample whose ratio moved the wrong way (an action with $A > 0$ that became less likely) still pulls the policy back. The objective is a pessimistic bound.
+- $\epsilon$: typically 0.1–0.3; the reuse toy uses 0.2.
+
+**Numeric check.** On the explorer's batch (seed 0, first batch of the reuse toy), the clipped objective is largest at $\mu' =$ `{python} f"{CLIP_AT[0]:.2f}"`, $\sigma' =$ `{python} f"{CLIP_AT[1]:.2f}"`, close to the old policy $\mathcal{N}(0, 1)$. The unclipped objective has no maximum at all: it keeps growing as the new policy shrinks onto the batch's single best sample, at $a =$ `{python} f"{a0[adv0.argmax()]:.2f}"`. On a grid it peaks at the grid's edge, $\sigma' = 0.02$ (@fig-clip-explorer).
+
+```{python}
+#| label: fig-reuse
+#| fig-cap: "Reusing each batch K times, on the one-step task (30 batches of 32 samples, 50 seeds, reward noise 0.3). Left: expected reward after the last batch, mean (line) and 10th percentile (dashed) over seeds, against the number of gradient steps per batch. Right: one unclipped run with K = 20 that loses the bump (the first seed for which that happens): its expected reward and its policy's standard deviation per batch."
+#| fig-alt: "Two panels. Left: x-axis K from 1 to 100, logarithmic; y-axis expected reward from 0 to 1. A blue solid line (clipped, mean) rises from about 0.19 at K = 1 to about 0.96 at K = 10 and stays near 0.9 up to K = 100; its dashed 10th-percentile line stays above about 0.7. An orange solid line (no clip, mean) peaks near 0.89 at K = 5 and falls to about 0.4 by K = 100; its dashed 10th percentile drops to 0 from K = 20. Right: x-axis batch 0 to 30, one shared y-axis. An orange line of the policy's standard deviation rises from 1 to about 1.6 at batch 2, falls to about 0.2 by batch 8 and then slowly to about 0.05. A blue line of expected reward climbs from about 0.1 to above 0.9 by batch 8, stays near 1 with dips to about 0.6 and 0.8, and drops to 0 at batch 28, marked by a dotted line, where it stays."
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 3.0))
+for clip, col, name in ((True, BLUE, "clip"), (False, ORANGE, "no clip")):
+    a1.plot(KS, [final(K, clip).mean() for K in KS], color=col, marker="o", ms=3, lw=1.8, label=f"{name}, mean")
+    a1.plot(KS, [np.quantile(final(K, clip), 0.1) for K in KS], color=col, lw=1.2, ls="--", label=f"{name}, 10th pct")
+a1.set_xscale("log"); a1.set_xticks(KS); a1.set_xticklabels([str(k) for k in KS], fontsize=8)
+a1.set_ylim(-0.02, 1.02); a1.set_xlabel("gradient steps per batch K"); a1.set_ylabel("expected reward")
+a1.legend(fontsize=7, loc="lower right")
+b = np.arange(len(FAIL["J"]))
+a2.plot(b, FAIL["J"], color=BLUE, lw=1.8, label="expected reward")
+a2.plot(b, FAIL["sigma"], color=ORANGE, lw=1.4, label=r"policy std $\sigma$")
+a2.axvline(fail_b + 1, color=style.INK, lw=0.6, ls=":")
+a2.set_xlabel("batch"); a2.set_ylim(-0.02, 1.08 * max(FAIL["sigma"].max(), 1)); a2.legend(fontsize=7, loc="upper right")
+plt.tight_layout(); plt.show()
+```
+
+The right panel shows how an unclipped run fails. The policy first widens while it searches, then finds the bump and narrows. Without the clip it keeps narrowing: after 20 batches with $K = 20$, the median standard deviation over the `{python} N_SEEDS` seeds is `{python} f"{SIG20[False]:.3f}"` without the clip and `{python} f"{SIG20[True]:.3f}"` with it. In this run it is `{python} f"{FAIL['sigma'][fail_b]:.3f}"` at batch `{python} fail_b + 1`. The gradient with respect to the mean scales as $1/\sigma^2$, so a few lucky samples in that batch move the mean by `{python} f"{fail_jump:.0f}"` standard deviations. Afterwards every sample in the batch has a ratio near zero (the largest is below $10^{-3}$): the new policy has left the data's support, landed where the reward is flat, and never comes back.
+
+::: {.key-equation data-name="Full PPO objective"}
+$$
+L^{\text{PPO}}(\theta') = \mathbb{E}\big[L^{\text{CLIP}}(\theta') - c_1 \big(V_{\theta'}(s) - V^{\text{targ}}\big)^2 + c_2\, \mathcal{H}(\pi_{\theta'})(s)\big]
+$$ {#eq-ppo-full}
+:::
+
+**In words.** Maximize the clipped objective, train the value function towards its targets, and keep the policy spread out, all in one loss.
+
+**Term by term.**
+
+- $L^{\text{CLIP}}$: the actor's term, @eq-ppo.
+- $(V_{\theta'}(s) - V^{\text{targ}})^2$: the critic's regression loss, with a minus sign because the whole objective is maximized; the critic supplies the advantages [▶ 43:36](https://youtu.be/AdTGz8YnnlE?t=2616).
+- $c_1$, $c_2$: weights of the critic loss and the entropy bonus (@eq-entropy).
+
+### Soft actor-critic
+
+::: {.key-equation data-name="SAC losses"}
+$$
+\begin{aligned}
+L_{\text{actor}}(\theta) &= \mathbb{E}_{s \sim \mathcal{D},\, a \sim \pi_\theta}\big[\alpha \log \pi_\theta(a \mid s) - Q_\phi(s, a)\big] \\
+y &= r + \gamma\, \mathbb{E}_{a' \sim \pi_\theta}\big[Q_{\bar\phi}(s', a') - \alpha \log \pi_\theta(a' \mid s')\big] \\
+L_{\text{critic}}(\phi) &= \mathbb{E}_{(s, a, r, s') \sim \mathcal{D}}\big[(Q_\phi(s, a) - y)^2\big]
+\end{aligned}
+$$ {#eq-sac}
+:::
+
+**In words.** The actor picks actions the critic scores highly while staying random (high entropy). The critic regresses on a TD target that includes the entropy of the next action.
+
+**Term by term.**
+
+- $\mathcal{D}$: the replay buffer; states and transitions come from any past policy, so both losses are off-policy.
+- $a \sim \pi_\theta$ in the actor loss: the *current* policy's action in an old state, scored by the critic [▶ 48:47](https://youtu.be/AdTGz8YnnlE?t=2927).
+- $\alpha \log \pi_\theta$: minus the entropy, weighted by the temperature $\alpha$ (the lecture's $\beta$ in @eq-entropy).
+- $Q_{\bar\phi}$: a slowly updated target copy of the critic, as in DQN.
+
+::: {.key-equation data-name="Reparameterization trick"}
+$$
+\begin{aligned}
+a &= \mu_\theta(s) + \sigma_\theta(s)\, \varepsilon, \qquad \varepsilon \sim \mathcal{N}(0, 1) \\
+\nabla_\theta\, \mathbb{E}_a\big[Q(s, a)\big] &= \mathbb{E}_\varepsilon\big[\nabla_a Q(s, a)\; \nabla_\theta a\big]
+\end{aligned}
+$$ {#eq-reparam}
+:::
+
+**In words.** Write the random action as a deterministic function of the parameters and of noise that does not depend on them. Then the gradient can pass through the action into the critic, by the chain rule.
+
+**Term by term.**
+
+- $\varepsilon$: drawn from a fixed distribution with no parameters, so nothing about the sampling needs a gradient [▶ 49:17](https://youtu.be/AdTGz8YnnlE?t=2957).
+- $\nabla_a Q$: the critic's slope in the action, as in DDPG's actor update (Week 4). The score-function estimator (@eq-pg) does not need it; the pathwise estimator does.
+- Both are unbiased; the pathwise estimator is usually far less noisy.
+
+**Numeric check.** For $a \sim \mathcal{N}(0.5, 0.5^2)$ and the reward bump as $Q$, the exact $\partial_\mu \mathbb{E}[Q]$ is `{python} f"{G_R:.4f}"`. With 16 samples, the score-function estimate has standard deviation `{python} f"{RP[16]['score function'].std():.3f}"`, `{python} f"{RP[16]['score function, baseline'].std():.3f}"` with a baseline, and the reparameterized one `{python} f"{RP[16]['reparameterization'].std():.3f}"`; all three average to the exact value.
+
+```{python}
+#| label: fig-reparam
+#| fig-cap: "Two unbiased estimators of the same gradient, the derivative of E[Q(a)] with respect to the policy mean, for a Gaussian policy and a smooth Q: the score function (as REINFORCE does), with and without a leave-one-out baseline, and the reparameterization (as SAC does). Standard deviation over 20,000 batches, against the batch size."
+#| fig-alt: "Line chart with batch size 4, 16 and 64 on a logarithmic x-axis and the standard deviation of the gradient estimate on a logarithmic y-axis. Three parallel falling lines: score function highest, from about 0.33 to 0.08; score function with baseline slightly lower; reparameterization lowest, about half of the score function at each batch size, from 0.16 to 0.04."
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+for k, col in (("score function", style.MUTED), ("score function, baseline", ORANGE), ("reparameterization", BLUE)):
+    ax.plot(NS, [RP[n][k].std() for n in NS], marker="o", color=col, lw=1.8, label=k)
+ax.set_xscale("log"); ax.set_yscale("log")
+ax.set_xticks(NS, [str(n) for n in NS]); ax.set_xticks([], minor=True)
+ax.set_yticks([0.04, 0.08, 0.16, 0.32], ["0.04", "0.08", "0.16", "0.32"]); ax.set_yticks([], minor=True)
+ax.set_xlabel("batch size"); ax.set_ylabel("std of the gradient estimate"); ax.legend(fontsize=8)
+plt.show()
+```
+
+```{dot}
+//| label: fig-actor-critic
+//| fig-width: 6.2
+//| fig-height: 3.4
+//| fig-cap: "Two actor-critic loops. PPO (left) collects a fresh batch, computes advantages with its value function, takes a few clipped steps, and discards the batch. SAC (right) stores every transition in a replay buffer and trains a Q-function and the actor on random minibatches from it, indefinitely."
+//| fig-alt: "Two side-by-side flow diagrams. Left, titled PPO: 'policy (actor)' sends 'rollouts' to 'fresh batch', which sends 'states, returns' to 'value function V (critic)'; the critic sends 'advantages' to 'clipped update', and the batch also feeds it; the update sends 'new θ' back to the policy; the batch is marked 'discarded after K epochs'. Right, titled SAC: 'policy (actor)' sends 'transitions' to 'replay buffer'; the buffer sends 'minibatch' to 'Q-function (critic)' and 'old states' to the policy; the critic sends '∇a Q' to the policy."
+digraph ac {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.4;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  subgraph cluster_sac {
+    label="SAC"; fontname="Helvetica"; fontsize=12; color="#52514e"; style=rounded;
+    sa [label="policy (actor)"];
+    sb [label="replay buffer", fillcolor="#f0efec", color="#52514e"];
+    sq [label="Q-function (critic)", fillcolor="#fbe1d6", color="#eb6834"];
+    sa -> sb [label=" transitions"];
+    sb -> sq [label=" minibatch"];
+    sb -> sa [label=" old states", style=dashed];
+    sq -> sa [label=" ∇a Q"];
+  }
+  subgraph cluster_ppo {
+    label="PPO"; fontname="Helvetica"; fontsize=12; color="#52514e"; style=rounded;
+    pa [label="policy (actor)"];
+    pb [label="fresh batch\ndiscarded after K epochs", fillcolor="#f0efec", color="#52514e"];
+    pv [label="value function V (critic)", fillcolor="#fbe1d6", color="#eb6834"];
+    pu [label="clipped update"];
+    pa -> pb [label=" rollouts"];
+    pb -> pv [label=" states, returns"];
+    pv -> pu [label=" advantages"];
+    pb -> pu;
+    pu -> pa [label=" new θ"];
+  }
+}
+```
+
+## Worked examples
+
+### Example 1: one batch, four estimators {#ex-estimators}
+
+```{python}
+#| include: false
+ex_rng = np.random.default_rng(21)
+e_ex, score_ex, r_ex = w5.reach_rollouts(K_EVAL, 4, ex_rng, c=10.0)
+rtg_ex = w5.reward_to_go(r_ex)
+R_ex = r_ex.sum(1)
+loo_ex = (rtg_ex.sum(0) - rtg_ex) / 3
+contrib = {"full return": (score_ex * R_ex[:, None]).sum(1),
+           "reward-to-go": (score_ex * rtg_ex).sum(1),
+           "minus mean baseline": (score_ex * (rtg_ex - loo_ex)).sum(1)}
+```
+
+Four episodes of the reach task at $k =$ `{python} K_EVAL` with the bonus $c = 10$, so each episode's return is near 100. Each row is one episode: its return, and what it contributes to the gradient estimate under three of the weightings (the estimate is the average of a column).
+
+```{python}
+#| output: asis
+print("| episode | return | full return | reward-to-go | minus mean baseline |")
+print("|---:|---:|---:|---:|---:|")
+for i in range(4):
+    print(f"| {i + 1} | {R_ex[i]:.1f} | " + " | ".join(f"{contrib[n][i]:+.1f}" for n in contrib) + " |")
+print("| **average** | | " + " | ".join(f"**{contrib[n].mean():+.1f}**" for n in contrib) + " |")
+```
+
+The returns differ by only a few units, but the full-return column is dominated by the shared bonus: each entry is the episode's summed score, a random number around zero, multiplied by a number near 100. The reward-to-go column multiplies later scores by smaller numbers, because fewer rewards remain, but still carries the bonus. Subtracting the other episodes' mean reward-to-go at each step removes it, leaving entries of the size of the true gradient, `{python} f"{G_TRUE:.1f}"`.
+
+### Example 2: clipping, sample by sample {#ex-clip}
+
+```{python}
+#| include: false
+pick = np.argsort(a0)[[3, 12, 20, 28, 31]]          # five samples spread across the batch, by action
+mu_new, sig_new = 0.6, 1.0
+ratio_ex = np.exp(w5.log_prob(a0[pick], mu_new, np.log(sig_new)) - lp0[pick])
+clip_ex = np.clip(ratio_ex, 0.8, 1.2)
+obj_ex = np.minimum(ratio_ex * adv0[pick], clip_ex * adv0[pick])
+off_ex = ((adv0[pick] > 0) & (ratio_ex > 1.2)) | ((adv0[pick] < 0) & (ratio_ex < 0.8))
+assert off_ex.any() and (~off_ex).any()
+```
+
+Five samples from the explorer's batch (old policy $\mathcal{N}(0, 1)$), evaluated for a new policy that has moved its mean to `{python} mu_new` with $\epsilon = 0.2$:
+
+```{python}
+#| output: asis
+print("| action a | advantage A | ratio ρ | ρA | clipped term | gradient |")
+print("|---:|---:|---:|---:|---:|:---|")
+for i in range(len(pick)):
+    print(f"| {a0[pick][i]:+.2f} | {adv0[pick][i]:+.3f} | {ratio_ex[i]:.2f} | {ratio_ex[i] * adv0[pick][i]:+.3f} "
+          f"| {obj_ex[i]:+.3f} | {'switched off' if off_ex[i] else 'still pushes'} |")
+```
+
+Moving the mean right raises the ratios of actions on the right and lowers those on the left. A sample is switched off when its ratio has already moved past $1 \pm 0.2$ *in the direction its advantage asked for*: a right-hand action with $A > 0$ and $\rho > 1.2$, or a left-hand one with $A < 0$ and $\rho < 0.8$. Its gradient is then zero, so further steps on this batch are driven only by the remaining samples. A sample whose ratio moved the other way keeps its unclipped term, which is the smaller of the two, and pulls the policy back.
+
+### Example 3: the 99-and-101 reaches, with numbers {#ex-baseline}
+
+Two episodes with returns 99 (overshoot) and 101 (perfect), and suppose the summed scores of their actions are $g_1 = +0.5$ and $g_2 = -0.3$ (random numbers, as they would be). REINFORCE's estimate is $\frac{1}{2}(99 \times 0.5 + 101 \times (-0.3)) = 9.6$: dominated by the large common return, with the first, worse episode's direction winning. With baseline $b = 100$: $\frac{1}{2}((-1) \times 0.5 + 1 \times (-0.3)) = -0.4$. The weights now reflect that episode 2 was better: its direction is followed, episode 1's is reversed. On average over many episodes both estimates agree; in any one batch the first is mostly noise.
+
+## Interactive
+
+### Gradient noise, with and without baselines
+
+```{python}
+#| label: fig-variance-slider
+#| fig-cap: "Histograms of 3,000 gradient estimates (batches of 16 episodes at k = 0.3) for each estimator, at the chosen reward bonus c. The dashed line is the true gradient. Each panel has its own x-axis range."
+#| fig-alt: "Interactive figure with a slider for the reward bonus c: 0, 1, 10, 100. Four histogram panels, one per estimator: full return, reward-to-go, minus mean baseline, minus fitted V, each with a dashed line at the true gradient near 8.8. At c = 0 all four are bell-shaped around 8.8 with widths from about 9 to 4. As c grows, the full-return and reward-to-go histograms widen enormously, their x-axes stretching to thousands, while the two baseline histograms stay unchanged."
+fig = make_subplots(rows=2, cols=2, subplot_titles=list(w5.ESTIMATORS), horizontal_spacing=0.1, vertical_spacing=0.2)
+for i, c in enumerate(OFFSETS):
+    for j, n in enumerate(w5.ESTIMATORS):
+        fig.add_trace(go.Histogram(x=np.round(EST[c][n], 2), nbinsx=50, marker_color=EST_COLORS[n],
+                                   visible=(i == 0), showlegend=False, hoverinfo="skip"),
+                      row=j // 2 + 1, col=j % 2 + 1)
+for j in range(4):
+    fig.add_vline(x=G_TRUE, line_dash="dash", line_color=style.INK, row=j // 2 + 1, col=j % 2 + 1)
+steps = [dict(method="update", label=f"{c:g}",
+              args=[{"visible": [k // 4 == i for k in range(4 * len(OFFSETS))]}]) for i, c in enumerate(OFFSETS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=430, margin=dict(l=30, r=20, t=40, b=20), bargap=0.05,
+                  sliders=[dict(active=0, steps=steps, pad=dict(t=30), currentvalue=dict(prefix="reward bonus c: "))])
+fig.update_annotations(font_size=11)
+fig.show()
+```
+
+**What to try.** At $c = 0$ the four histograms are centred on the same value and differ only in width. Move to $c = 10$ and $c = 100$: the top two spread over hundreds and then thousands (look at their axes), while the bottom two do not change at all. In a single batch at $c = 100$, the full-return estimate is as likely to point the wrong way as the right way; that is what it means for the signal to be `{python} f"{100 * share(100.0, 'full return'):.1f}"`% of the noise.
+
+### PPO's clip, on one batch
+
+```{python}
+#| include: false
+write_json({
+    "a": a0, "adv": adv0, "logp_old": lp0, "mu0": w5.MU0, "sigma0": w5.SIGMA0,
+    "bump_at": w5.BUMP_AT, "bump_width": w5.BUMP_WIDTH,
+    "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED, "surface": style.SURFACE},
+}, "data/w05-clip.json")
+```
+
+The 32 samples are the first batch of the reuse toy, drawn from the old policy $\mathcal{N}(0, 1)$; the dots sit at their advantages. Move the new policy and watch which samples still push it (filled) and which the clip has switched off (hollow).
+
+```{ojs}
+clipData = FileAttachment("data/w05-clip.json").json()
+viewof muNew = Inputs.range([-1, 3], {step: 0.05, value: 0.3, label: "new mean μ′"})
+viewof sigNew = Inputs.range([0.05, 2], {step: 0.05, value: 1, label: "new std σ′"})
+viewof epsClip = Inputs.radio([0.1, 0.2, 0.3], {value: 0.2, label: "clip ε"})
+```
+
+```{ojs}
+clipRows = {
+  const d = clipData, out = [];
+  for (let i = 0; i < d.a.length; i++) {
+    const z = (d.a[i] - muNew) / sigNew;
+    const ratio = Math.exp(-0.5 * z * z - Math.log(sigNew) - d.logp_old[i]);
+    const A = d.adv[i];
+    const off = (A > 0 && ratio > 1 + epsClip) || (A < 0 && ratio < 1 - epsClip);
+    const clipped = Math.min(ratio * A, Math.min(Math.max(ratio, 1 - epsClip), 1 + epsClip) * A);
+    out.push({a: d.a[i], A, ratio, off, plain: ratio * A, clipped});
+  }
+  return out;
+}
+```
+
+```{ojs}
+//| label: fig-clip-explorer
+//| fig-cap: "One batch under PPO's clip. Top: the old policy (grey), the new policy (blue) and the reward bump (dashed, scaled). Bottom: each sample at its action and advantage; filled dots still contribute to the clipped objective's gradient, hollow ones are switched off. The numbers below compare the two objectives with the true change in expected reward."
+//| fig-alt: "Interactive figure with sliders for the new policy's mean and standard deviation and a choice of clip epsilon. The top panel shows a grey bell curve centred at 0, a blue bell curve that moves and changes width with the sliders, and a dashed bump centred at 2. The bottom panel shows 32 dots scattered between actions about −2.3 and 1.4, at advantages between about −0.6 and +0.9; dots switch from filled to hollow as the new policy moves away from the old one. Below, a line of text gives the unclipped objective, the clipped objective and the true improvement."
+{
+  const d = clipData, w = Math.min(width, 640);
+  const xs = d3.range(-3, 4.01, 0.05);
+  const pdf = (x, m, s) => Math.exp(-0.5 * ((x - m) / s) ** 2) / (s * Math.sqrt(2 * Math.PI));
+  const curves = xs.flatMap(x => [
+    {x, y: pdf(x, d.mu0, d.sigma0), k: "old policy"},
+    {x, y: pdf(x, muNew, sigNew), k: "new policy"},
+    {x, y: 0.4 * Math.exp(-0.5 * ((x - d.bump_at) / d.bump_width) ** 2), k: "reward bump"}]);
+  const top = Plot.plot({
+    width: w, height: 170, marginLeft: 44, style: {background: d.style.surface},
+    x: {domain: [-3, 4], label: null}, y: {label: "density", domain: [0, Math.max(0.45, pdf(muNew, muNew, sigNew))]},
+    color: {domain: ["old policy", "new policy", "reward bump"], range: [d.style.muted, d.style.blue, d.style.ink], legend: true},
+    marks: [Plot.line(curves, {x: "x", y: "y", stroke: "k", strokeDasharray: c => c.k === "reward bump" ? "4,3" : null, strokeWidth: 2})]
+  });
+  const bottom = Plot.plot({
+    width: w, height: 180, marginLeft: 44, style: {background: d.style.surface},
+    x: {domain: [-3, 4], label: "action a"}, y: {label: "advantage A", grid: true},
+    marks: [
+      Plot.ruleY([0], {stroke: d.style.ink}),
+      Plot.dot(clipRows, {x: "a", y: "A", r: 5, stroke: d.style.orange, strokeWidth: 1.5,
+                          fill: r => r.off ? "none" : d.style.orange})
+    ]
+  });
+  return html`<div>${top}${bottom}</div>`;
+}
+```
+
+```{ojs}
+{
+  const d = clipData, v = d.bump_width ** 2;
+  const J = (m, s) => d.bump_width / Math.sqrt(v + s * s) * Math.exp(-0.5 * (m - d.bump_at) ** 2 / (v + s * s));
+  const nOff = clipRows.filter(r => r.off).length;
+  return md`Unclipped objective: **${d3.mean(clipRows, r => r.plain).toFixed(3)}** · clipped objective: **${d3.mean(clipRows, r => r.clipped).toFixed(3)}** · true change in expected reward: **${(J(muNew, sigNew) - J(d.mu0, d.sigma0)).toFixed(3)}** · samples switched off: **${nOff} of ${clipRows.length}**`;
+}
+```
+
+**What to try.** Start at the old policy ($\mu' = 0$, $\sigma' = 1$): every ratio is 1, both objectives are 0, and every dot is filled. Move $\mu'$ right: the unclipped objective rises, and samples on the right with positive advantage start to switch off once their ratios pass $1 + \epsilon$. Now shrink $\sigma'$ towards 0.05 with $\mu'$ near `{python} f"{a0[adv0.argmax()]:.2f}"`, where the batch's best sample sits. The unclipped objective keeps climbing, because the ratio of that one sample grows without limit. The true change in expected reward does not follow it, since the bump is at 2, not at that sample. The clipped objective flattens out instead: it cannot be raised much by any single sample. A larger $\epsilon$ lets the policy move further before samples switch off.
+
+### Reuse, step by step
+
+```{python}
+#| label: fig-reuse-slider
+#| fig-cap: "Expected reward after each batch on the one-step task, for the chosen number K of gradient steps per batch: median over 50 seeds (line) and the 10th to 90th percentile range (band), with the clip (blue) and without (orange)."
+#| fig-alt: "Interactive line chart with a slider for K: 1, 2, 5, 10, 20, 50, 100. The x-axis is the batch number from 0 to 30 and the y-axis the expected reward from 0 to 1. At K = 1 the blue and orange curves coincide and rise slowly to about 0.2. At K = 5 both rise to about 0.85. At K = 20 and above, the blue curve rises quickly to above 0.9 with a narrow band, while the orange band widens to reach 0 in its lower part: some unclipped runs collapse."
+fig = go.Figure()
+xb = np.arange(31)
+for i, K in enumerate(KS):
+    for clip, col, name in ((True, BLUE, "clip"), (False, ORANGE, "no clip")):
+        H = REUSE[K, clip]
+        lo, med, hi = (np.quantile(H, q, axis=0) for q in (0.1, 0.5, 0.9))
+        rgba = f"rgba({int(col[1:3], 16)},{int(col[3:5], 16)},{int(col[5:7], 16)},0.2)"
+        fig.add_trace(go.Scatter(x=np.r_[xb, xb[::-1]], y=np.r_[hi, lo[::-1]].round(4), fill="toself", fillcolor=rgba,
+                                 line=dict(width=0), hoverinfo="skip", showlegend=False, visible=(K == 10)))
+        fig.add_trace(go.Scatter(x=xb, y=med.round(4), mode="lines", line=dict(color=col, width=3), name=name,
+                                 visible=(K == 10)))
+steps = [dict(method="update", label=str(K), args=[{"visible": [t // 4 == i for t in range(4 * len(KS))]}])
+         for i, K in enumerate(KS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=360, margin=dict(l=40, r=20, t=30, b=20), legend=dict(orientation="h", y=1.12, x=0),
+                  xaxis_title="batch", yaxis_title="expected reward", yaxis_range=[0, 1.02],
+                  sliders=[dict(active=KS.index(10), steps=steps, pad=dict(t=40), currentvalue=dict(prefix="steps per batch K: "))])
+fig.show()
+```
+
+**What to try.** At $K = 1$ the two curves are the same, since a single step from the old policy has ratio 1 and nothing to clip, and learning is slow. Increase $K$: each batch now buys more progress, and up to $K = 5$ the clip barely matters (unclipped is even slightly faster). From $K = 20$ the orange band reaches down to 0: some unclipped runs fit one batch's noise so hard that they leave the bump for good. The blue band stays narrow. The clip turns $K$ from a dangerous knob into a forgiving one.
+
+## Algorithm & code
+
+The course's homework asks students to implement PPO (its clipped objective, value loss, entropy term and KL check) and SAC (its critic target, actor and temperature losses, and target-network update), so this page shows equations and results for those, not code. The code below covers the rest of the lecture: the REINFORCE estimators, with reward-to-go and baselines, and the reparameterization trick.
+
+### REINFORCE: four weightings of the same score
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w5.reach_rollouts, w5.reward_to_go, w5.fit_value, w5.gradient_estimates)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import torch
+import torch.nn as nn
+
+from rlc.toys import w05_pg as reach   # the reach task on this page
+
+torch.manual_seed(0)
+T, G = reach.T, reach.GOAL
+
+# Policy: mean = k * error, with a learned log std (starts at sigma = 0.3).
+policy = nn.Linear(1, 1, bias=False)
+nn.init.zeros_(policy.weight)                    # k = 0: does not move
+log_std = nn.Parameter(torch.tensor(-1.2))
+# Critic: V(t / T, error), a small MLP used only as a baseline.
+value = nn.Sequential(nn.Linear(2, 32), nn.Tanh(), nn.Linear(32, 1))
+opt_pi = torch.optim.Adam([*policy.parameters(), log_std], lr=0.02)
+opt_v = torch.optim.Adam(value.parameters(), lr=0.01)
+
+
+def rollout(n):
+    """n episodes in parallel. Returns log-probs (n, T),
+    critic features (n, T, 2) and rewards (n, T)."""
+    x = torch.zeros(n, 1)
+    logps, feats, rewards = [], [], []
+    for t in range(T):
+        e = G - x                                    # (n, 1)
+        dist = torch.distributions.Normal(policy(e), log_std.exp())
+        # sample() cuts the graph: gradients reach theta via log_prob only
+        a = dist.sample()
+        logps.append(dist.log_prob(a).squeeze(-1))
+        feats.append(torch.cat([torch.full_like(e, t / T), e], dim=-1))
+        x = x + a
+        rewards.append((-(x - G) ** 2).squeeze(-1))
+    return (torch.stack(logps, 1), torch.stack(feats, 1),
+            torch.stack(rewards, 1))
+
+
+for it in range(500):
+    logp, feat, r = rollout(64)
+    rtg = r.flip(1).cumsum(1).flip(1)                # reward-to-go, (64, T)
+    v = value(feat).squeeze(-1)                      # (64, T)
+    # Advantage = reward-to-go minus the critic's baseline. detach(): the
+    # policy loss must not push gradients into the critic.
+    adv = (rtg - v).detach()
+    loss_pi = -(logp * adv).sum(1).mean()            # minimize minus eq. rtg
+    loss_v = ((v - rtg) ** 2).mean()                 # critic: fit the returns
+    opt_pi.zero_grad(); loss_pi.backward(); opt_pi.step()
+    opt_v.zero_grad(); loss_v.backward(); opt_v.step()
+
+k = policy.weight.item()
+assert 0.85 < k < 1.15, k                            # learned the best gain, 1
+```
+:::
+
+The four NumPy estimators differ only in the weight multiplied onto the same score; the PyTorch sketch uses the last one, with the baseline learned by a small critic network. Written as a loss, the policy gradient is "log-probability times a detached weight", which automatic differentiation turns into @eq-rtg.
+
+### The reparameterization trick
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w5.mu_gradient_estimates)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+from torch.distributions import Normal
+
+def q(a):
+    """Stand-in critic: the page's reward bump, in torch."""
+    return torch.exp(-0.5 * ((a - reach.BUMP_AT) / reach.BUMP_WIDTH) ** 2)
+
+
+def per_batch_grads(reparam, B=4000, n=16):
+    """B independent estimates of d/dmu E[q(a)], a ~ N(0.5, 0.5^2).
+
+    Each batch gets its own copy of mu, shape (B, 1), so one backward pass
+    of the summed loss leaves batch i's gradient in mu.grad[i]."""
+    mu = torch.full((B, 1), 0.5, requires_grad=True)
+    dist = Normal(mu.expand(B, n), 0.5)
+    if reparam:
+        a = dist.rsample()                       # mu + 0.5 * eps: graph kept
+        loss = q(a).mean(1).sum()
+    else:
+        a = dist.sample()                        # no graph: use log_prob
+        loss = (q(a) * dist.log_prob(a)).mean(1).sum()
+    loss.backward()
+    return mu.grad.squeeze(1)                    # (B,)
+
+
+g_sf, g_rp = per_batch_grads(False), per_batch_grads(True)
+exact = reach.mu_gradient_exact(0.5, 0.5)
+assert abs(g_sf.mean() - exact) < 0.02 and abs(g_rp.mean() - exact) < 0.02
+assert g_rp.std() < 0.6 * g_sf.std()            # same mean, much less noise
+```
+:::
+
+`sample()` returns a number with no history, so the score-function estimator must go through `log_prob`; `rsample()` builds the sample from $\mu$, $\sigma$ and fixed noise, so the critic's slope flows back to $\mu$. SAC's actor loss (@eq-sac) is computed on `rsample()` actions for exactly this reason.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(5))
+```
+
+## Guest spotlight
+
+**Andrew Wagenmaker** (UC Berkeley) argues that robots must learn from their own experience, as people do when they learn to iron a shirt: watch a video, then try, see what happens, and adjust [▶ 01:33](https://youtu.be/CPmTpXA5azw?t=93). Each of today's data sources falls short on its own: simulators struggle with cloth, internet video has no motor commands, and human demonstrations are expensive and still leave a gap between demonstration and deployment [▶ 03:35](https://youtu.be/CPmTpXA5azw?t=215). The central difficulty of learning from experience, in his view, is **exploration**: collecting the experience that tells correct behavior apart from incorrect behavior [▶ 05:09](https://youtu.be/CPmTpXA5azw?t=309). The textbook picture, an agent taking random actions until it stumbles on reward, does not scale to the physical world; a person exploring tries a handful of sensible options, such as picking up the iron, the shirt or the spray bottle [▶ 08:46](https://youtu.be/CPmTpXA5azw?t=526).
+
+His first idea gets that structured exploration from a behavior-cloning policy. A diffusion or flow policy maps Gaussian noise to an action that looks like a demonstration, so different noise inputs give different *reasonable* actions [▶ 11:21](https://youtu.be/CPmTpXA5azw?t=681). Instead of exploring in action space, explore in the **noise space**: keep the trained policy fixed, and learn with RL a small noise policy, and a critic over noise, that choose which noise to feed it [▶ 13:57](https://youtu.be/CPmTpXA5azw?t=837). This is DSRL (Diffusion Steering via RL, a Week 6 paper). On a real pick-and-place task its attempts looked purposeful from the start, while an action-space RL baseline flailed in free space; after 25 episodes it had locked onto the correct behavior [▶ 18:35](https://youtu.be/CPmTpXA5azw?t=1115). It also sidesteps the problem that diffusion policies have no tractable likelihood, which standard policy gradients need [▶ 19:06](https://youtu.be/CPmTpXA5azw?t=1146). He reports policies going from below 50% to 90–100% success in 30 to 90 minutes of online training [▶ 19:36](https://youtu.be/CPmTpXA5azw?t=1176).
+
+His second idea asks whether behavior cloning is the right *pre-training* for RL at all [▶ 21:40](https://youtu.be/CPmTpXA5azw?t=1300). If the demonstrations never show a needed behavior, a cloned policy never tries it, and RL fine-tuning has nothing to reinforce [▶ 22:42](https://youtu.be/CPmTpXA5azw?t=1362). Adding random noise to the cloned policy trades performance against exploration [▶ 24:16](https://youtu.be/CPmTpXA5azw?t=1456). His answer is to model the *uncertainty* about what the demonstrator would do, and to explore more where demonstrations are scarce and less where they agree [▶ 25:18](https://youtu.be/CPmTpXA5azw?t=1518); the paper is *Posterior Behavioral Cloning* ([arXiv 2512.16911](https://arxiv.org/abs/2512.16911)). On a pick-and-place task both pre-trained policies started out similar, but online RL took the standard one to below 50% and his to 75% [▶ 26:20](https://youtu.be/CPmTpXA5azw?t=1580).
+
+**How it connects to this week.** Both ideas are about the support problem that the lecture's entropy bonus addresses: RL can only improve on actions the policy actually tries. Steering in noise space keeps every action inside what the demonstrations made plausible, while a posterior BC policy widens the support exactly where the data are uncertain. In the Q&A he contrasts his approach, refining a fixed policy with a second policy, with π\*0.6's advantage-conditioned training of one policy (a Week 9 paper), and says it is not yet understood when each is better [▶ 29:25](https://youtu.be/CPmTpXA5azw?t=1765).
+
+## Solved problems
+
+**1. Why a baseline is free.** For a single-step task with a Gaussian policy $a \sim \mathcal{N}(\mu, \sigma^2)$, show directly that $\mathbb{E}\big[\nabla_\mu \log \pi(a)\, b\big] = 0$ for any constant $b$.
+
+::: {.callout-tip collapse="true" title="Solution"}
+$\nabla_\mu \log \pi(a) = (a - \mu)/\sigma^2$. Its expectation under $\pi$ is $(\mathbb{E}[a] - \mu)/\sigma^2 = 0$, so multiplying by a constant $b$ still gives 0. More generally (@eq-rtg), $\mathbb{E}[\nabla \log \pi] = \int \nabla \pi = \nabla \int \pi = \nabla 1 = 0$. The baseline changes each sample's contribution, and hence the variance, but not the average.
+:::
+
+**2. Which baseline?** In the reach toy with bonus $c = 10$, why does the fitted value function $V_t(e)$ help a little over the mean baseline, but the mean baseline already removes almost all of the problem?
+
+::: {.callout-tip collapse="true" title="Solution"}
+The bonus adds the same amount, $c$ times the number of remaining steps, to every episode's reward-to-go at step $t$. Any baseline that tracks the average reward-to-go per step removes it entirely; the mean of the other episodes does. What remains is the variation between episodes at the same step, which comes from how far each robot still is from the goal. The fitted value function predicts that from the current error $e_t$, so it removes some of the remaining variation too: `{python} f"{STD[10.0]['minus fitted V']:.2f}"` against `{python} f"{STD[10.0]['minus mean baseline']:.2f}"` here. The bonus was the big effect, and both baselines handle it.
+:::
+
+**3. A ratio, by hand.** The old policy is $\mathcal{N}(0, 1)$ and the new one $\mathcal{N}(0.5, 1)$. What is the importance ratio for the action $a = 1$? For $a = -2$? With $\epsilon = 0.2$ and advantages $A = +1$ at $a = 1$ and $A = -1$ at $a = -2$, which of the two samples does PPO's clip switch off?
+
+::: {.callout-tip collapse="true" title="Solution"}
+$\rho(a) = \exp\big(-\tfrac{1}{2}(a - 0.5)^2 + \tfrac{1}{2}a^2\big) = \exp(0.5a - 0.125)$. At $a = 1$: $e^{0.375} \approx 1.45$. At $a = -2$: $e^{-1.125} \approx 0.32$. The first has $A > 0$ and $\rho > 1.2$: the policy already favours it beyond the trust interval, so it is switched off. The second has $A < 0$ and $\rho < 0.8$: the policy has already moved away from it as far as the clip allows, so it is switched off too. Both samples got what they asked for; further steps on this batch would be driven by the other samples.
+:::
+
+**4. How long can a trajectory weight be trusted?** Per-step ratios have $\mathbb{E}[w_t^2] = 1.01$ each. After how many steps has the trajectory weight's effective sample size halved? For a 500-step episode at 50 Hz (10 seconds), what is left?
+
+::: {.callout-tip collapse="true" title="Solution"}
+For independent steps $\mathbb{E}[w^2] = 1.01^T$, and the effective sample size is $1/1.01^T$ of the batch. It halves when $T = \ln 2 / \ln 1.01 \approx 70$ steps. After 500 steps, $1.01^{-500} \approx 0.007$: about 0.7% of the batch, so a batch of 1,000 trajectories behaves like 7. This is why @eq-offpolicy keeps only the per-step ratio.
+:::
+
+**5. Score function or reparameterization?** For which of these can you use the reparameterization trick: (a) a learned critic $Q_\phi(s, a)$, (b) the real robot's reward, measured after the action, (c) a simulator written in a differentiable physics engine?
+
+::: {.callout-tip collapse="true" title="Solution"}
+The pathwise gradient (@eq-reparam) needs $\nabla_a$ of whatever is being maximized. (a) Yes: the critic is a network, and SAC does exactly this. (b) No: you cannot differentiate the real world with respect to the action, so you need the score function (@eq-pg), which only needs the reward's value. (c) Yes in principle, since the simulator provides gradients, though contact-rich simulators give gradients that are often uninformative. The critic in (a) is what makes SAC's low-variance actor update possible without a differentiable world.
+:::
+
+## Recap
+
+1. **The policy gradient follows expected return without differentiating the world.** The log-derivative trick turns it into an average of score-times-return, and the dynamics drop out. *Why it matters:* every method this week, and the RL fine-tuning of large robot policies in later weeks, starts from this estimator.
+2. **Variance, not bias, is the practical problem.** Reward-to-go and baselines leave the average gradient unchanged and shrink its noise; a constant bonus in the reward can make the plain estimator useless. *Why it matters:* sample cost is the binding constraint on real robots.
+3. **The advantage is the right weight.** $A = Q - V$ asks whether an action beat the policy's own average. *Why it matters:* it brings value functions back as critics, joining Week 4's ideas with this week's.
+4. **Importance sampling lets a batch be reused, within limits.** Per-step ratios are usable; trajectory weights are not; any reweighting fails once the policy leaves the data's support. *Why it matters:* the limit explains entropy bonuses, trust regions and the clip.
+5. **TRPO and PPO bound each update.** TRPO with a KL constraint and a guarantee; PPO with a clipped ratio that is cheap and robust to how often a batch is reused. *Why it matters:* PPO is the default for simulated robot training and for language-model fine-tuning.
+6. **SAC is off-policy and pathwise.** A Q-critic on a replay buffer, an entropy bonus, and gradients through reparameterized actions. *Why it matters:* it is the most sample-efficient of the lecture's methods, and a common choice for RL on real robots.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Objective | $J(\theta) = \mathbb{E}_{\tau \sim p_\theta}[R(\tau)]$ | @eq-objective |
+| Log-derivative trick | $\nabla p = p\, \nabla \log p$ | @eq-logtrick |
+| Policy gradient ★ | $\mathbb{E}[\sum_t \nabla \log \pi\, R(\tau)]$ | @eq-pg |
+| Reward-to-go, baseline | $\sum_{t' \ge t} r_{t'} - b$ | @eq-rtg |
+| Advantage | $A = Q - V$ | @eq-advantage |
+| Importance sampling | $\mathbb{E}_p[f] = \mathbb{E}_q[\frac{p}{q} f]$ | @eq-is |
+| Off-policy gradient | per-step ratio $\times \nabla \log \pi \times A$ | @eq-offpolicy |
+| Entropy bonus | $L + \beta \mathcal{H}$ | @eq-entropy |
+| TRPO ★ | max $\mathbb{E}[\rho A]$ s.t. KL $\le \delta$ | @eq-trpo |
+| PPO clip ★ | $\min(\rho A, \operatorname{clip}(\rho)A)$ | @eq-ppo |
+| Full PPO | clip − value loss + entropy | @eq-ppo-full |
+| SAC | $\alpha \log \pi - Q$; soft TD target | @eq-sac |
+| Reparameterization | $a = \mu + \sigma \varepsilon$ | @eq-reparam |
+
+**Common pitfalls.**
+
+- Letting the baseline depend on the action, or on the very episode it is subtracted from; both bias the gradient.
+- Forgetting `.detach()` on the advantage: the policy loss then pushes gradients into the critic.
+- Reusing a batch for many epochs without a clip or KL check; the policy can leave the data's support.
+- Letting the policy's standard deviation collapse; the ratios and the gradient scale (as $1/\sigma^2$) then explode.
+- Using `sample()` where the critic's gradient must flow (SAC's actor); it needs `rsample()`.
+- Treating PPO as off-policy: it reuses a batch for a few epochs, then must collect fresh data.
+
+**Connections.** [Week 4](w04-reinforcement-learning-1.qmd)'s smoothing toy showed why an expected reward has a gradient; this week computes it. Week 4's DDPG actor update is the deterministic cousin of SAC's reparameterized one. [Week 3](w03-imitation-learning.qmd)'s behavior cloning is the policy gradient with every weight set to 1, and the guest talk shows how cloned policies become starting points for RL. [Week 6](w06-generative-models.qmd)'s diffusion policies are what DSRL steers. In the ADM Companion: [the likelihood ratio]({{< var adm_url >}}/part2/ch11-policy-gradient-estimation.html#the-likelihood-ratio), [reward-to-go]({{< var adm_url >}}/part2/ch11-policy-gradient-estimation.html#reward-to-go) and [baselines]({{< var adm_url >}}/part2/ch11-policy-gradient-estimation.html#baseline-subtraction); [TRPO]({{< var adm_url >}}/part2/ch12-policy-gradient-optimization.html#trust-region-policy-optimization) and [PPO's clamped surrogate]({{< var adm_url >}}/part2/ch12-policy-gradient-optimization.html#clamped-surrogate-ppo); [actor-critic methods]({{< var adm_url >}}/part2/ch13-actor-critic-methods.html#actor-critic).
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(5))
+```
