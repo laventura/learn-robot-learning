@@ -23,6 +23,12 @@
     "render_seconds": 4.0,
     "seconds": 21.9
   },
+  "w05-batches": {
+    "bytes": 760431,
+    "hash": "2dcb9cc9df182c93",
+    "render_seconds": 7.9,
+    "seconds": 29.2
+  },
   "w06-denoise": {
     "bytes": 1002554,
     "hash": "fdf7e5250fab51cd",
