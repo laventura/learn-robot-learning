@@ -56,8 +56,11 @@ def reward_to_go(r) -> Array:
 
 def fit_value(e, rtg) -> Array:
     """Per-step least squares V_t(e) = w0 + w1 e^2; returns weights (T, 2)."""
-    return np.array([np.linalg.lstsq(np.stack([np.ones(len(e)), e[:, t] ** 2], 1),
-                                     rtg[:, t], rcond=None)[0] for t in range(T)])
+    w = []
+    for t in range(T):
+        X = np.stack([np.ones(len(e)), e[:, t] ** 2], axis=1)   # (n, 2)
+        w.append(np.linalg.lstsq(X, rtg[:, t], rcond=None)[0])
+    return np.array(w)
 
 
 def gradient_estimates(k, n, rng, c=0.0) -> dict[str, float]:
@@ -69,10 +72,11 @@ def gradient_estimates(k, n, rng, c=0.0) -> dict[str, float]:
     # fit V on a separate batch, as a critic trained on earlier data would be.
     loo_mean = (rtg.sum(0) - rtg) / (n - 1)
     e_fit, _, r_fit = reach_rollouts(k, n, rng, c)
-    w = fit_value(e_fit, reward_to_go(r_fit))              # (T, 2)
-    V = w[:, 0] + w[:, 1] * e**2                           # (n, T), broadcast over episodes
+    w = fit_value(e_fit, reward_to_go(r_fit))     # (T, 2)
+    V = w[:, 0] + w[:, 1] * e**2                  # (n, T), broadcast over n
     weights = (r.sum(1, keepdims=True), rtg, rtg - loo_mean, rtg - V)
-    return {name: float((score * wt).sum(1).mean()) for name, wt in zip(ESTIMATORS, weights)}
+    return {name: float((score * wt).sum(1).mean())
+            for name, wt in zip(ESTIMATORS, weights)}
 
 
 def true_gradient(k, rng, n=2_000_000) -> tuple[float, float]:
@@ -136,20 +140,23 @@ def surrogate_step(a, adv, logp_old, mu, log_sigma, eps=None) -> tuple[Array, Ar
     return np.array([(live * adv * d_mu).mean(), (live * adv * d_ls).mean()]), ratio
 
 
-def reuse_run(K, clip, seed, batches=30, n=32, lr=0.1, eps=0.2) -> dict[str, Array]:
+def reuse_run(K, clip, seed, batches=30, n=32, lr=0.1, eps=0.2, keep=False) -> dict:
     """Collect a batch, take K steps on it, repeat. Records J, mu, sigma per batch.
 
     K = 1 is the on-policy method (one step per batch, ratio 1). The
-    advantage is the reward minus the batch mean.
+    advantage is the reward minus the batch mean. keep=True also returns
+    every batch's actions, rewards and advantages, under "batches".
     """
     rng = np.random.default_rng(seed)
     mu, ls = MU0, np.log(SIGMA0)
     rec = {"J": [bump_return(mu, SIGMA0)], "mu": [mu], "sigma": [SIGMA0], "max_ratio": []}
+    kept = []
     for _ in range(batches):
         a = mu + np.exp(ls) * rng.standard_normal(n)
         r = bump(a) + NOISE * rng.standard_normal(n)
         adv = r - r.mean()
         logp_old = log_prob(a, mu, ls)
+        kept.append((a, r, adv))
         for _ in range(K):
             g, _ = surrogate_step(a, adv, logp_old, mu, ls, eps if clip else None)
             mu, ls = mu + lr * g[0], ls + lr * g[1]
@@ -157,7 +164,20 @@ def reuse_run(K, clip, seed, batches=30, n=32, lr=0.1, eps=0.2) -> dict[str, Arr
         rec["J"].append(float(bump_return(mu, np.exp(ls))))
         rec["mu"].append(mu)
         rec["sigma"].append(float(np.exp(ls)))
-    return {key: np.array(v) for key, v in rec.items()}
+    out = {key: np.array(v) for key, v in rec.items()}
+    if keep:
+        out["batches"] = kept
+    return out
+
+
+def surrogates(a, adv, logp_old, mu, sigma, eps=0.2) -> tuple[float, float]:
+    """The unclipped and clipped objectives of one batch at a new policy (mu, sigma).
+
+    Both equal 0 at the old policy, because the advantages have mean 0.
+    """
+    ratio = np.exp(log_prob(a, mu, np.log(sigma)) - logp_old)
+    clipped = np.minimum(ratio * adv, np.clip(ratio, 1 - eps, 1 + eps) * adv)
+    return float((ratio * adv).mean()), float(clipped.mean())
 
 
 def trajectory_weight_ess(T, shift) -> Array:
@@ -189,9 +209,11 @@ def mu_gradient_estimates(mu, sigma, n, rng) -> dict[str, float]:
     eps = rng.standard_normal(n)
     a = mu + sigma * eps
     q = bump(a)
-    loo = (q.sum() - q) / (n - 1) if n > 1 else 0.0         # leave-one-out baseline
-    return {"score function": float((q * eps / sigma).mean()),
-            "score function, baseline": float(((q - loo) * eps / sigma).mean()),
+    # d/dmu log N(a; mu, sigma^2) = (a - mu) / sigma^2 = eps / sigma
+    score = eps / sigma
+    loo = (q.sum() - q) / (n - 1) if n > 1 else 0.0     # leave-one-out baseline
+    return {"score function": float((q * score).mean()),
+            "score function, baseline": float(((q - loo) * score).mean()),
             # a = mu + sigma * eps, so da/dmu = 1 and the gradient is Q'(a)
             "reparameterization": float(bump_slope(a).mean())}
 
