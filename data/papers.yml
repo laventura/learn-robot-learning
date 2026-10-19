@@ -293,11 +293,15 @@
   title: "End-to-End Training of Deep Visuomotor Policies"
   authors: "Levine, Finn, Darrell & Abbeel"
   year: 2016
-  venue: "JMLR"
+  venue: "JMLR"             # JMLR 17 (2016) 1-40, printed on the arXiv PDF's first page
   url: https://arxiv.org/abs/1504.00702
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Asks whether perception and control work better when trained together, and trains a convolutional network that maps camera images straight to motor torques on a PR2 robot. A trajectory optimizer that sees the full state during training acts as the teacher; the network, which sees only images and joint angles, learns from it by supervised learning."
+  contributions:
+    - "Guided policy search turns policy search into supervised learning: simple trajectory-centric RL controllers, trained with the full state, supervise the image-based policy (Abstract, Sec. 1)."
+    - "A 7-layer CNN with 92,000 parameters whose spatial softmax turns feature maps into image-space feature points (Sec. 1, Sec. 6.3)."
+    - "End-to-end training beats vision trained separately for pose estimation: on the shape-sorting cube, 96.3% success at the training positions against 0% for the pose-prediction baseline (Fig. 9)."
+    - "Each task took 156 to 288 five-second trials, about 15 minutes of robot time (Sec. 6.6, Table 4)."
+  connects_to: "A policy-search alternative to this week's model-free gradients, and an early case of the lecture's 'privileged information at training time': the teacher sees the state, the deployed policy only pixels."
 
 - id: eureka
   role: discussion
@@ -305,11 +309,15 @@
   title: "Eureka: Human-Level Reward Design via Coding Large Language Models"
   authors: "Ma et al."
   year: 2024
-  venue: "ICLR"
+  venue: "ICLR"             # "Published as a conference paper at ICLR 2024", on the arXiv PDF
   url: https://arxiv.org/abs/2310.12931
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "A coding language model (GPT-4) writes reward functions as Python code, given the environment's source code and a task description. Candidates are scored by training a policy on each, and the best one, with a written summary of how training went, is fed back so the model can write improved versions."
+  contributions:
+    - "Its rewards beat expert human-written rewards on 83% of 29 simulated tasks covering 10 robot morphologies, with an average normalized improvement of 52% (Abstract)."
+    - "Evolutionary search in the model's context: 16 reward samples per iteration, 5 iterations, 5 independent runs; 'reward reflection' reports per-component training statistics to guide the edits (Sec. 3.2, 3.3)."
+    - "With a curriculum, a simulated Shadow Hand learns rapid pen spinning (Abstract)."
+    - "Human feedback in words can steer the reward without updating any model weights (Abstract)."
+  connects_to: "Every candidate reward is scored by a full PPO training run in GPU simulation (Sec. 4.2): this week's algorithm is the inner loop, and the reward, which the lecture takes as given, becomes the thing optimized."
 
 - id: tacorl
   role: discussion
@@ -317,11 +325,72 @@
   title: "Latent Plans for Task-Agnostic Offline Reinforcement Learning"
   authors: "Rosete-Beas, Mees, Kalweit, Boedecker & Burgard"
   year: 2022
-  venue: "CoRL"
+  venue: "CoRL"             # "6th Conference on Robot Learning (CoRL 2022)", on the arXiv PDF
   url: https://arxiv.org/abs/2209.08959
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "TACO-RL learns long-horizon, goal-reaching manipulation from a fixed dataset of undirected teleoperated 'play'. A low-level policy learns short latent skills by imitation; a high-level policy, trained by offline RL, picks which latent skill to run next so the skills chain towards a goal image."
+  contributions:
+    - "Imitation for the short skills, offline RL (Conservative Q-Learning, initialized from the imitation prior) for chaining them, which shortens the horizon the RL part must handle (Abstract, Sec. 4.2)."
+    - "Rewards come from hindsight relabeling: states reached later in the same play episode become goals, with deliberately chosen negative goals (Sec. 4.2)."
+    - "Two tasks in a row from a single goal image: 27% success against 2.7% for imitation (LMP) and 2.4% for offline RL alone (CQL+HER) (Table 2)."
+    - "On a real robot, one visuomotor policy for 25 tasks averages 61% success, against 40% and 11% for the same baselines (Table 4)."
+  connects_to: "The far end of this week's on-policy to off-policy arc: an actor-critic that learns from logged data only, never collecting new experience."
+
+- id: reinforce
+  role: lecture
+  weeks: [5]
+  title: "Simple statistical gradient-following algorithms for connectionist reinforcement learning"
+  authors: "Williams"
+  year: 1992
+  venue: "Machine Learning" # Machine Learning 8, 229-256, doi 10.1007/BF00992696
+  url: https://doi.org/10.1007/BF00992696
+  summary: "Introduces REINFORCE: for networks of stochastic units, adjust each weight by the reward times the gradient of the log-probability of what the unit did. On average this follows the gradient of expected reward, without ever computing that gradient explicitly."
+  contributions:
+    - "A broad family of update rules whose expected direction is the gradient of expected reinforcement, for immediate rewards and some delayed-reward settings (Abstract)."
+    - "Shows how the rules combine with backpropagation (Abstract)."
+  connects_to: "The lecture's first policy-gradient algorithm, and the 'full return' estimator in this page's variance toy."
+
+- id: trpo
+  role: lecture
+  weeks: [5]
+  title: "Trust Region Policy Optimization"
+  authors: "Schulman, Levine, Moritz, Jordan & Abbeel"
+  year: 2015
+  venue: "ICML"             # arXiv comment: ICML 2015
+  url: https://arxiv.org/abs/1502.05477
+  summary: "Derives a policy update with a guarantee that it does not make the policy worse, then approximates it in practice: maximize the importance-weighted advantage subject to a limit on the average KL divergence between old and new policies."
+  contributions:
+    - "A theoretically justified procedure with monotonic improvement, made practical for large neural-network policies (Abstract)."
+    - "Results on simulated swimming, hopping and walking, and on Atari from pixels, with little hyperparameter tuning (Abstract)."
+  connects_to: "The lecture's KL-constrained answer to 'how far may one batch move the policy?'"
+
+- id: ppo
+  role: lecture
+  weeks: [5]
+  title: "Proximal Policy Optimization Algorithms"
+  authors: "Schulman, Wolski, Dhariwal, Radford & Klimov"
+  year: 2017
+  venue: "arXiv"            # a preprint; no conference or journal version
+  url: https://arxiv.org/abs/1707.06347
+  summary: "Replaces TRPO's constraint with a clipped importance ratio inside the objective, so one batch can be used for several epochs of ordinary minibatch gradient steps."
+  contributions:
+    - "A surrogate objective that allows multiple epochs of minibatch updates per batch, where standard policy gradients take one step per sample (Abstract)."
+    - "Keeps some of TRPO's benefits while being simpler to implement and more general (Abstract)."
+    - "Outperforms other online policy-gradient methods on simulated locomotion and Atari, balancing sample use, simplicity and wall-clock time (Abstract)."
+  connects_to: "The clipped objective this page's reuse toy compares with the unclipped one."
+
+- id: sac
+  role: lecture
+  weeks: [5]
+  title: "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor"
+  authors: "Haarnoja, Zhou, Abbeel & Levine"
+  year: 2018
+  venue: "ICML"             # arXiv comment: ICML 2018
+  url: https://arxiv.org/abs/1801.01290
+  summary: "An off-policy actor-critic in which the actor maximizes expected reward plus the entropy of its own actions: succeed at the task while acting as randomly as possible."
+  contributions:
+    - "Combines off-policy updates from a replay buffer with a stochastic actor in the maximum-entropy framework (Abstract)."
+    - "State-of-the-art results on continuous-control benchmarks at the time, beating earlier on- and off-policy methods, with low variance across random seeds (Abstract)."
+  connects_to: "The lecture's endpoint: a replay buffer like DQN's, an entropy bonus, and the reparameterization trick, which this page's third toy measures."
 
 # --- Week 6 · Generative Models -------------------------------------------
 - id: diffuser

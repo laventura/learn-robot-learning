@@ -92,7 +92,7 @@
     youtube: CPmTpXA5azw
     duration_s: 1892
   homework: {name: "hw4: Reinforcement learning", url: "https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw4_reinforcement_learning"}
-  papers: [visuomotor-policies, eureka, tacorl]
+  papers: [visuomotor-policies, eureka, tacorl, reinforce, trpo, ppo, sac]
 
 - week: 6
   date: 2026-03-23

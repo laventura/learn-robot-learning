@@ -82,6 +82,27 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | $\mu_\phi(s)$ | DDPG's actor: a network that outputs the action directly |
 | CEM | Cross-entropy method: sample, keep the best, refit a Gaussian, repeat |
 
+## Week 5 · Reinforcement Learning II
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $\pi_\theta(a \mid s)$ | A policy with parameters $\theta$, here a distribution over actions |
+| $\tau$, $p_\theta(\tau)$ | A trajectory $(s_0, a_0, s_1, \dots)$ and its probability under $\pi_\theta$ and the dynamics |
+| $R(\tau)$, $J(\theta)$ | A trajectory's return, and the expected return of the policy (ADM writes $U(\theta)$) |
+| $\nabla_\theta \log \pi_\theta(a \mid s)$ | Score function: the direction that makes action $a$ more likely |
+| Reward-to-go | $\sum_{t' \ge t} r_{t'}$: the rewards from step $t$ to the end |
+| $b$ | Baseline subtracted from the return; may depend on the state, never on the action |
+| $A^\pi(s, a)$ | Advantage $Q^\pi(s, a) - V^\pi(s)$: how much better $a$ is than the policy's average |
+| $\theta$, $\theta'$ | The policy that collected the data, and the new policy being optimized |
+| $\rho$ | Importance ratio $\pi_{\theta'}(a \mid s) / \pi_\theta(a \mid s)$ |
+| $\mathcal{H}(\pi)$ | Entropy of the policy's action distribution |
+| $D_{\text{KL}}$ | KL divergence between two distributions |
+| $\epsilon$ | PPO's clip range: ratios are clipped to $[1 - \epsilon, 1 + \epsilon]$ |
+| $\beta$, $\alpha$ | Entropy temperature in the lecture's entropy bonus ($\beta$) and in SAC ($\alpha$) |
+| $\delta$ | TRPO's trust-region size, a bound on the average KL divergence |
+| $Q_\phi$, $Q_{\bar\phi}$ | SAC's critic and its slowly updated target copy |
+| $\mu_\theta(s)$, $\sigma_\theta(s)$, $\varepsilon$ | Mean, standard deviation and fixed noise of a reparameterized action $a = \mu + \sigma\varepsilon$ |
+
 ## Week 6 · Generative Models
 
 | Symbol or term | Meaning |
@@ -118,3 +139,10 @@ Symbols that mean different things in different weeks.
 | $T$ | Number of diffusion steps | 6 |
 | $f$ | Forward kinematics $f(q)$, or a time scaling $f(s)$; also a control frequency in Hz | 2 |
 | $J$ | The Jacobian $J(q)$, or the expected return $J(\pi)$ | 2 |
+| $J(\theta)$ | Expected return as a function of the policy's parameters | 5 |
+| $\epsilon$ | PPO's clip range | 5 |
+| $\varepsilon$ | Fixed Gaussian noise of a reparameterized action | 5 |
+| $\alpha$ | SAC's entropy temperature | 5 |
+| $\beta$ | Entropy temperature of the lecture's entropy bonus | 5 |
+| $\beta_i$ | Noise added by diffusion step $i$ | 6 |
+| $\delta$ | TRPO's trust-region size; on this page also the mean shift between two Gaussians, in standard deviations | 5 |
