@@ -128,7 +128,7 @@
     youtube: VS7Ulaugevg
     duration_s: 2196
   homework: null
-  papers: [decision-transformer, aloha, humanoid-next-token]
+  papers: [decision-transformer, aloha, humanoid-next-token, transformer, vit, chinchilla, fast]
 
 - week: 8
   date: 2026-04-13

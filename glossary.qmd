@@ -45,6 +45,8 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | Markov property | The next state depends only on the current state and action, not on earlier ones |
 | Sparse, dense reward | Reward only on success, versus a reward that measures progress at every step |
 
+## Week 3 · Imitation Learning
+
 | Symbol or term | Meaning |
 |:---|:---|
 | $s_t$, $o_t$, $a_t$ | State, observation and action at time step $t$ |
@@ -119,6 +121,29 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | $t \in [0, 1]$, $v_\theta(x_t, t)$ | Flow-matching time (noise at 0, data at 1) and the learned velocity |
 | DDPM, DDIM | Diffusion sampling with fresh noise at every step, and deterministic sampling with fewer steps |
 
+## Week 7 · Sequence Modeling and Transformers
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $x_{1:i-1}$, $x_{<t}$ | The prefix of a sequence: every element before position $i$ (or $t$) |
+| $p_\theta(x_i \mid x_{1:i-1})$ | An autoregressive model's conditional: the next element given all earlier ones |
+| $h_t$ | Hidden state of a recurrent network after step $t$ |
+| $Q, K, V$; $q_i, k_j, v_j$ | Queries, keys and values (matrices, and one token's vectors) |
+| $W_Q, W_K, W_V$ | Learned projections from token embeddings to queries, keys and values |
+| $d$ | Width of the query and key vectors; scores are divided by $\sqrt{d}$ |
+| $s_{ij}$, $\alpha_{ij}$ | Attention score of token $i$ for token $j$, and its softmax weight |
+| $\mathrm{PE}(i)$, $b(i - j)$ | Absolute positional encoding of position $i$; relative bias for distance $i - j$ |
+| $\lambda$ | Slope of the goal toy's relative bias, $b(i - j) = -\lambda (i - j)$ |
+| Teacher forcing | Training on the true previous tokens instead of the model's own outputs |
+| BPE | Byte-pair encoding: merge the most frequent adjacent pair, $k$ times |
+| $N$, $D$, $C$ | Parameters, training tokens and training compute ($C \approx 6ND$) |
+| $s_{ij}$, $\tau$ (CLIP) | Image-caption cosine similarity and the softmax temperature |
+| $\alpha$ (Flamingo) | A layer's gate: cross-attention output is scaled by $\tanh(\alpha)$, with $\alpha = 0$ at the start |
+| $q_{01}$, $q_{99}$ | 1st and 99th percentiles of an action dimension, used to normalize before binning |
+| $k$, $a_{t:t+k}$ | Chunk length, and the chunk of actions a policy predicts at once |
+| $A_t[i]$, $w_i$, $m$ | Predictions stored for step $t$ ($i = 0$ the oldest), their weights $e^{-mi}$, and the decay rate |
+| $c_j$, $q_j$ | DCT coefficient for frequency $j$, and its rounded, scaled value |
+
 ## Overloaded symbols
 
 Symbols that mean different things in different weeks.
@@ -146,3 +171,9 @@ Symbols that mean different things in different weeks.
 | $\beta$ | Entropy temperature of the lecture's entropy bonus | 5 |
 | $\beta_i$ | Noise added by diffusion step $i$ | 6 |
 | $\delta$ | TRPO's trust-region size; on this page also the mean shift between two Gaussians, in standard deviations | 5 |
+| $\alpha_{ij}$ | Attention weight of token $i$ on token $j$ | 7 |
+| $\alpha$ | Flamingo's cross-attention gate, used as $\tanh(\alpha)$ | 7 |
+| $\tau$ | CLIP's softmax temperature (elsewhere a trajectory) | 7 |
+| $k$ | Action-chunk length; also a number of BPE merges, and $k_j$ a key vector | 7 |
+| $N$, $D$ | Parameters and training tokens in scaling laws; also $N$ samples per chunk in the DCT | 7 |
+| $q_j$, $q_i$ | A rounded DCT coefficient, or a query vector | 7 |

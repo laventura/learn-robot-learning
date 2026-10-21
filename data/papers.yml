@@ -491,11 +491,14 @@
   title: "Decision Transformer: Reinforcement Learning via Sequence Modeling"
   authors: "Chen et al."
   year: 2021
-  venue: "arXiv"            # TODO(venue): believed NeurIPS 2021; not confirmed
+  venue: "NeurIPS"          # Advances in NeurIPS 34 (2021), proceedings.neurips.cc
   url: https://arxiv.org/abs/2106.01345
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Treats offline reinforcement learning as sequence modeling. A GPT-style causal transformer reads the recent history of (return-to-go, state, action) tokens and is trained, like a language model, to predict the action. At test time you ask for a high return, and it generates actions meant to achieve it: no value function, no policy gradient."
+  contributions:
+    - "Conditions on returns-to-go, the sum of future rewards, instead of past rewards, so the desired return is set at the start and decremented as rewards arrive (Sec. 3)."
+    - "Matches or exceeds model-free offline RL baselines such as CQL on Atari, OpenAI Gym and Key-to-Door, with almost no change to a language-model architecture (Abstract, Sec. 4)."
+    - "Context matters: with only the current step (K = 1) Atari scores drop sharply, e.g. Pong from 106.1 to 2.5 (Table 5)."
+  connects_to: "This page's view of a robot's history as a token sequence, and its attention toy, which also needs past tokens to act. It also links back to Weeks 4 and 5: return is now an input rather than something to maximize."
 
 - id: aloha
   role: discussion
@@ -503,11 +506,15 @@
   title: "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware"
   authors: "Zhao, Kumar, Levine & Finn"
   year: 2023
-  venue: "RSS"
+  venue: "RSS"              # RSS 2023 program, paper 16 (roboticsconference.org)
   url: https://arxiv.org/abs/2304.13705
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "ALOHA is a two-arm teleoperation system built for under $20k, with leader arms a person backdrives and follower arms that mirror them. ACT (Action Chunking with Transformers) learns from its demonstrations: a transformer predicts the next k joint targets at once from camera images, and overlapping predictions are averaged at execution."
+  contributions:
+    - "Action chunking: predicting k = 100 actions per query at 50 Hz shortens the task's effective horizon k-fold; success rose from 1% at k = 1 to 44% at k = 100, averaged over four simulated settings without the ensemble (Sec. IV-A, VI-A)."
+    - "Temporal ensembling: query every step and average all predictions for the current step with weights exp(-m i), i = 0 the oldest (Sec. IV-A, Algorithm 2)."
+    - "Trained as a conditional VAE to cope with noisy, multimodal human demonstrations, which the paper finds essential for precise tasks (Sec. IV-B)."
+    - "80-90% success on tasks such as slotting a battery or opening a translucent condiment cup, from 10 minutes of demonstrations per task (Abstract)."
+  connects_to: "The action-chunk toy and the hero clip on this page, which compare single-step control, open-loop chunks and ACT's temporal ensemble."
 
 - id: humanoid-next-token
   role: discussion
@@ -515,11 +522,75 @@
   title: "Humanoid Locomotion as Next Token Prediction"
   authors: "Radosavovic et al."
   year: 2024
-  venue: "NeurIPS"
+  venue: "NeurIPS"          # NeurIPS 2024 (spotlight), proceedings.neurips.cc
   url: https://arxiv.org/abs/2402.19469
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Casts humanoid walking as next-token prediction over sensorimotor trajectories. A causal transformer predicts both the next observation and the next action, so it can also learn from trajectories with missing parts, such as human videos without motor commands, by replacing the missing tokens with a learned mask token."
+  contributions:
+    - "Training data from four sources: neural-network policies, model-based controllers, human motion capture and YouTube videos of people (Sec. 4)."
+    - "A full-sized humanoid (Agility Robotics' Digit) walks around San Francisco zero-shot, and the model transfers even when trained on only 27 hours of walking data (Abstract)."
+    - "Follows commands never seen in training, such as walking backward (Abstract)."
+    - "Predicting states as well as actions lowers tracking error compared with predicting actions only (Table 1d)."
+  connects_to: "The lecture's claim that robotics is a sequence-modeling problem, taken literally: the robot's own trajectory is the sentence, and every token is predicted."
+
+- id: transformer
+  role: lecture
+  weeks: [7]
+  title: "Attention Is All You Need"
+  authors: "Vaswani et al."
+  year: 2017
+  venue: "NeurIPS"          # Advances in NIPS 30 (2017), proceedings.neurips.cc paper 7181
+  url: https://arxiv.org/abs/1706.03762
+  summary: "Introduces the Transformer, an encoder-decoder for sequence-to-sequence tasks built only from attention and feed-forward layers, with no recurrence or convolution. Every token can draw on every other token in one step, and training runs in parallel over the whole sequence."
+  contributions:
+    - "Scaled dot-product attention and multi-head attention as the only way information moves between positions (Abstract)."
+    - "Better translation quality than the best recurrent and convolutional models, while being more parallelizable and much cheaper to train (Abstract)."
+    - "The template that GPT-style language models, ViT, VLMs and VLAs all reuse."
+  connects_to: "The attention equation boxed on this page and the attention toy, which implements one head and its gradient in NumPy."
+
+- id: vit
+  role: lecture
+  weeks: [7]
+  title: "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale"
+  authors: "Dosovitskiy, Beyer et al."
+  year: 2021
+  venue: "ICLR"             # the arXiv v2 comment: "ICLR camera-ready version"
+  url: https://arxiv.org/abs/2010.11929
+  summary: "Cuts an image into 16 by 16 pixel patches, projects each patch linearly into a token, adds a position embedding, and feeds the sequence to a standard Transformer. Without any convolutional backbone, the result competes with the best convolutional networks once pre-trained on enough data."
+  contributions:
+    - "Image patches as tokens: the same interface as words, so images and text can share one sequence (Abstract)."
+    - "When pre-trained on large data and transferred to benchmarks such as ImageNet and CIFAR-100, matches or beats strong convolutional networks with substantially less compute to train (Abstract)."
+  connects_to: "This page's section on tokenizing images, the step from language models to vision-language models."
+
+- id: chinchilla
+  role: lecture
+  weeks: [7]
+  title: "Training Compute-Optimal Large Language Models"
+  authors: "Hoffmann et al."
+  year: 2022
+  venue: "NeurIPS"          # NeurIPS 2022, as "An Empirical Analysis of Compute-Optimal Large Language Model Training" (mlanthology)
+  url: https://arxiv.org/abs/2203.15556
+  summary: "Asks how to split a fixed compute budget between model size and training tokens. From over 400 training runs, the answer is to grow both in equal proportion; most large language models of the time were too big for the data they saw."
+  contributions:
+    - "Over 400 language models, from 70 million to over 16 billion parameters, trained on 5 to 500 billion tokens (Abstract)."
+    - "For every doubling of model size, double the training tokens too (Abstract)."
+    - "Chinchilla, 70B parameters on 4 times Gopher's data at the same compute, outperforms Gopher (280B) and GPT-3 (175B) on a wide range of tasks (Abstract)."
+  connects_to: "The scaling-law equations on this page and the lecture's question of what scale buys in robotics."
+
+- id: fast
+  role: lecture
+  weeks: [7]
+  title: "FAST: Efficient Action Tokenization for Vision-Language-Action Models"
+  authors: "Pertsch, Stachowicz et al."
+  year: 2025
+  venue: "RSS"              # Robotics: Science and Systems XXI, roboticsproceedings.org/rss21/p012
+  url: https://arxiv.org/abs/2501.09747
+  summary: "Per-dimension, per-step binning, the usual way to turn robot actions into tokens, fails for autoregressive VLAs trained on high-frequency, dexterous data. FAST compresses each action chunk first: a discrete cosine transform, rounding, then byte-pair encoding, which gives a few dense tokens per chunk."
+  contributions:
+    - "Shows that simple binning performs poorly when learning dexterous skills from high-frequency robot data (Abstract)."
+    - "A compression-based tokenizer built on the discrete cosine transform, which lets autoregressive VLAs train on tasks where binning fails completely (Abstract)."
+    - "FAST+, a universal tokenizer trained on 1M real robot action trajectories (Abstract)."
+    - "With the pi0 VLA, scales to 10k hours of robot data and matches diffusion VLAs while training up to 5 times faster (Abstract)."
+  connects_to: "The action-token toy on this page, which runs a small version of the same pipeline next to plain binning. The lecturer is one of the paper's authors."
 
 # --- Week 8 · World Models ------------------------------------------------
 - id: unipi
