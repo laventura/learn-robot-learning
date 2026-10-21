@@ -7,7 +7,7 @@ goal. A reactive policy sees only the last token and cannot know it. A
 single attention head (written out in NumPy with its gradients) can look
 back at every token. Without positional information it cannot tell which
 announcement came later; with a relative-position bias on its scores it
-can, and the bias works at sequence lengths it never saw in training.
+can, but only as far back as training required.
 
 Toy 2, action tokens. Smooth action chunks sampled at 2 to 50 Hz are
 turned into tokens two ways: one bin per dimension per time step (RT-2,
@@ -30,7 +30,7 @@ from rlc.nn import Adam, softmax
 
 Array = np.ndarray
 
-# --- Toy 1: two goal announcements, one attention head ----------------------------
+# --- Toy 1: two goal announcements, one attention head ----------------------
 
 L_TRAIN, D_K = 16, 2            # training sequence length; query/key width
 FEATURES = ("is goal", "value", "constant")
@@ -55,13 +55,14 @@ def cue_batch(n, L, rng) -> tuple[Array, Array, Array]:
 
 
 def init_attention(rng) -> list[tuple[Array, Array]]:
-    """[(W_q, W_k), (w_v, lam)]: packed in pairs so rlc.nn.Adam can step them."""
-    return [(0.5 * rng.standard_normal((3, D_K)), 0.5 * rng.standard_normal((3, D_K))),
-            (0.1 * rng.standard_normal(3), np.zeros(1))]
+    """[(W_q, W_k), (w_v, lam)], in pairs so rlc.nn.Adam can step them."""
+    W_q = 0.5 * rng.standard_normal((3, D_K))
+    W_k = 0.5 * rng.standard_normal((3, D_K))
+    return [(W_q, W_k), (0.1 * rng.standard_normal(3), np.zeros(1))]
 
 
 def attend(params, X, relative=True) -> tuple[Array, tuple]:
-    """One attention head, read out at the last token. Returns (n,) and a cache.
+    """One attention head, read out at the last token: (n,) and a cache.
 
     score_i = q . k_i / sqrt(d) - lam * (how many steps back token i is).
     The last token is the query and every other token is in its past, so
@@ -70,14 +71,14 @@ def attend(params, X, relative=True) -> tuple[Array, tuple]:
     """
     (W_q, W_k), (w_v, lam) = params
     L = X.shape[1]
-    q = X[:, -1] @ W_q                            # (n, d): what the query asks for
-    K = X @ W_k                                   # (n, L, d): what each token offers
-    back = np.arange(L)[::-1]                     # (L,): L-1, ..., 1, 0 steps back
+    q = X[:, -1] @ W_q              # (n, d): what the query asks for
+    K = X @ W_k                     # (n, L, d): what each token offers
+    back = np.arange(L)[::-1]       # (L,): L-1, ..., 1, 0 steps back
     s = np.einsum("nld,nd->nl", K, q) / np.sqrt(D_K)
     if relative:
-        s = s - lam[0] * back                     # the same bias at every length
-    a = softmax(s, axis=1)                        # (n, L): attention weights, rows sum to 1
-    v = X @ w_v                                   # (n, L): what each token contributes
+        s = s - lam[0] * back       # the same bias at every length
+    a = softmax(s, axis=1)          # (n, L): weights, each row sums to 1
+    v = X @ w_v                     # (n, L): what each token contributes
     return (a * v).sum(axis=1), (q, K, a, v, back)
 
 
@@ -85,20 +86,21 @@ def attention_grads(params, X, y, relative=True) -> tuple[float, list]:
     """Mean squared error and its gradient for every parameter, by hand."""
     yhat, (q, K, a, v, back) = attend(params, X, relative)
     dy = 2 * (yhat - y) / len(y)                  # (n,)
-    da, dv = dy[:, None] * v, dy[:, None] * a     # through yhat = sum_i a_i v_i
+    da, dv = dy[:, None] * v, dy[:, None] * a     # yhat = sum_i a_i v_i
     # Softmax backward: ds_i = a_i (da_i - sum_j a_j da_j).
     ds = a * (da - (a * da).sum(axis=1, keepdims=True))
     dw_v = np.einsum("nl,nlf->f", dv, X)
     dlam = np.array([-(ds * back).sum()]) if relative else np.zeros(1)
-    dK = ds[:, :, None] * q[:, None, :] / np.sqrt(D_K)          # (n, L, d)
-    dq = np.einsum("nl,nld->nd", ds, K) / np.sqrt(D_K)          # (n, d)
+    dK = ds[:, :, None] * q[:, None, :] / np.sqrt(D_K)     # (n, L, d)
+    dq = np.einsum("nl,nld->nd", ds, K) / np.sqrt(D_K)     # (n, d)
     dW_k = np.einsum("nlf,nld->fd", X, dK)
     dW_q = X[:, -1].T @ dq
-    return float(np.mean((yhat - y) ** 2)), [(dW_q, dW_k), (dw_v, dlam)]
+    loss = float(np.mean((yhat - y) ** 2))
+    return loss, [(dW_q, dW_k), (dw_v, dlam)]
 
 
-def train_attention(relative, seed, steps=3000, n=256, alpha=0.03) -> tuple[list, Array]:
-    """Adam on fresh batches of length L_TRAIN; returns parameters and losses."""
+def train_attention(relative, seed, steps=3000, n=256, alpha=0.03):
+    """Adam on fresh batches of length L_TRAIN; returns params and losses."""
     rng = np.random.default_rng(seed)
     params = init_attention(rng)
     opt, losses = Adam(params, alpha), []
@@ -116,11 +118,11 @@ def attention_mse(params, L, relative, rng, n=20_000) -> float:
     return float(np.mean((attend(params, X, relative)[0] - y) ** 2))
 
 
-# --- Toy 2: from smooth actions to tokens ------------------------------------------
+# --- Toy 2: from smooth actions to tokens -----------------------------------
 
 D_ACT, N_BINS = 2, 256
-FREQS = (2, 5, 10, 20, 50)          # control rates in Hz; every chunk lasts 1 second
-N_WAVES, MAX_HZ = 3, 1.0            # each action dimension: 3 sinusoids up to 1 Hz
+FREQS = (2, 5, 10, 20, 50)      # control rates in Hz; each chunk lasts 1 s
+N_WAVES, MAX_HZ = 3, 1.0        # each dimension: 3 sinusoids up to 1 Hz
 
 
 def signal_params(n, rng, dims=D_ACT) -> tuple[Array, Array, Array]:
@@ -137,20 +139,20 @@ def signal_params(n, rng, dims=D_ACT) -> tuple[Array, Array, Array]:
 def sample_actions(params, f) -> Array:
     """The chunks sampled at f Hz over one second: (n, f, dims)."""
     amp, freq, phase = params
-    t = np.arange(f) / f                                      # (f,)
+    t = np.arange(f)[None, :, None, None] / f            # (1, f, 1, 1)
     # Broadcast to (n, f, dims, waves), then sum the waves.
-    waves = amp[:, None] * np.sin(2 * np.pi * freq[:, None] * t[None, :, None, None]
+    waves = amp[:, None] * np.sin(2 * np.pi * freq[:, None] * t
                                   + phase[:, None])
     return waves.sum(axis=-1)
 
 
 def quantile_bounds(A, lo=1.0, hi=99.0) -> Array:
-    """Per-dimension 1st and 99th percentiles over every sample: (2, dims)."""
+    """Per-dimension 1st and 99th percentiles over all samples: (2, dims)."""
     return np.percentile(A.reshape(-1, A.shape[-1]), [lo, hi], axis=0)
 
 
 def normalize(A, bounds) -> Array:
-    """Map [low, high] to [-1, 1] per dimension, clipping what lies outside."""
+    """Map [low, high] to [-1, 1] per dimension, clipping the rest."""
     low, high = bounds
     return np.clip(2 * (A - low) / (high - low) - 1, -1, 1)
 
@@ -161,36 +163,53 @@ def bin_tokens(A, bounds, bins=N_BINS) -> Array:
     return np.minimum(((u + 1) / 2 * bins).astype(int), bins - 1)
 
 
+def bin_centres(tokens, bounds, bins=N_BINS) -> Array:
+    """The action each token stands for: its bin's centre."""
+    low, high = bounds
+    return low + (tokens + 0.5) / bins * (high - low)
+
+
 def copy_rate(tokens) -> float:
-    """Share of tokens equal to the previous step's token in the same dimension."""
+    """Share of tokens equal to the previous step's, same dimension."""
     return float(np.mean(tokens[:, 1:] == tokens[:, :-1]))
 
 
+def copy_explained(tokens) -> float:
+    """Share of the tokens' variance that "repeat the last token" predicts.
+
+    1 - Var(token_t - token_{t-1}) / Var(token_t): near 1 means the next
+    token carries little that the last one did not already say.
+    """
+    t = tokens.astype(float)
+    return float(1 - np.var(t[:, 1:] - t[:, :-1]) / np.var(t))
+
+
 def dct_coefficients(A, bounds, scale) -> Array:
-    """Normalize, take the DCT along time, scale and round: integers (n, f, dims).
+    """Normalize, DCT along time, scale and round: integers (n, f, dims).
 
     A smooth signal puts nearly all its energy in the first few
     frequencies, so most rounded coefficients are zero.
     """
-    return np.round(scale * dct(normalize(A, bounds), axis=1, norm="ortho")).astype(int)
+    c = dct(normalize(A, bounds), axis=1, norm="ortho")
+    return np.round(scale * c).astype(int)
 
 
 def dct_reconstruct(C, bounds, scale) -> Array:
-    """Inverse of dct_coefficients, back in the original units (up to the rounding)."""
+    """Inverse of dct_coefficients, in original units (up to rounding)."""
     low, high = bounds
     u = idct(C / scale, axis=1, norm="ortho")
     return (u + 1) / 2 * (high - low) + low
 
 
 def flatten_low_first(C) -> list[list[int]]:
-    """Each chunk's coefficients in order: frequency 0 for every dimension, then 1, ..."""
+    """Each chunk's coefficients: frequency 0 for every dimension, then 1."""
     # (f, dims) row-major; plain ints, since a NumPy int compared with a
     # merged token (a tuple) would broadcast instead of returning False.
     return [c.reshape(-1).tolist() for c in C]
 
 
-# Byte-pair encoding on any sequences of hashable symbols (characters or integers).
-# A merged token is the pair itself, so a token can be unpacked back into symbols.
+# Byte-pair encoding on sequences of hashable symbols (characters or ints).
+# A merged token is the pair itself, so it can be unpacked into symbols.
 
 def bpe_merge(seq, pair, new) -> list:
     """Replace each non-overlapping occurrence of pair, left to right."""
@@ -206,10 +225,11 @@ def bpe_merge(seq, pair, new) -> list:
 
 
 def bpe_train(corpus, k) -> tuple[list, list]:
-    """Up to k merges of the most frequent adjacent pair; returns merges and corpus.
+    """Up to k merges of the most frequent adjacent pair.
 
-    Ties go to the pair counted first (Counter keeps insertion order).
-    Stops early when no pair occurs twice.
+    Returns the merges and the merged corpus. Ties go to the pair counted
+    first (Counter keeps insertion order). Stops early when no pair occurs
+    twice.
     """
     corpus, merges = [list(s) for s in corpus], []
     for _ in range(k):
@@ -234,37 +254,44 @@ def bpe_encode(seq, merges) -> list:
 
 def unpack(token) -> list:
     """The symbols a (possibly merged) token stands for."""
-    return unpack(token[0]) + unpack(token[1]) if isinstance(token, tuple) else [token]
+    if isinstance(token, tuple):
+        return unpack(token[0]) + unpack(token[1])
+    return [token]
 
 
-# --- Toy 3: chunks, temporal ensembling and a goal that moves -----------------------
+# --- Toy 3: chunks, temporal ensembling and a goal that moves ---------------
 
-HZ, T_RUN, T_MOVE = 50, 150, 75     # 50 Hz control, a 3 s run, the goal moves at 1.5 s
-GOAL_A, GOAL_B = 1.0, 0.4           # the goal's position before and after it moves
-RATE, OBS_NOISE = 0.06, 0.08        # share of the gap each planned step closes; camera noise
+HZ, T_RUN, T_MOVE = 50, 180, 80     # 50 Hz, a 3.6 s run, goal moves at 1.6 s
+GOAL_A, GOAL_B = 1.0, 0.4           # the goal before and after it moves
+RATE, OBS_NOISE = 0.06, 0.08        # gap closed per planned step; camera noise
 
 
 def plan_chunk(x, goal_seen, k) -> Array:
-    """k planned positions closing RATE of the remaining gap per step: (k,)."""
+    """k planned positions closing RATE of the remaining gap per step."""
     return goal_seen + (x - goal_seen) * (1 - RATE) ** np.arange(1, k + 1)
 
 
-def run_chunks(k, mode, rng, m=0.0, noise=OBS_NOISE, t_move=T_MOVE) -> Array:
-    """Positions x_0..x_T under one execution scheme; the robot tracks each action.
+def run_chunks(k, mode, rng, m=0.0, noise=OBS_NOISE, t_move=T_MOVE,
+               keep=False):
+    """Positions x_0..x_T under one execution scheme.
 
-    mode "chunk": query every k steps and execute the whole chunk open loop
-    (k = 1 is ordinary single-step control). mode "ensemble": query every
-    step and execute the weighted average of every chunk that covers this
-    step, weight exp(-m i) with i = 0 the oldest prediction, as in ACT.
+    The robot tracks each action exactly. mode "chunk": query every k
+    steps and execute the whole chunk open loop (k = 1 is ordinary
+    single-step control). mode "ensemble": query every step and execute
+    the weighted average of every chunk that covers this step, weight
+    exp(-m i) with i = 0 the oldest prediction, as in ACT. keep=True also
+    returns every query's (time, planned chunk).
     """
     x = np.zeros(T_RUN + 1)
-    preds = [[] for _ in range(T_RUN + k)]       # preds[t]: predictions for step t, oldest first
-    plan = None
+    preds = [[] for _ in range(T_RUN + k)]   # step t: predictions, oldest 1st
+    plan, plans = None, []
     for t in range(T_RUN):
         goal = GOAL_A if t < t_move else GOAL_B
         if mode == "ensemble" or t % k == 0:
             # Each query sees the goal through a new noisy observation.
-            plan = plan_chunk(x[t], goal + noise * rng.standard_normal(), k)
+            seen = goal + noise * rng.standard_normal()
+            plan = plan_chunk(x[t], seen, k)
+            plans.append((t, plan))
             for j in range(k):
                 preds[t + j].append(plan[j])
         if mode == "ensemble":
@@ -273,7 +300,7 @@ def run_chunks(k, mode, rng, m=0.0, noise=OBS_NOISE, t_move=T_MOVE) -> Array:
             x[t + 1] = (w * p).sum() / w.sum()
         else:
             x[t + 1] = plan[t % k]
-    return x
+    return (x, plans) if keep else x
 
 
 def roughness(x) -> float:
@@ -287,16 +314,17 @@ def settle_error(x) -> float:
     return float(np.sqrt(np.mean(np.r_[a - GOAL_A, b - GOAL_B] ** 2)))
 
 
-MOVE_TIMES = range(60, 110)         # when the goal may move, for averaging the delay
+MOVE_TIMES = range(60, 110)     # when the goal may move, for averaging
 
 
 def half_time(k, mode, m=0.0, t_move=T_MOVE) -> int:
-    """Steps after the goal moves until a noise-free run is halfway to it."""
-    x = run_chunks(k, mode, np.random.default_rng(0), m, noise=0.0, t_move=t_move)
-    half = (x[t_move] + GOAL_B) / 2                           # the new goal is below
+    """Steps after the goal moves until a noise-free run is halfway."""
+    x = run_chunks(k, mode, np.random.default_rng(0), m, noise=0.0,
+                   t_move=t_move)
+    half = (x[t_move] + GOAL_B) / 2              # the new goal is below
     return int(np.argmax(x[t_move:] <= half))
 
 
 def mean_half_time(k, mode, m=0.0) -> float:
-    """half_time averaged over MOVE_TIMES: where the move falls within a chunk varies."""
+    """half_time averaged over MOVE_TIMES (where in a chunk the move falls)."""
     return float(np.mean([half_time(k, mode, m, t) for t in MOVE_TIMES]))
