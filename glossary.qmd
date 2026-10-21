@@ -144,6 +144,27 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | $A_t[i]$, $w_i$, $m$ | Predictions stored for step $t$ ($i = 0$ the oldest), their weights $e^{-mi}$, and the decay rate |
 | $c_j$, $q_j$ | DCT coefficient for frequency $j$, and its rounded, scaled value |
 
+## Week 8 · World Models
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $p(s_{t+1} \mid s_t, a_t, h_t)$ | A world model: the next state given state, action and memory |
+| $\pi(a_t \mid s_t, g)$ | A goal-conditioned policy, for contrast |
+| $\hat s_{t+k}$ | A state predicted (imagined) $k$ steps ahead by the model |
+| $H$ | Planning or imagination horizon, in steps |
+| $c(\hat s)$ | Cost of an imagined state in model predictive control |
+| $\varepsilon$, $L$, $e_k$ | One-step model error, how much the dynamics stretch an error, and the error after $k$ imagined steps |
+| $o_t$, $z_t$, $h_t$ | Observation, its latent code, and the recurrent memory |
+| $q(z_t \mid h_t, o_t)$, $p(z_t \mid h_t)$ | RSSM posterior (sees the observation) and prior (memory only) |
+| $\pi_i, \mu_i, \sigma_i$ | Weight, mean and spread of a mixture component in World Models' memory network |
+| $v_\psi$ | Dreamer's critic, a value estimate of imagined states |
+| $c_s$, $c_t$ | A video tokenizer's compression factor in each spatial direction and in time |
+| $\ell$, $g_\psi$ | Language instruction; inverse dynamics model that maps observations to actions |
+| $\mathrm{sg}[\cdot]$, $\bar\theta$ | Stop-gradient, and the target encoder's weights (an EMA or a frozen copy) |
+| MPC, CEM | Model predictive control; the cross-entropy method used to search plans |
+| WAM, VAM, IDM | World action model; video action model; inverse dynamics model |
+| JEPA | Joint-embedding predictive architecture: predicts embeddings, not pixels |
+
 ## Overloaded symbols
 
 Symbols that mean different things in different weeks.
@@ -177,3 +198,8 @@ Symbols that mean different things in different weeks.
 | $k$ | Action-chunk length; also a number of BPE merges, and $k_j$ a key vector | 7 |
 | $N$, $D$ | Parameters and training tokens in scaling laws; also $N$ samples per chunk in the DCT | 7 |
 | $q_j$, $q_i$ | A rounded DCT coefficient, or a query vector | 7 |
+| $\pi_i$ | A mixture weight in World Models' memory network (not a policy) | 8 |
+| $H$ | Planning horizon in steps; also an image's height in the video-token count | 8 |
+| $L$ | How much one step of the dynamics can stretch an error | 8 |
+| $\varepsilon$ | One-step error of a world model | 8 |
+| $q$ | RSSM posterior over the latent, $q(z_t \mid h_t, o_t)$ | 8 |

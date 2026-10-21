@@ -146,7 +146,7 @@
     youtube: fqkp_wkov6M
     duration_s: 2171
   homework: null
-  papers: [unipi, dreamer-4, dreamzero]
+  papers: [unipi, dreamer-4, dreamzero, visual-foresight, ha-world-models, planet, dreamer, daydreamer, mimic-video]
 
 - week: 9
   date: 2026-04-27

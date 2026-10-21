@@ -599,11 +599,15 @@
   title: "Learning Universal Policies via Text-Guided Video Generation"
   authors: "Du et al."
   year: 2023
-  venue: "NeurIPS"
+  venue: "NeurIPS"          # "37th Conference on Neural Information Processing Systems (NeurIPS 2023)", on the arXiv PDF
   url: https://arxiv.org/abs/2302.00111
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "UniPi turns decision making into text-conditioned video generation. A video diffusion model, given the current frame and a task in words, generates a short video of the task being done; a separately trained inverse dynamics model then reads off the actions that move between consecutive generated frames."
+  contributions:
+    - "Policy as video: images are a shared state space across environments, and text specifies the goal, which supports combining instructions in new ways (Abstract)."
+    - "First-frame conditioning ('tiling') and temporal super-resolution keep the generated plan consistent with the scene (Sec. 3.1)."
+    - "The inverse dynamics model is trained independently of the video planner, on a separate, smaller data set (Sec. 3.1)."
+    - "Pre-training on internet videos lets it produce realistic plans for real-robot tasks not in the robot data (Abstract, Sec. 4.3)."
+  connects_to: "The video-action toy on this page, which also pairs a model of what happens next with an inverse dynamics model that decodes actions from it."
 
 - id: dreamer-4
   role: discussion
@@ -611,11 +615,15 @@
   title: "Training Agents Inside of Scalable World Models"
   authors: "Hafner, Yan & Lillicrap"
   year: 2025
-  venue: "arXiv"
+  venue: "arXiv"            # preprint 2509.24527; no venue found (one search, 2026-10-20)
   url: https://arxiv.org/abs/2509.24527
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Dreamer 4 learns a transformer world model of Minecraft from video and trains an agent by reinforcement learning inside it. It is the first agent to obtain diamonds in Minecraft purely from offline data, without ever interacting with the game during learning."
+  contributions:
+    - "A shortcut forcing objective and an efficient transformer give real-time interactive inference on a single GPU (Abstract)."
+    - "Learns action conditioning from 2,500 hours of video with only 100 hours of paired actions, reaching over 80% of the accuracy of training with all actions (Fig. 7)."
+    - "Obtaining diamonds needs sequences of over 20,000 mouse and keyboard actions from raw pixels; it learns from the 2.5K-hour VPT contractor data set alone (Abstract, Sec. 4.1)."
+    - "Outperforms OpenAI's VPT offline agent while using 100 times less data (Sec. 1)."
+  connects_to: "The latent world models of this page's Intuition: imagination training without real interaction, here scaled up and pre-trained on action-free video."
 
 - id: dreamzero
   role: discussion
@@ -623,11 +631,103 @@
   title: "World Action Models are Zero-shot Policies"
   authors: "Ye et al."
   year: 2026
-  venue: "technical report"
-  url: https://dreamzero0.github.io/DreamZero.pdf
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  venue: "arXiv"            # preprint 2602.15922 (NVIDIA); no venue found (one search, 2026-10-20)
+  url: https://arxiv.org/abs/2602.15922
+  summary: "DreamZero is a 14-billion-parameter world action model: a video diffusion model, pre-trained on web video, that jointly generates the robot's future camera frames and its actions. Predicting how the world will evolve gives it physical priors that VLAs, built on static image-text models, lack."
+  contributions:
+    - "Over 2 times better generalization to new tasks and environments than state-of-the-art VLAs in real-robot experiments (Abstract)."
+    - "Model and system optimizations give a 38 times inference speed-up, so the 14B autoregressive model runs closed-loop control at about 7 Hz (Sec. 1)."
+    - "Video-only demonstrations from other robots or humans improve unseen-task performance by over 42% (relative) with 10–20 minutes of data (Abstract)."
+    - "Adapts to a new robot with 30 minutes of play data while keeping zero-shot generalization (Abstract)."
+  connects_to: "The page's world action models; its closed-loop inference, which swaps real observations into the model's context, is the 'look' option of this page's puck toy. The guest speaker is a co-author."
+
+- id: visual-foresight
+  role: lecture
+  weeks: [8]
+  title: "Deep Visual Foresight for Planning Robot Motion"
+  authors: "Finn & Levine"
+  year: 2017
+  venue: "ICRA"             # arXiv comment: "ICRA 2017"
+  url: https://arxiv.org/abs/1610.00696
+  summary: "Combines an action-conditioned video prediction model with model-predictive control. The model, trained on unlabeled data the robot collected itself, predicts how pixels will move under candidate actions; the planner picks the actions whose predicted motion moves a chosen pixel to its goal."
+  contributions:
+    - "Entirely unlabeled training data: no calibrated camera, instrumented set-up or precise sensing (Abstract)."
+    - "A real robot pushes objects, including objects not seen in training (Abstract)."
+  connects_to: "The pixel world models at the start of the lecture, and the plan-with-a-model-then-replan loop of this page's puck toy."
+
+- id: ha-world-models
+  role: lecture
+  weeks: [8]
+  title: "World Models"
+  authors: "Ha & Schmidhuber"
+  year: 2018
+  venue: "NeurIPS"          # as "Recurrent World Models Facilitate Policy Evolution", NeurIPS 2018 (papers.nips.cc)
+  url: https://arxiv.org/abs/1803.10122
+  summary: "A world model in three parts: a VAE that compresses each frame to a latent vector, a recurrent network that predicts the next latent, and a tiny controller acting on both. The controller can be trained entirely inside the model's own 'dream' and transferred back to the real environment."
+  contributions:
+    - "Unsupervised learning of a compressed spatial and temporal representation of the environment (Abstract)."
+    - "Features from the world model make a very small policy sufficient (Abstract)."
+    - "A policy trained purely in the hallucinated environment transfers to the actual one (Abstract)."
+  connects_to: "The first latent world model in the lecture's lineage, and the drift problem that RSSM later fixes."
+
+- id: planet
+  role: lecture
+  weeks: [8]
+  title: "Learning Latent Dynamics for Planning from Pixels"
+  authors: "Hafner et al."
+  year: 2019
+  venue: "ICML"             # ICML 2019 (icml.cc virtual poster 3764)
+  url: https://arxiv.org/abs/1811.04551
+  summary: "PlaNet learns a latent dynamics model from images and chooses actions by fast online planning in that latent space. Its recurrent state-space model has both a deterministic and a stochastic part."
+  contributions:
+    - "The recurrent state-space model (RSSM): deterministic and stochastic transition components (Abstract)."
+    - "Latent overshooting, a multi-step variational objective for predicting rewards several steps ahead (Abstract)."
+    - "Solves continuous control from pixels with substantially fewer episodes than strong model-free methods (Abstract)."
+  connects_to: "The RSSM equations on this page: a learned prior over the next latent, kept close to the posterior by a KL term."
+
+- id: dreamer
+  role: lecture
+  weeks: [8]
+  title: "Dream to Control: Learning Behaviors by Latent Imagination"
+  authors: "Hafner, Lillicrap, Ba & Norouzi"
+  year: 2020
+  venue: "ICLR"             # ICLR 2020 (iclr.cc virtual poster 1737)
+  url: https://arxiv.org/abs/1912.01603
+  summary: "Dreamer replaces PlaNet's planning at every step with an actor and a critic trained inside the learned world model, by back-propagating value gradients through imagined trajectories."
+  contributions:
+    - "Learns behaviors purely by latent imagination (Abstract)."
+    - "Propagates analytic gradients of learned state values back through imagined trajectories (Abstract)."
+    - "Beats existing approaches on 20 visual control tasks in data efficiency, computation time and final performance (Abstract)."
+  connects_to: "Amortizing the planner of this page's puck toy into a policy; the start of the Dreamer line that ends in Dreamer 4."
+
+- id: daydreamer
+  role: lecture
+  weeks: [8]
+  title: "DayDreamer: World Models for Physical Robot Learning"
+  authors: "Wu, Escontrela, Hafner, Abbeel & Goldberg"
+  year: 2022
+  venue: "CoRL"             # CoRL 2022 (DBLP)
+  url: https://arxiv.org/abs/2206.14176
+  summary: "Applies Dreamer, unchanged, to four real robots learning online without simulators."
+  contributions:
+    - "A quadruped learns to roll off its back, stand up and walk from scratch in 1 hour, and adapts to pushes within 10 minutes (Abstract)."
+    - "Two robot arms learn pick and place from camera images and sparse rewards, approaching human performance (Abstract)."
+    - "The same hyperparameters in every experiment (Abstract)."
+  connects_to: "The lecture's case that imagination training saves real-world trial and error."
+
+- id: mimic-video
+  role: lecture
+  weeks: [8]
+  title: "mimic-video: Video-Action Models for Generalizable Robot Control Beyond VLAs"
+  authors: "Pai, Achenbach et al."
+  year: 2025
+  venue: "arXiv"            # preprint 2512.15692
+  url: https://arxiv.org/abs/2512.15692
+  summary: "A video-action model: a pre-trained internet-scale video model plans in video space, and a flow-matching action decoder, acting as an inverse dynamics model, turns its latent representation into robot actions."
+  contributions:
+    - "Argues that vision-language pre-training captures semantics but is blind to physical causality, while video captures both (Abstract)."
+    - "10 times better sample efficiency and 2 times faster convergence than traditional VLA architectures (Abstract)."
+  connects_to: "The video-action toy on this page and its oracle test. The lecturer is a co-author."
 
 # --- Week 9 · Generalist Robot Policies -----------------------------------
 - id: language-conditioned-il
