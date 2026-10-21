@@ -1,6 +1,1122 @@
 ---
 title: "Week 7 · Sequence Modeling and Transformers"
 subtitle: "Lecture of 30 March 2026 · guest: Ted Xiao"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w07_sequence as w7
+
+style.apply()
+BLUE, ORANGE, GREEN = style.CATEGORICAL[0], style.CATEGORICAL[1], style.CATEGORICAL[2]
+
+# --- Toy 1: two goal announcements, one attention head ------------------------------
+SEEDS = range(5)
+ATT = {(rel, s): w7.train_attention(rel, s)[0] for rel in (False, True) for s in SEEDS}
+MSE = {rel: np.array([w7.attention_mse(ATT[rel, s], w7.L_TRAIN, rel, np.random.default_rng(100 + s))
+                      for s in SEEDS]) for rel in (False, True)}
+_, y_ref, _ = w7.cue_batch(20_000, w7.L_TRAIN, np.random.default_rng(1))
+MSE_REACTIVE = float(np.mean(y_ref**2))                  # a reactive policy's best answer is 0
+assert abs(MSE_REACTIVE - 1) < 0.03
+assert all(abs(MSE[False] - 0.5) < 0.03) and all(MSE[True] < 0.001)
+LAM = np.array([ATT[True, s][1][1][0] for s in SEEDS])
+
+
+def goal_score(params):
+    """How much more a goal token scores than a sensor reading, before the bias."""
+    (W_q, W_k), _ = params
+    q = np.array([0.0, 0, 1]) @ W_q
+    return float((np.array([1.0, 0, 0]) @ W_k) @ q / np.sqrt(w7.D_K))
+
+
+GOAL_SCORE = np.array([goal_score(ATT[True, s]) for s in SEEDS])
+REACH = GOAL_SCORE / LAM                                  # steps back at which the bias cancels it
+MAX_BACK = w7.L_TRAIN - 1                                 # the furthest back a goal sits in training
+assert all(abs(REACH - MAX_BACK) < 0.5)
+L_LONG = 256
+X_long, y_long, pos_long = w7.cue_batch(40_000, L_LONG, np.random.default_rng(7))
+back_long = L_LONG - 1 - pos_long[:, 1]
+ERR = {(rel, s): (w7.attend(ATT[rel, s], X_long, rel)[0] - y_long) ** 2 for rel in (False, True) for s in SEEDS}
+NEAR = max(float(ERR[True, s][back_long <= MAX_BACK - 1].mean()) for s in SEEDS)
+FAR = min(float(ERR[True, s][back_long >= MAX_BACK + 2].mean()) for s in SEEDS)
+assert NEAR < 1e-3 and FAR > MSE_REACTIVE                 # far back, worse than not looking at all
+
+# --- Toy 2: action tokens --------------------------------------------------------------
+tok_rng = np.random.default_rng(0)
+P_TRAIN, P_TEST = w7.signal_params(600, tok_rng), w7.signal_params(300, tok_rng)
+SCALE, N_MERGES = 10, 300
+TOK = {}
+for f in w7.FREQS:
+    A, At = w7.sample_actions(P_TRAIN, f), w7.sample_actions(P_TEST, f)
+    b = w7.quantile_bounds(A)                              # tokenizers are fitted on the training chunks
+    bins = w7.bin_tokens(At, b)
+    C, Ct = w7.dct_coefficients(A, b, SCALE), w7.dct_coefficients(At, b, SCALE)
+    merges, _ = w7.bpe_train(w7.flatten_low_first(C), N_MERGES)
+    fast = [w7.bpe_encode(s, merges) for s in w7.flatten_low_first(Ct)]
+    TOK[f] = dict(bounds=b, bins=bins, coef=Ct, actions=At, n_bins=f * w7.D_ACT,
+                  n_nonzero=float((Ct != 0).sum((1, 2)).mean()), n_fast=float(np.mean([len(s) for s in fast])),
+                  copy=w7.copy_rate(bins), explained=w7.copy_explained(bins),
+                  err_bin=float(np.sqrt(np.mean((w7.bin_centres(bins, b) - At) ** 2))),
+                  err_fast=float(np.sqrt(np.mean((w7.dct_reconstruct(Ct, b, SCALE) - At) ** 2))))
+F_HI = w7.FREQS[-1]
+expl = [TOK[f]["explained"] for f in w7.FREQS]
+assert all(a < b for a, b in zip(expl, expl[1:])) and TOK[F_HI]["explained"] > 0.99 and TOK[5]["explained"] < 0.5
+assert TOK[F_HI]["copy"] < 0.15                            # yet exact repeats stay rare: bins are fine
+assert TOK[F_HI]["n_fast"] < 0.12 * TOK[F_HI]["n_bins"]
+assert TOK[F_HI]["err_fast"] < 1.2 * TOK[F_HI]["err_bin"]
+assert TOK[2]["err_fast"] > TOK[2]["err_bin"]              # at 2 Hz compression costs accuracy
+SIGNAL_STD = float(w7.sample_actions(P_TEST, F_HI).std())
+
+A_out = w7.sample_actions(P_TRAIN, F_HI).copy()
+A_out[3, 10, 0] = 25.0                                     # one glitched reading
+flat = A_out.reshape(-1, w7.D_ACT)
+MINMAX = np.array([flat.min(0), flat.max(0)])
+USED = {name: len(np.unique(w7.bin_tokens(A_out, b)[..., 0]))
+        for name, b in (("min-max", MINMAX), ("quantile", w7.quantile_bounds(A_out)))}
+assert USED["quantile"] == w7.N_BINS and USED["min-max"] < 60
+
+# --- Toy 3: action chunks ----------------------------------------------------------------
+K_CH, N_RUNS = 25, 200
+KS = (1, 5, 10, 25, 50)
+
+
+def scheme_stats(k, mode, m=0.0):
+    runs = [w7.run_chunks(k, mode, np.random.default_rng(s), m) for s in range(N_RUNS)]
+    return dict(rough=float(np.mean([w7.roughness(x) for x in runs])),
+                err=float(np.mean([w7.settle_error(x) for x in runs])),
+                half=w7.mean_half_time(k, mode, m))
+
+
+SWEEP = {(k, mode): scheme_stats(k, mode) for k in KS for mode in ("chunk", "ensemble")}
+SINGLE, CHUNK, ENS = SWEEP[1, "chunk"], SWEEP[K_CH, "chunk"], SWEEP[K_CH, "ensemble"]
+assert CHUNK["rough"] < 0.5 * SINGLE["rough"] and ENS["rough"] < 0.55 * SINGLE["rough"]
+assert CHUNK["err"] > 2 * SINGLE["err"] and abs(ENS["err"] / SINGLE["err"] - 1) < 0.15
+assert CHUNK["half"] > 1.8 * SINGLE["half"] and ENS["half"] > 1.7 * SINGLE["half"]
+assert all(SWEEP[k, "chunk"]["err"] < SWEEP[k2, "chunk"]["err"] for k, k2 in zip(KS, KS[1:]))
+MS = (0.0, 0.05, 0.1, 0.2)
+M_SWEEP = {m: scheme_stats(K_CH, "ensemble", m) for m in MS + (-0.1,)}
+assert all(M_SWEEP[a]["rough"] < M_SWEEP[b]["rough"] for a, b in zip(MS, MS[1:]))
+assert M_SWEEP[-0.1]["rough"] < M_SWEEP[0.0]["rough"]
+sec = lambda steps: steps / w7.HZ
+assert sec(w7.T_MOVE) == 1.6 and (w7.GOAL_A, w7.GOAL_B) == (1.0, 0.4)   # quoted in captions and alt text
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 7 · **Lecture:** [video](https://youtu.be/imSTfMJjp7M) · **Go deeper:** [ADM Ch 19, beliefs]({{< var adm_url >}}/part4/ch19-beliefs.html#beliefs) and [ADM Ch 23, a policy that remembers]({{< var adm_url >}}/part4/ch23-controller-abstractions.html#a-policy-that-remembers-just-enough)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(7))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+Every policy so far has been **reactive**: one observation in, one action out [▶ 00:21](https://youtu.be/imSTfMJjp7M?t=21). [Week 3](w03-imitation-learning.qmd) cloned such policies from demonstrations, and [Week 6](w06-generative-models.qmd) made their action distributions richer. This week asks what a policy gains by looking at a *sequence*: the history behind the current observation, and a whole stretch of future actions instead of one. The tool is the **transformer**, the architecture behind large language models (LLMs), vision-language models (VLMs) and, from [Week 9](w09-generalist-robot-policies.qmd) on, the vision-language-action models (VLAs) that the rest of the course builds on.
+
+**The question this week answers:** how do you turn a robot's observations, instructions and actions into one token sequence that a transformer can learn from, and what goes wrong with actions that does not go wrong with words?
+
+### The key ideas at a glance
+
+- **A snapshot is not enough.** One camera frame shows neither how fast things move nor what the robot did a moment ago; a robot really acts in a partially observable world and needs history. Predicting one action at a time also tends to produce jerky motion.
+- **Sequences factor into conditionals.** By the chain rule, any distribution over a sequence is a product of "next element given everything before". An **autoregressive** model learns that one conditional.
+- **Attention instead of recurrence.** A recurrent network squeezes the past into one state vector; **attention** lets every position look directly at every earlier one, in one step and in parallel. It has no sense of order, so **positional encodings** add it.
+- **Tokens.** Text is split into sub-words by **byte-pair encoding**, images into patches; once everything is a token, one transformer can read both. Vision and language are joined by contrastive alignment (CLIP), by feeding image tokens into a language model (LLaVA, early fusion), by cross-attention (Flamingo, late fusion), or by training on all modalities at once.
+- **Scale.** Transformers improve predictably with model size, data and compute; the **Chinchilla** rule says to grow model and data together, about 20 tokens per parameter.
+- **Actions as tokens.** Bin each action dimension at each step (RT-2, OpenVLA). At high control rates consecutive tokens nearly repeat, and next-token prediction learns little; **FAST** compresses each action chunk with a discrete cosine transform first.
+- **Action chunks.** Predict the next $k$ actions at once (ACT) for smoother motion; a **temporal ensemble** averages overlapping chunks so the robot keeps reacting.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Reactive policy | Chooses each action from the current observation only |
+| POMDP | A decision problem where the robot observes only part of the state |
+| Autoregressive model | Generates a sequence one element at a time, each conditioned on all earlier ones |
+| Token | One unit of a sequence: a sub-word, an image patch, an action bin |
+| Attention | Each position takes a weighted average of other positions' values, with weights from query-key similarity |
+| Causal mask | Stops a position from attending to later positions |
+| Positional encoding | Information about order added to tokens or to attention scores |
+| Teacher forcing | Training on the true previous tokens, not the model's own predictions |
+| BPE | Byte-pair encoding: repeatedly merge the most frequent adjacent pair into a new token |
+| Scaling law | A fitted power law linking loss to model size, data and compute |
+| Early, late fusion | Image tokens enter the language model's input sequence, or reach it through cross-attention layers |
+| Action chunk | The next $k$ actions, predicted together |
+| Temporal ensemble | Averaging the overlapping predictions that several chunks make for the same step |
+| DCT | Discrete cosine transform: a signal written as a sum of cosines of rising frequency |
+
+### After this week you can
+
+- Explain why robots need history and why single-step policies jitter.
+- Compute an attention head by hand, and say what the causal mask and positional encodings are for.
+- Describe teacher forcing, and why a transformer trains on a whole sequence in one pass.
+- Run byte-pair encoding, and explain how images and actions become tokens.
+- State the Chinchilla rule and use $C \approx 6ND$ to size a model for a compute budget.
+- Explain why per-step action bins fail at high control rates, and how FAST's compression fixes it.
+- Compare single-step control, action chunks and temporal ensembling.
+
+{{< video https://youtu.be/imSTfMJjp7M >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+Think of a pianist reading music. A beginner looks at one note, plays it, looks at the next: slow, and the phrasing is choppy. An experienced player reads a whole bar ahead and plays it as one gesture, while still glancing at what comes next and at the conductor. They also remember what they have just played: a repeat sign means something only if you know where you have been. Remembering the past is what attention gives a robot; playing a bar at a time is action chunking; still glancing at the page between bars is the temporal ensemble.
+:::
+
+### One snapshot is not enough {#memory-intuition}
+
+A reactive policy $\pi(a_t \mid o_t)$ has two problems [▶ 00:21](https://youtu.be/imSTfMJjp7M?t=21). The first is **memory**. A single frame does not show how fast a pedestrian is walking, or that the road was icy a few seconds ago. The second is **smoothness**: a policy that decides every step afresh can switch between slightly different decisions and produce jerky, oscillating motion [▶ 01:34](https://youtu.be/imSTfMJjp7M?t=94). In the language of [Week 2](w02-robot-control-mdps.qmd), the robot is not in an MDP but a **partially observable** one (a POMDP): the observation is not the state, and the state must be inferred from the history [▶ 02:22](https://youtu.be/imSTfMJjp7M?t=142). The world produces a sequence, but the policy looks at one element of it [▶ 03:21](https://youtu.be/imSTfMJjp7M?t=201).
+
+This page's first toy is that problem in its simplest form. A robot receives a stream of `{python} w7.L_TRAIN` tokens. Most are sensor readings with random values; twice, at random moments, a token announces a goal position, and the second announcement replaces the first (an operator corrects themselves). The last token asks: where should I go now? A reactive policy sees only that last token, which says nothing about the goal, so its best guess is 0, and its mean squared error is `{python} f"{MSE_REACTIVE:.2f}"`, the variance of the goal.
+
+### Sequences as products of conditionals {#ar-intuition}
+
+To model a whole sequence, use the **chain rule of probability**: any joint distribution, however complicated, is the probability of the first element, times that of the second given the first, and so on [▶ 03:53](https://youtu.be/imSTfMJjp7M?t=233). A model that learns "next element given all earlier ones" can therefore represent any sequence distribution, and generate from it one element at a time. This is an **autoregressive** model (@eq-chain). The hard part is the conditional itself: its input, the whole past, grows with the sequence and can be high-dimensional.
+
+The first answer was the **recurrent neural network** (RNN): keep a hidden state that summarizes the past, and update it with each new input [▶ 04:56](https://youtu.be/imSTfMJjp7M?t=296). It handles any length, but has three problems. Information from step 1 reaches step 100 only through 99 updates, so gradients over long ranges explode or vanish (LSTMs helped, but did not cure it) [▶ 05:19](https://youtu.be/imSTfMJjp7M?t=319). Each step needs the previous one, so training cannot be parallelized over time [▶ 05:41](https://youtu.be/imSTfMJjp7M?t=341). And however long the history, it must fit in a fixed-size vector [▶ 05:48](https://youtu.be/imSTfMJjp7M?t=348).
+
+### Attention: look anywhere, in one step {#attention-intuition}
+
+A **transformer** replaces recurrence with **attention**: any position can draw information from any other position directly, so the path between two tokens has length one, whatever their distance [▶ 06:30](https://youtu.be/imSTfMJjp7M?t=390). That removes all three RNN problems at once: long-range dependencies are one step away, there is no recurrence to serialize training, and nothing has to squeeze the history into a single vector.
+
+How a position decides where to look [▶ 07:26](https://youtu.be/imSTfMJjp7M?t=446): each token produces a **query** (what am I looking for?), a **key** (what do I offer?) and a **value** (what I hand over if chosen). The query is compared with every key by a dot product, the scores go through a softmax so they sum to one, and the output is the weighted average of the values [▶ 08:00](https://youtu.be/imSTfMJjp7M?t=480). It is a **soft dictionary lookup**: instead of returning the one entry whose key matches, it returns a blend of all entries, weighted by how well each key matches. Because every step is differentiable, the network learns not only the representations but where to look [▶ 08:23](https://youtu.be/imSTfMJjp7M?t=503).
+
+In the goal toy, one attention head is enough: the last token's query learns to match the keys of goal tokens, and the value carries the goal's position. This head is small enough to write out in NumPy with its gradients (see [Algorithm & code](#code)).
+
+### Order has to be added {#position-intuition}
+
+Attention compares tokens by content only. Shuffle the inputs and every weight is the same: attention is a **set operation**, so "the robot picked up the spoon" and "the spoon picked up the robot" look identical [▶ 09:09](https://youtu.be/imSTfMJjp7M?t=549). The fix is to inject order [▶ 09:27](https://youtu.be/imSTfMJjp7M?t=567). The original transformer adds a fixed vector to each token according to its position, an **absolute** encoding; a position longer than any seen in training then has no meaningful encoding [▶ 09:52](https://youtu.be/imSTfMJjp7M?t=592). A **relative** encoding instead adds a bias to each attention score that depends on the *distance* between the two tokens, so the same rule applies anywhere in the sequence [▶ 10:12](https://youtu.be/imSTfMJjp7M?t=612).
+
+The goal toy shows both halves of this. Trained without any positional information, the head finds both goals but cannot tell which came later. Its best option is to average them, and its error over `{python} len(SEEDS)` training seeds is `{python} f"{MSE[False].mean():.2f}"`: exactly the error of answering with the mean of two random goals, 0.5. With one learned parameter more, a bias $-\lambda$ per step of distance on every score, the error falls to `{python} f"{MSE[True].mean():.4f}"`: the head now prefers the more recent goal.
+
+Does that relative bias let the head work on longer streams? The same trained head runs on streams of `{python} L_LONG` tokens without change, which an absolute encoding could not do. It is still nearly perfect (error below `{python} f"{NEAR:.4f}"` in every seed) as long as the later goal is at most `{python} MAX_BACK - 1` steps back. Beyond `{python} MAX_BACK` steps, the furthest training ever showed, it fails, with error above `{python} f"{FAR:.1f}"`, worse than not looking at all (@fig-recall). The learned weights say why. A goal token out-scores a sensor reading by about `{python} f"{GOAL_SCORE.mean():.0f}"`, the bias is $\lambda \approx$ `{python} f"{LAM.mean():.1f}"` per step, and their ratio is `{python} f"{REACH.mean():.1f}"` steps, almost exactly the training range: training tuned the head to see goals as far back as it needed to, and no further. Relative encodings make longer sequences *possible*; they do not by themselves make *longer-range* dependencies work.
+
+```{python}
+#| label: fig-recall
+#| fig-cap: "The goal toy, on streams of 256 tokens, with heads trained on streams of 16. Mean squared error against how far back the later goal is, for the head without positional information (orange) and with a relative-position bias (blue), one thin line per training seed. The shaded band is the range of distances seen in training; the dashed line is a reactive policy's error."
+#| fig-alt: "Line chart. The x-axis is how many steps back the later goal is, 1 to 40; the y-axis is mean squared error on a log scale from 0.000001 to 10. A shaded band covers distances 1 to 15. Five orange lines sit between 0.5 and 0.8 at every distance. Five blue lines sit between 0.000003 and 0.0001 from distance 1 to 13, rise steeply through 14 and 15, and from 17 on stay between about 0.9 and 2.2, around or above a dashed horizontal line at 1 that marks the reactive policy."
+D_PLOT = np.arange(1, 41)
+fig, ax = plt.subplots(figsize=(6.4, 3.6))
+ax.axvspan(0.5, MAX_BACK + 0.5, color=style.GRID, alpha=0.6, lw=0)
+ax.text(MAX_BACK / 2 + 0.5, 4, "distances seen in training", ha="center", fontsize=9, color=style.INK_SECONDARY)
+for rel, col in ((False, ORANGE), (True, BLUE)):
+    for s in SEEDS:
+        curve = [ERR[rel, s][back_long == d].mean() for d in D_PLOT]
+        ax.plot(D_PLOT, curve, color=col, lw=1.2, alpha=0.8,
+                label=(("relative bias" if rel else "no position") if s == 0 else None))
+ax.axhline(MSE_REACTIVE, color=style.INK, ls="--", lw=1, label="reactive policy")
+ax.set_yscale("log")
+ax.set_ylim(1e-6, 10)
+ax.set_xlabel("how many steps back the later goal is")
+ax.set_ylabel("mean squared error")
+ax.legend(loc="lower right", fontsize=9)
+plt.show()
+```
+
+### Training on the whole sequence at once {#training-intuition}
+
+The original transformer was built for translation, as an encoder-decoder [▶ 11:08](https://youtu.be/imSTfMJjp7M?t=668). The encoder reads the source sentence with **bidirectional** attention, every word seeing every other. The decoder writes the translation with **causal** attention: each position may attend only to itself and earlier positions, enforced by setting the scores of later positions to $-\infty$ before the softmax [▶ 11:48](https://youtu.be/imSTfMJjp7M?t=708). Between them, **cross-attention** takes queries from the decoder and keys and values from the encoder: given what I have written so far, what in the source matters now? [▶ 12:23](https://youtu.be/imSTfMJjp7M?t=743)
+
+Training uses **teacher forcing**: at every position the model is given the true previous tokens, not its own guesses, and is asked to raise the probability of the correct next token [▶ 12:56](https://youtu.be/imSTfMJjp7M?t=776). With the causal mask, one forward pass computes the loss at every position of the sequence at once; an RNN needs one step per token [▶ 13:25](https://youtu.be/imSTfMJjp7M?t=805). (Teacher forcing has a cost that [Week 3](w03-imitation-learning.qmd) already met: at test time the model conditions on its own outputs, which it never saw in training.)
+
+### What is a token? {#token-intuition}
+
+Before any of this applies, the input must be cut into tokens [▶ 13:48](https://youtu.be/imSTfMJjp7M?t=828). Characters give a tiny vocabulary but very long sequences; whole words give short sequences but a huge vocabulary, and no way to write a word never seen before [▶ 14:03](https://youtu.be/imSTfMJjp7M?t=843). Sub-words sit in between [▶ 14:51](https://youtu.be/imSTfMJjp7M?t=891). **Byte-pair encoding** (BPE) builds them bottom-up: start from single characters, find the most frequent adjacent pair, merge it into a new token, and repeat $k$ times [▶ 15:18](https://youtu.be/imSTfMJjp7M?t=918). Frequent pieces such as "the" merge early; a rare word still splits into known pieces. Short sequences matter because attention's cost grows with the square of the length. The more text BPE is trained on, the more it compresses [▶ 17:08](https://youtu.be/imSTfMJjp7M?t=1028). [Example 2](#ex-bpe) runs it on a sentence.
+
+Scaling to large language models changed a few details [▶ 18:07](https://youtu.be/imSTfMJjp7M?t=1087). The encoder is dropped: a decoder-only model trained on next-token prediction is simpler to scale. BPE runs on bytes instead of characters, so every input, emojis included, can be written [▶ 18:54](https://youtu.be/imSTfMJjp7M?t=1134). **RoPE** encodes position by rotating queries and keys, so their dot product depends only on the distance between tokens [▶ 19:13](https://youtu.be/imSTfMJjp7M?t=1153). **FlashAttention** computes attention in tiles in fast on-chip memory, never storing the full $n \times n$ matrix, so memory grows linearly with length instead of quadratically [▶ 19:46](https://youtu.be/imSTfMJjp7M?t=1186).
+
+### What scale buys {#scale-intuition}
+
+The lecture's history of the GPT models [▶ 20:24](https://youtu.be/imSTfMJjp7M?t=1224): GPT-1 (2018) needed fine-tuning for each task; GPT-2, ten times larger, began to do tasks **zero-shot**, without being trained on them [▶ 21:02](https://youtu.be/imSTfMJjp7M?t=1262); GPT-3 (175 billion parameters) showed **in-context learning**, picking up a task from a few examples in the prompt with no gradient update [▶ 21:31](https://youtu.be/imSTfMJjp7M?t=1291). Neither ability was designed in; both appeared with scale. Sutton's **bitter lesson** (2019) generalizes this: over 70 years of AI, methods that scale with computation have eventually beaten methods built on hand-engineered knowledge [▶ 21:59](https://youtu.be/imSTfMJjp7M?t=1319). The open question for this course is what emerges when robot data is scaled the same way.
+
+If scale is what matters, how should a fixed compute budget be spent? The **Chinchilla** study found that model size and training data should grow in equal proportion, and that many large models of the time, GPT-3 among them, were too big for the data they saw [▶ 23:45](https://youtu.be/imSTfMJjp7M?t=1425). The rule of thumb is about 20 training tokens per parameter [▶ 25:09](https://youtu.be/imSTfMJjp7M?t=1509). Because the curves are smooth, small, cheap runs can predict how a large run will turn out before the compute is spent. Some recent models are trained far past that point on purpose (the lecture's example is Llama 3) [▶ 26:39](https://youtu.be/imSTfMJjp7M?t=1599): a smaller model that saw more data is cheaper to serve to millions of users [▶ 27:09](https://youtu.be/imSTfMJjp7M?t=1629).
+
+### Images become tokens too {#vision-intuition}
+
+A robot must see. The **vision transformer** (ViT) cuts an image into 16 by 16 pixel patches (a 224 by 224 image gives 196), flattens and linearly projects each patch, adds a position embedding, and feeds the patches to a transformer as if they were words [▶ 28:30](https://youtu.be/imSTfMJjp7M?t=1710). Patches play the role for images that sub-words play for text.
+
+Putting image tokens and text tokens in one sequence is not enough: the model must also know that the word "apple" and the patches showing an apple refer to the same thing. The lecture describes four ways to get there (@fig-fusion):
+
+- **CLIP** trains an image encoder and a text encoder side by side, so that matching image-caption pairs end up close in a shared embedding space and mismatched pairs far apart [▶ 30:42](https://youtu.be/imSTfMJjp7M?t=1842).
+- **LLaVA** (early fusion) runs the image through a frozen CLIP encoder, maps the patch embeddings into the language model's token space with a small trained MLP, and puts them in front of the text; the language model, fine-tuned on visual instructions, then attends over everything with no change to its architecture [▶ 32:16](https://youtu.be/imSTfMJjp7M?t=1936).
+- **Flamingo** (late fusion) leaves the language model's own layers untouched and inserts new cross-attention layers in which text queries look at visual keys and values. Each new layer is gated by $\tanh(\alpha)$ with $\alpha$ starting at 0, so at the start of training the model is exactly the original language model, and vision is let in gradually [▶ 33:45](https://youtu.be/imSTfMJjp7M?t=2025).
+- **Natively multimodal** models are trained from scratch on interleaved text, images, audio and video, with no modality privileged [▶ 35:38](https://youtu.be/imSTfMJjp7M?t=2138).
+
+The trade-off: early fusion lets images and words interact most freely but risks degrading the language model during fine-tuning; late fusion preserves it but restricts the interaction to the cross-attention paths; native training removes the constraints and costs the most. According to the lecture, open-source VLMs mostly use early fusion, while the large proprietary models are converging on native training [▶ 36:58](https://youtu.be/imSTfMJjp7M?t=2218).
+
+```{dot}
+//| label: fig-fusion
+//| fig-width: 6.6
+//| fig-height: 3.0
+//| fig-cap: "Three ways to give a language model sight. Early fusion puts projected image tokens into the input sequence; late fusion injects them through gated cross-attention layers; a natively multimodal model is trained on interleaved tokens of every kind from the start."
+//| fig-alt: "Diagram with three columns. Early fusion: 'image → frozen CLIP encoder' leads, labelled 'patches', to 'MLP connector', which leads, labelled 'image tokens', to 'LLM, fine-tuned: self-attention over image + text tokens'. Late fusion: 'image → frozen encoder' leads to 'perceiver resampler', which leads, labelled 'keys, values', to 'frozen LLM with new gated cross-attention layers', highlighted. Native: 'text, image, audio, video tokens, interleaved' leads, labelled 'one sequence', to 'one transformer trained from scratch'."
+digraph fusion {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=10];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  e1 [label="EARLY FUSION\nimage → frozen\nCLIP encoder", fillcolor="#f0efec", color="#52514e"];
+  e2 [label="MLP connector\n(trained)"];
+  e3 [label="LLM, fine-tuned\nself-attention over\nimage + text tokens"];
+  l1 [label="LATE FUSION\nimage → frozen\nencoder", fillcolor="#f0efec", color="#52514e"];
+  l2 [label="perceiver\nresampler"];
+  l3 [label="frozen LLM\n+ new gated\ncross-attention", fillcolor="#fbe1d6", color="#eb6834"];
+  n1 [label="NATIVE\ntext, image, audio,\nvideo tokens", fillcolor="#f0efec", color="#52514e"];
+  n3 [label="one transformer\ntrained from\nscratch"];
+  e1 -> e2 [label=" patches"];
+  e2 -> e3 [label=" image tokens"];
+  l1 -> l2;
+  l2 -> l3 [label=" keys, values"];
+  n1 -> n3 [label=" one sequence"];
+}
+```
+
+### Actions become tokens {#action-token-intuition}
+
+Each step from the transformer to the LLM, the VLM and native multimodal models followed the same play: find a way to tokenize a new modality, feed it to the same architecture, scale. The robotics version adds one more modality, actions, and treats control as **multimodal sequence prediction**: language tokens, image tokens, then action tokens that drive the motors (@fig-vla) [▶ 39:22](https://youtu.be/imSTfMJjp7M?t=2362). Attention over the whole history also answers the memory problem from the start of the lecture.
+
+Actions are continuous, so the first VLAs (RT-2, OpenVLA) bin them, one dimension at a time and one time step at a time [▶ 40:22](https://youtu.be/imSTfMJjp7M?t=2422). Each dimension is normalized to $[-1, 1]$ using its 1st and 99th percentiles over the training data, clipped, and cut into 256 equal bins [▶ 40:46](https://youtu.be/imSTfMJjp7M?t=2446). RT-2 first used the minimum and maximum instead, but a single outlier then stretches the range: in this page's action toy, one glitched reading among `{python} f"{A_out[..., 0].size:,}"` makes min-max normalization use only `{python} USED["min-max"]` of the 256 bins for the real motions, against all `{python} USED["quantile"]` with the quantile bounds. The 256 bins become 256 tokens of the language model's vocabulary, for example by overwriting its 256 least-used tokens [▶ 42:10](https://youtu.be/imSTfMJjp7M?t=2530), and the model is trained by next-token prediction with its usual loss. [Week 1](w01-introduction.qmd#tokens) tokenized a motion this way.
+
+```{dot}
+//| label: fig-vla
+//| fig-width: 5.2
+//| fig-height: 4.6
+//| fig-cap: "Robot control as multimodal sequence prediction: instruction and camera image become tokens, a causal transformer predicts action tokens, and a detokenizer turns them back into motor commands. Per-step bins and FAST are two ways to build the action tokens."
+//| fig-alt: "Flow diagram. 'Instruction: pick up the spoon' leads, labelled 'BPE', to 'text tokens'. 'Camera image' leads, labelled 'patches', to 'image tokens'. Both lead into 'causal transformer: one sequence'. That leads, labelled 'next token', to 'action tokens', highlighted in orange. Two boxes feed action tokens, labelled 'training targets': 'per-step bins: 256 per dimension' and 'FAST: DCT + BPE per chunk'. Action tokens lead, labelled 'detokenize', to 'motor commands'."
+digraph vla {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.4;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=10];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  instr [label="instruction\n“pick up the spoon”", fillcolor="#f0efec", color="#52514e"];
+  img [label="camera image", fillcolor="#f0efec", color="#52514e"];
+  txt [label="text tokens"];
+  pat [label="image tokens"];
+  tf [label="causal transformer\none sequence"];
+  act [label="action tokens", fillcolor="#fbe1d6", color="#eb6834"];
+  bins [label="per-step bins\n256 per dimension", fillcolor="#f0efec", color="#52514e"];
+  fast [label="FAST\nDCT + BPE per chunk", fillcolor="#f0efec", color="#52514e"];
+  motor [label="motor commands"];
+  { rank=same; instr; img; }
+  { rank=same; bins; fast; }
+  instr -> txt [label=" BPE"];
+  img -> pat [label=" patches"];
+  txt -> tf;
+  pat -> tf;
+  tf -> act [label=" next token"];
+  bins -> act [label=" training targets"];
+  fast -> act;
+  act -> motor [label=" detokenize"];
+}
+```
+
+### Chunks: plan a short trajectory, not a single step {#chunk-intuition}
+
+Attention answers the memory problem; **action chunking** answers the smoothness problem [▶ 43:21](https://youtu.be/imSTfMJjp7M?t=2601). Instead of one action, the policy predicts the next $k$, $\pi(a_{t:t+k} \mid o_t)$, and the robot executes them before asking again. The motion within a chunk is planned at once, so it is coherent. But while a long chunk plays out, the robot is blind: a 100-action chunk at 50 Hz ignores the world for two seconds. The **temporal ensemble** fixes that: query the policy at every step anyway, keep every chunk's prediction for the current step, and execute their weighted average [▶ 44:46](https://youtu.be/imSTfMJjp7M?t=2686). ACT, the policy of the ALOHA paper, used both, predicting chunks of 100 joint targets for two 7-joint arms at 50 Hz: 1,400 numbers per forward pass [▶ 45:16](https://youtu.be/imSTfMJjp7M?t=2716), and it learned precise two-arm tasks such as inserting a battery [▶ 45:51](https://youtu.be/imSTfMJjp7M?t=2751).
+
+The third toy measures the trade-off. A robot at 50 Hz moves towards a goal it estimates from a noisy camera at every query; after `{python} f"{sec(w7.T_MOVE):.1f}"` seconds the goal moves. Each planned chunk closes a fixed share of the remaining gap per step. Over `{python} N_RUNS` runs, with chunks of $k =$ `{python} K_CH` (half a second):
+
+| Scheme | Jitter (RMS 2nd difference) | Error at rest | Time to halfway after the move |
+|:---|---:|---:|---:|
+| single step | `{python} f"{SINGLE['rough']:.4f}"` | `{python} f"{SINGLE['err']:.3f}"` | `{python} f"{sec(SINGLE['half']):.2f}"` s |
+| chunks, open loop | `{python} f"{CHUNK['rough']:.4f}"` | `{python} f"{CHUNK['err']:.3f}"` | `{python} f"{sec(CHUNK['half']):.2f}"` s |
+| chunks, temporal ensemble | `{python} f"{ENS['rough']:.4f}"` | `{python} f"{ENS['err']:.3f}"` | `{python} f"{sec(ENS['half']):.2f}"` s |
+
+Single-step control is the most jittery, since every step follows a fresh noisy estimate, but it is accurate at rest, because its small steps average many estimates, and it reacts fastest. Open-loop chunks are `{python} f"{SINGLE['rough'] / CHUNK['rough']:.1f}"` times smoother, but each chunk trusts one estimate, so they are `{python} f"{CHUNK['err'] / SINGLE['err']:.1f}"` times less accurate, and they notice the move only at the next chunk. The ensemble keeps most of the smoothness and is as accurate as single-step control, because it too averages many estimates. It reacts almost as slowly as open-loop chunks, though, because right after the move most of the predictions it averages were made before it.
+
+```{python}
+#| include: false
+HERO = {name: w7.run_chunks(k, mode, np.random.default_rng(0), keep=True)
+        for name, (k, mode) in (("single", (1, "chunk")), ("chunk", (K_CH, "chunk")), ("ensemble", (K_CH, "ensemble")))}
+hero_rough = {n: w7.roughness(x) for n, (x, _) in HERO.items()}
+assert hero_rough["chunk"] < 0.6 * hero_rough["single"] and hero_rough["ensemble"] < 0.6 * hero_rough["single"]
+bend = np.abs(np.diff(HERO["chunk"][0], 2))                 # bend[t - 1]: change of velocity at step t
+bend_edge = np.median([bend[t - 1] for t in range(K_CH, w7.T_RUN, K_CH)])
+bend_inner = np.median([bend[t - 1] for t in range(1, w7.T_RUN) if t % K_CH])
+assert bend_edge > 5 * bend_inner                           # sharp bends where one chunk hands over
+next_query = (w7.T_MOVE // K_CH + 1) * K_CH                  # the open-loop chunks' first look after the move
+drop = {n: float(x[w7.T_MOVE] - x[w7.T_MOVE + 1:next_query + 1].min()) for n, (x, _) in HERO.items()}
+assert drop["chunk"] < 0.02 and drop["single"] > 0.4      # open loop holds its course until the next query
+assert drop["single"] > drop["ensemble"] > 0.2             # the ensemble turns, more gradually
+last_old = w7.T_MOVE - 1 + K_CH                             # the last step a pre-move chunk still covers
+end_off = {n: abs(float(x[-25:].mean()) - w7.GOAL_B) for n, (x, _) in HERO.items()}
+assert end_off["chunk"] > 2 * end_off["ensemble"]          # open loop ends further from the new goal
+```
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w07-chunks",
+    caption="One run of the chunk toy, three ways: single steps, open-loop chunks of 25 steps, and the same chunks "
+            "with a temporal ensemble. The grey line is the goal; it moves partway through.",
+    alt=f"Animation, about 22 seconds, looping. Three stacked panels share a time axis of 3.6 seconds; in each, a "
+        f"robot's position is drawn from left to right behind a moving cursor, with a dashed grey goal at 1.0 that "
+        f"drops to 0.4 at 1.6 seconds. Top, 'single step': an orange line rises to the goal and follows it down, "
+        f"slightly ragged throughout. Middle, 'chunks of 25, open loop': every half second a faint grey planned "
+        f"chunk appears ahead of a smooth blue line, which shows small kinks where one chunk hands over to the "
+        f"next; after the goal drops, the blue line stays level until 2 seconds, then curves down and ends a little "
+        f"off the new goal. Bottom, 'chunks of 25, temporal ensemble': a fan of faint overlapping chunks runs ahead "
+        f"of a smooth green line, which starts down as soon as the goal drops, more gently than the orange line, "
+        f"and settles close to the new goal. Captions explain each stage. The lines then fade and the drawing "
+        f"starts again.",
+))
+```
+
+**What to watch for.** All three panels show the same run (seed 0), drawn together behind one cursor so the schemes can be compared step by step. In the top panel every step follows a new noisy estimate of the goal, so the orange line is slightly ragged all the way. In the middle panel a faint chunk appears every half second, and the line follows each one smoothly. Where one chunk hands over to the next and a new estimate takes over, it shows a small kink: the typical bend there is `{python} f"{bend_edge / bend_inner:.0f}"` times the typical one inside a chunk. When the goal moves, at `{python} f"{sec(w7.T_MOVE):.1f}"` s, the orange line turns at once. The blue line stays level, carrying on with its old chunk until the next query at `{python} f"{sec(next_query):.1f}"` s, and it ends a little off the new goal, since its last chunk trusted one estimate. In the bottom panel a chunk appears at *every* step, so a fan of overlapping predictions runs ahead of the line. The line is their average: as smooth as the blue one, and closer to the goal. After the move, the newest predictions bend down at once, and the green line starts down with them, but more gently than the orange one, because old predictions still hold it back. A last small kink near `{python} f"{sec(last_old):.1f}"` s marks the step after which no chunk made before the move is left in the average.
+
+### Why bins break at high control rates {#fast-intuition}
+
+Chunks of 1,400 numbers were fine for ACT, which outputs them all at once. An autoregressive VLA must generate them one token at a time, and per-step binning breaks down as the control rate rises [▶ 47:06](https://youtu.be/imSTfMJjp7M?t=2826). At high rates consecutive actions barely differ [▶ 47:21](https://youtu.be/imSTfMJjp7M?t=2841). Next-token prediction learns from what each new token adds, and when tokens are this correlated, a model can get a low loss by copying the previous action token, without learning the skill [▶ 47:53](https://youtu.be/imSTfMJjp7M?t=2873).
+
+The action toy measures this on smooth one-second motions in `{python} w7.D_ACT` dimensions, each a sum of `{python} w7.N_WAVES` slow waves (up to `{python} f"{w7.MAX_HZ:g}"` Hz). Binned at 5 Hz, "repeat the previous token" predicts `{python} f"{100 * TOK[5]['explained']:.0f}"`% of a token's variation; at 50 Hz it predicts `{python} f"{100 * TOK[F_HI]['explained']:.1f}"`% (@fig-tokens, right). Exact repeats remain rare, `{python} f"{100 * TOK[F_HI]['copy']:.0f}"`% at 50 Hz, since 256 bins resolve small changes: the token is not literally the same, it is just almost entirely predictable. Meanwhile the sequence gets long: `{python} TOK[F_HI]['n_bins']` tokens for each second of motion.
+
+The fix is to compress first [▶ 48:26](https://youtu.be/imSTfMJjp7M?t=2906): find units for motion larger than one time step and smaller than a whole trajectory, as sub-words are for text and patches for images. BPE alone suits discrete symbols, not continuous signals, and a learned vector quantizer adds another model to train. **FAST** borrows from JPEG instead [▶ 49:43](https://youtu.be/imSTfMJjp7M?t=2983). A smooth signal has nearly all its energy at low frequencies, so a **discrete cosine transform** of each action dimension leaves a few large coefficients and many near zero. Scale and round them, list them lowest frequency first, and run BPE on the resulting integers, which merges the runs of zeros and common patterns into a few dense tokens. In the toy at 50 Hz, a chunk becomes `{python} f"{TOK[F_HI]['n_fast']:.1f}"` FAST tokens on average instead of `{python} TOK[F_HI]['n_bins']` bins, `{python} f"{TOK[F_HI]['n_bins'] / TOK[F_HI]['n_fast']:.0f}"` times fewer, and reconstructs the motion with about the same error (`{python} f"{TOK[F_HI]['err_fast']:.3f}"` against `{python} f"{TOK[F_HI]['err_bin']:.3f}"` for the bins, on motions with standard deviation `{python} f"{SIGNAL_STD:.2f}"`). At 2 Hz there is little to compress: `{python} f"{TOK[2]['n_fast']:.1f}"` tokens against `{python} TOK[2]['n_bins']`, and a larger error than the bins.
+
+In the paper's experiments, with a VLA trained on FAST tokens, performance keeps improving at higher control rates where binning collapses [▶ 50:59](https://youtu.be/imSTfMJjp7M?t=3059). An autoregressive version of π0 trained on FAST tokens reached the performance of the flow-matching π0 (the [Week 6](w06-generative-models.qmd) kind of action head) five times faster in training [▶ 51:56](https://youtu.be/imSTfMJjp7M?t=3116), followed language commands zero-shot in unseen kitchens after training on the DROID data set [▶ 52:13](https://youtu.be/imSTfMJjp7M?t=3133), and folded laundry at 50 Hz [▶ 52:36](https://youtu.be/imSTfMJjp7M?t=3156). (The lecturer is a co-author of FAST.)
+
+The lecture's summary [▶ 53:24](https://youtu.be/imSTfMJjp7M?t=3204): treat robotics as sequence modeling, build on transformers because they scale, find the right tokens for each modality, and let data and compute do the rest, which is the bitter lesson applied to robots [▶ 54:54](https://youtu.be/imSTfMJjp7M?t=3294).
+
+```{python}
+#| label: fig-tokens
+#| fig-cap: "The action toy at five control rates. Left: tokens per one-second, two-dimensional chunk, for per-step bins and for FAST (DCT, rounding, then BPE). Right: the share of a bin token's variation that repeating the previous token already predicts."
+#| fig-alt: "Two line charts sharing a log x-axis of control rate: 2, 5, 10, 20 and 50 Hz. Left: tokens per chunk on a log y-axis; the bins line rises in proportion to the rate, from 4 to 100, while the FAST line rises slowly from about 3 to about 11. Right: the share predicted by copying, from about −1.3 at 2 Hz (copying is worse than guessing the average) through about 0.45 at 5 Hz and 0.85 at 10 Hz to 0.99 at 50 Hz."
+fig, (axl, axr) = plt.subplots(1, 2, figsize=(7.2, 3.2))
+Fx = np.array(w7.FREQS)
+axl.plot(Fx, [TOK[f]["n_bins"] for f in w7.FREQS], "o-", color=ORANGE, label="per-step bins")
+axl.plot(Fx, [TOK[f]["n_fast"] for f in w7.FREQS], "o-", color=BLUE, label="FAST")
+axl.set_xscale("log"); axl.set_yscale("log")
+axl.set_xticks(Fx, [str(f) for f in w7.FREQS]); axl.minorticks_off()
+axl.set_xlabel("control rate (Hz)"); axl.set_ylabel("tokens per chunk")
+axl.legend(fontsize=9)
+axr.plot(Fx, expl, "o-", color=ORANGE)
+axr.axhline(0, color=style.INK_SECONDARY, lw=0.8)
+axr.set_xscale("log"); axr.set_xticks(Fx, [str(f) for f in w7.FREQS]); axr.minorticks_off()
+axr.set_ylim(-1.5, 1.1)
+axr.set_xlabel("control rate (Hz)"); axr.set_ylabel("share predicted by copying")
+plt.tight_layout()
+plt.show()
+```
+
+## Key concepts & formulae
+
+Notation follows the lecture: $o_t$ and $a_t$ for observation and action, $x_i$ for a generic sequence element, $Q, K, V$ for queries, keys and values, $d$ for their width, $k$ for a chunk length. The ADM book discusses partial observability in its belief-state chapters, where a policy acts on a belief computed from the history rather than on the raw history itself.
+
+### Sequence models
+
+::: {.key-equation .famous data-name="Chain rule: an autoregressive model"}
+$$
+p_\theta(x_1, \dots, x_T) = \prod_{i=1}^{T} p_\theta(x_i \mid x_{1:i-1})
+$$ {#eq-chain}
+:::
+
+**In words.** The probability of a whole sequence is the probability of each element given everything before it, multiplied together. Learn the one conditional, and you can both score and generate sequences.
+
+**Term by term.**
+
+- $x_{1:i-1}$: the prefix, all elements before position $i$; for $i = 1$ it is empty.
+- $p_\theta(x_i \mid x_{1:i-1})$: the model's conditional, the only thing learned. A transformer computes all $T$ of them in one pass.
+- **Why it holds:** it is the definition of conditional probability, $p(a, b) = p(a)\,p(b \mid a)$, applied $T - 1$ times. Nothing is assumed about the data.
+
+::: {.key-equation data-name="Recurrent network"}
+$$
+h_t = f(h_{t-1}, x_t)
+$$ {#eq-rnn}
+:::
+
+**In words.** An RNN carries a state vector forward, updating it with each new input; its predictions are read from the state.
+
+**Term by term.**
+
+- $h_t$: a fixed-size summary of $x_1, \dots, x_t$, the bottleneck.
+- $f$: the same learned function at every step. Gradients from step $t$ to step 1 pass through $t - 1$ applications of $f$, which is why they vanish or explode.
+
+### Attention
+
+::: {.key-equation .famous data-name="Scaled dot-product attention"}
+$$
+\begin{aligned}
+Q &= E W_Q, \quad K = E W_K, \quad V = E W_V \\
+\operatorname{Attention}(Q, K, V) &= \operatorname{softmax}\!\Big(\frac{Q K^\top}{\sqrt{d}}\Big) V
+\end{aligned}
+$$ {#eq-attention}
+:::
+
+**In words.** Every token makes a query, a key and a value from its embedding. A token's output is an average of all the values, weighted by how well its query matches each key.
+
+**Term by term.**
+
+- $E$: the token embeddings, one row per token; $W_Q, W_K, W_V$: learned matrices.
+- $Q K^\top$: every query dotted with every key, a score matrix with one row per token.
+- $\sqrt{d}$: divides the scores so that their spread does not grow with the vector width $d$, which would push the softmax towards a hard choice and flatten its gradients.
+- Softmax, row by row: the attention weights $\alpha_{ij} = e^{s_{ij}} / \sum_{j'} e^{s_{ij'}}$, which sum to 1 over $j$.
+- Multiplying by $V$: token $i$'s output is $\sum_j \alpha_{ij} v_j$. In practice several such heads run side by side (multi-head attention).
+- **Numeric check:** [Example 1](#ex-attention) computes one head of the goal toy by hand.
+
+::: {.key-equation data-name="Causal mask"}
+$$
+s_{ij} = \begin{cases} q_i \cdot k_j / \sqrt{d} & j \le i \\ -\infty & j > i \end{cases}
+$$ {#eq-causal}
+:::
+
+**In words.** Before the softmax, every score for a later position is set to minus infinity, so its weight becomes exactly zero: a token can use only itself and its past.
+
+**Term by term.**
+
+- With the mask, the output at position $i$ depends only on $x_{1:i}$, which is what @eq-chain requires of the conditional for $x_{i+1}$.
+- That is also what makes teacher forcing one pass: every position's prediction is computed at once without seeing its own answer.
+
+::: {.key-equation data-name="Absolute and relative positional encodings"}
+$$
+\begin{aligned}
+\text{absolute:}\quad & e_i \;\to\; e_i + \mathrm{PE}(i) \\
+\text{relative:}\quad & s_{ij} \;\to\; s_{ij} + b(i - j)
+\end{aligned}
+$$ {#eq-position}
+:::
+
+**In words.** Absolute encodings tag each token with its position before attention; relative encodings bias each attention score by how far apart the two tokens are.
+
+**Term by term.**
+
+- $\mathrm{PE}(i)$: a fixed (sinusoidal) or learned vector for position $i$. A position beyond the training length has no learned vector, or one the model has never seen.
+- $b(i - j)$: a bias that depends only on the distance. The goal toy uses the simplest form, $b(i - j) = -\lambda (i - j)$, one learned number $\lambda$.
+- **Numeric check:** the toy's trained $\lambda$ is `{python} f"{LAM.mean():.2f}"` (mean of `{python} len(SEEDS)` seeds), and a goal's content score is `{python} f"{REACH.mean():.1f}"` times larger: the distance at which the bias cancels it matches the `{python} MAX_BACK`-step range seen in training (@fig-recall).
+
+::: {.key-equation data-name="Rotary position embedding (RoPE)"}
+$$
+(R_{i\omega}\, q)^\top (R_{j\omega}\, k) = q^\top R_{(j - i)\omega}\, k
+$$ {#eq-rope}
+:::
+
+**In words.** Rotate the query and the key by angles proportional to their positions; their dot product then depends only on the difference of positions.
+
+**Term by term.**
+
+- $R_{i\omega}$: a rotation by angle $i\omega$, applied to each pair of coordinates (with a different $\omega$ per pair).
+- **Why it holds:** rotations satisfy $R_a^\top = R_{-a}$ and $R_{-a} R_b = R_{b-a}$.
+
+### Training and tokens
+
+::: {.key-equation data-name="Next-token loss with teacher forcing"}
+$$
+\mathcal{L}(\theta) = -\frac{1}{T} \sum_{t=1}^{T} \log p_\theta(x_t \mid x_{<t})
+$$ {#eq-teacher}
+:::
+
+**In words.** Average, over the positions of a training sequence, the negative log-probability the model gives to the true next token, with the true earlier tokens as input.
+
+**Term by term.**
+
+- $x_{<t}$: the ground-truth prefix, not the model's own samples; that is teacher forcing.
+- The sum is computed in one forward pass of a causally masked transformer.
+- It is the cross-entropy of [Week 1](w01-introduction.qmd)'s action tokens, applied at every position.
+
+**Byte-pair encoding** has no equation, only a loop: start with all characters as the vocabulary; $k$ times, find the most frequent adjacent pair $(t_L, t_R)$ in the corpus, add $t_L t_R$ to the vocabulary, and replace every occurrence. To tokenize new text, apply the learned merges in the order they were learned ([Example 2](#ex-bpe)).
+
+### Scaling
+
+::: {.key-equation .famous data-name="Compute-optimal scaling (Chinchilla)"}
+$$
+\begin{aligned}
+C &\approx 6 N D \\
+N^* &\propto C^{0.5}, \quad D^* \propto C^{0.5}, \quad D^* \approx 20\, N^*
+\end{aligned}
+$$ {#eq-scaling}
+:::
+
+**In words.** Training compute is about six operations per parameter per token. For a given budget, the best model size and the best amount of data both grow as the square root of the budget, at about 20 tokens per parameter.
+
+**Term by term.**
+
+- $C$: training compute in floating-point operations; $N$: parameters; $D$: training tokens.
+- The 6 counts the forward pass (about 2 operations per parameter per token) and the backward pass (about 4).
+- $N^*$, $D^*$: the compute-optimal choices, fitted from hundreds of training runs.
+- **Numeric check:** with $D = 20 N$, $C = 120 N^2$, so a budget of $10^{21}$ operations gives $N^* \approx 2.9$ billion parameters and $D^* \approx 58$ billion tokens ([Problem 3](#problems)).
+
+### Vision and language
+
+::: {.key-equation data-name="CLIP's contrastive loss"}
+$$
+\mathcal{L}_{\text{CLIP}} = -\frac{1}{2N} \sum_{i=1}^{N} \bigg[ \log \frac{e^{s_{ii}/\tau}}{\sum_{j=1}^{N} e^{s_{ij}/\tau}} + \log \frac{e^{s_{ii}/\tau}}{\sum_{j=1}^{N} e^{s_{ji}/\tau}} \bigg]
+$$ {#eq-clip}
+:::
+
+**In words.** In a batch of $N$ image-caption pairs, each image should pick out its own caption among all $N$, and each caption its own image.
+
+**Term by term.**
+
+- $s_{ij}$: cosine similarity between image $i$'s embedding and caption $j$'s; the diagonal $s_{ii}$ holds the true pairs.
+- The first term is a softmax classification over captions for each image; the second over images for each caption.
+- $\tau$: a learned temperature; small $\tau$ sharpens the softmax (here $\tau$ is not a trajectory).
+
+::: {.key-equation data-name="Flamingo's gated cross-attention"}
+$$
+x \;\leftarrow\; x + \tanh(\alpha) \cdot \operatorname{CrossAttn}(Q{=}x,\; K, V{=}\text{visual tokens})
+$$ {#eq-flamingo}
+:::
+
+**In words.** Each new layer adds what the text tokens find in the image, scaled by a learned gate that starts closed.
+
+**Term by term.**
+
+- $x$: the text tokens' hidden states inside the frozen language model.
+- $\alpha$: one learned scalar per layer, initialized to 0, so $\tanh(0) = 0$ and the model starts as the original language model.
+
+### Actions
+
+::: {.key-equation data-name="Per-step action bins"}
+$$
+\begin{aligned}
+u &= \operatorname{clip}\!\Big(2\, \frac{a - q_{01}}{q_{99} - q_{01}} - 1,\; -1,\; 1\Big) \\
+\text{token} &= \Big\lfloor \tfrac{u + 1}{2} \cdot 256 \Big\rfloor \quad (\text{capped at } 255)
+\end{aligned}
+$$ {#eq-bins}
+:::
+
+**In words.** Map each action dimension's 1st-to-99th-percentile range onto $[-1, 1]$, clip the rest, and cut $[-1, 1]$ into 256 equal bins.
+
+**Term by term.**
+
+- $q_{01}$, $q_{99}$: percentiles of that dimension over the training data, so a few outliers cannot stretch the range.
+- An action with $D$ dimensions at $f$ Hz costs $D f$ tokens per second.
+- Bin width is $2/256 \approx 0.008$ in normalized units; decoding returns the bin's centre.
+
+::: {.key-equation data-name="Action chunk and temporal ensemble"}
+$$
+\begin{aligned}
+&\pi_\theta(a_{t:t+k} \mid o_t) \\
+&a_t = \frac{\sum_i w_i\, A_t[i]}{\sum_i w_i}, \quad w_i = e^{-m i}
+\end{aligned}
+$$ {#eq-ensemble}
+:::
+
+**In words.** The policy predicts the next $k$ actions from the current observation. With a temporal ensemble, the action executed at step $t$ is a weighted average of every prediction that some earlier chunk made for step $t$.
+
+**Term by term.**
+
+- $A_t[i]$: the predictions for step $t$, from up to $k$ chunks; $i = 0$ is the oldest.
+- $m \ge 0$: how fast weights fall with $i$. With $m = 0$ all predictions count equally. Larger $m$ weights the oldest prediction most. In the ALOHA paper, a smaller $m$ incorporates new observations faster.
+- **Numeric check:** in the chunk toy with $k =$ `{python} K_CH`, jitter grows with $m$: `{python} ", ".join(f"{M_SWEEP[m]['rough']:.4f}" for m in MS)` for $m =$ `{python} ", ".join(f"{m:g}" for m in MS)`. Here, the oldest prediction changes every step as it expires, so weighting it heavily passes on that change. Weighting the newest most ($m < 0$, outside the paper's definition) was smoother still, `{python} f"{M_SWEEP[-0.1]['rough']:.4f}"` at $m = -0.1$, because each new chunk starts from where the robot actually is. Whether that carries over to learned policies, this toy cannot say.
+
+::: {.key-equation data-name="Discrete cosine transform (as used by FAST)"}
+$$
+c_j = \nu_j \sum_{n=0}^{N-1} u_n \cos\!\Big(\frac{\pi\, j\, (2n + 1)}{2N}\Big), \qquad q_j = \operatorname{round}(10\, c_j)
+$$ {#eq-dct}
+:::
+
+**In words.** Write a normalized action dimension $u_0, \dots, u_{N-1}$ as a weighted sum of cosines of rising frequency $j$, and round the scaled weights to integers. FAST then flattens the integers, lowest frequency first, and compresses them with BPE.
+
+**Term by term.**
+
+- $c_j$: how much of frequency $j$ the chunk contains; $c_0$ is proportional to its mean.
+- $\nu_j$: normalization, $\sqrt{1/N}$ for $j = 0$ and $\sqrt{2/N}$ otherwise, which makes the transform orthonormal and exactly invertible.
+- 10: the rounding scale, which trades token count against precision.
+- **Numeric check:** at 50 Hz, a toy chunk has on average `{python} f"{TOK[F_HI]['n_nonzero']:.1f}"` non-zero rounded coefficients out of `{python} TOK[F_HI]['n_bins']` ([Example 3](#ex-dct)).
+
+## Worked examples
+
+### Example 1: one attention head, by hand {#ex-attention}
+
+```{python}
+#| include: false
+ex_vals = np.array([0.7, 0.9, -0.4, -1.3, 0.2, 0.0])     # reading, goal, reading, goal, reading, query
+ex_goal = np.array([0, 1, 0, 1, 0, 0.0])
+X_ex = np.stack([ex_goal, ex_vals, np.ones(6)], axis=1)[None]
+P_EX = ATT[True, 0]
+(W_q, W_k), (w_v, lam_ex) = P_EX
+q_ex = X_ex[0, -1] @ W_q
+content = (X_ex[0] @ W_k) @ q_ex / np.sqrt(w7.D_K)
+back_ex = np.arange(6)[::-1]
+score_ex = content - lam_ex[0] * back_ex
+alpha_ex = np.exp(score_ex - score_ex.max()); alpha_ex /= alpha_ex.sum()
+v_ex = X_ex[0] @ w_v
+out_ex = float(alpha_ex @ v_ex)
+assert np.isclose(out_ex, w7.attend(P_EX, X_ex, True)[0][0])
+assert alpha_ex[3] > 0.99 and abs(out_ex - ex_vals[3]) < 0.02
+names_ex = ["reading", "goal", "reading", "goal", "reading", "query"]
+```
+
+Six tokens for the trained head of seed 0: a reading, a goal at `{python} ex_vals[1]`, a reading, a correction to `{python} ex_vals[3]`, a reading and the query. For each token, the table lists its content score (query dotted with key, divided by $\sqrt{d}$), the bias $-\lambda \times$ steps back with $\lambda =$ `{python} f"{lam_ex[0]:.2f}"`, the total score, the softmax weight and the value.
+
+```{python}
+#| output: asis
+print("| token | steps back | content score | bias | score | weight α | value v |")
+print("|:---|---:|---:|---:|---:|---:|---:|")
+for i in range(6):
+    print(f"| {names_ex[i]} ({ex_vals[i]:+.1f}) | {back_ex[i]} | {content[i]:.1f} | {-lam_ex[0] * back_ex[i]:.1f} "
+          f"| {score_ex[i]:.1f} | {alpha_ex[i]:.4f} | {v_ex[i]:+.2f} |")
+```
+
+Both goals score about `{python} f"{content[1] - content[0]:.0f}"` more than the readings on content; the bias then subtracts `{python} f"{lam_ex[0]:.1f}"` per step back, so the later goal, two steps closer, wins by about `{python} f"{score_ex[3] - score_ex[1]:.1f}"`, a weight ratio of about `{python} f"{np.exp(score_ex[3] - score_ex[1]):,.0f}"` to 1. Its weight is `{python} f"{alpha_ex[3]:.4f}"`, and the output $\sum_i \alpha_i v_i =$ `{python} f"{out_ex:.3f}"`, the corrected goal. The values are the token's value feature plus a learned multiple of (is goal − 1), which is zero for goal tokens; for the readings the multiple does not matter, since their weights are tiny.
+
+### Example 2: byte-pair encoding, merge by merge {#ex-bpe}
+
+```{python}
+#| include: false
+SENTENCE = "the robot put the red cup by the red mat"
+BPE_STEPS = []
+for k in range(1, 9):
+    merges, corpus = w7.bpe_train([SENTENCE], k)
+    BPE_STEPS.append(("".join(w7.unpack(merges[-1])), len(corpus[0])))
+final_tokens = ["".join(w7.unpack(t)) for t in w7.bpe_train([SENTENCE], 8)[1][0]]
+assert len(final_tokens) == BPE_STEPS[-1][1] and "".join(final_tokens) == SENTENCE
+```
+
+Train BPE on the single sentence "`{python} SENTENCE`" (`{python} len(SENTENCE)` characters, spaces included) for 8 merges. Each merge takes the most frequent adjacent pair; ties go to the pair that occurs first.
+
+```{python}
+#| output: asis
+print("| merge | new token | tokens left |")
+print("|---:|:---|---:|")
+print(f"| 0 | (characters) | {len(SENTENCE)} |")
+for i, (tok, n) in enumerate(BPE_STEPS, 1):
+    print(f"| {i} | `{tok.replace(' ', '␣')}` | {n} |")
+```
+
+The final tokens are: `{python} " · ".join(t.replace(" ", "␣") for t in final_tokens)`. The two most repeated phrases, "the " and "the red ", became single tokens after a few merges, while words that occur once stay as characters. A tokenizer trained on a large corpus would merge those too, since they are frequent there; this one, trained on one sentence, could still write any new text, only in more tokens.
+
+### Example 3: one chunk as bins and as DCT coefficients {#ex-dct}
+
+```{python}
+#| include: false
+F_EX = 10
+b_ex = TOK[F_EX]["bounds"]
+u_ex = w7.normalize(TOK[F_EX]["actions"][0], b_ex)[:, 0]           # first test chunk, first dimension
+bins_ex = TOK[F_EX]["bins"][0, :, 0]
+coef_ex = TOK[F_EX]["coef"][0, :, 0]
+n_zero_ex = int((coef_ex == 0).sum())
+front_ex = float((coef_ex[:3] ** 2).sum() / (coef_ex**2).sum())  # share of the energy in the first three
+assert front_ex > 0.9 and n_zero_ex >= 2 and np.abs(coef_ex[3:]).max() <= 3
+```
+
+The first test chunk of the action toy at `{python} F_EX` Hz, first dimension: `{python} F_EX` normalized actions $u_n$, their bin tokens, and the rounded DCT coefficients $q_j = \operatorname{round}(10\, c_j)$.
+
+```{python}
+#| output: asis
+print("| n or j | action u_n | bin token | DCT coefficient q_j |")
+print("|---:|---:|---:|---:|")
+for i in range(F_EX):
+    print(f"| {i} | {u_ex[i]:+.3f} | {bins_ex[i]} | {coef_ex[i]:+d} |")
+```
+
+The bin tokens are large integers that change smoothly from step to step: each says almost the same as the one before. The DCT column puts the information up front: the first three coefficients carry `{python} f"{100 * front_ex:.0f}"`% of the chunk's energy (the sum of squared coefficients), the rest are small, and the last `{python} n_zero_ex` are 0. Small values and zeros are what BPE then merges away. At 10 Hz the saving is modest; it grows with the rate, because a faster sampling of the same motion adds samples but hardly any frequencies (@fig-tokens).
+
+## Interactive
+
+### Where does the head look?
+
+```{python}
+#| include: false
+L_EX = 32
+ex_rng = np.random.default_rng(3)
+readings = np.round(ex_rng.uniform(-1.5, 1.5, L_EX), 2)
+EARLY, EARLY_VAL, LATE_VAL = 1, 1.0, -0.8
+DISTS = list(range(1, L_EX - 2))
+rows = []
+for d in DISTS:
+    X = np.zeros((1, L_EX, 3)); X[0, :, 2] = 1
+    X[0, :-1, 1] = readings[:-1]
+    late = L_EX - 1 - d
+    X[0, [EARLY, late], 0] = 1
+    X[0, EARLY, 1], X[0, late, 1] = EARLY_VAL, LATE_VAL
+    row = {"d": d, "late": late, "value": X[0, :, 1].round(3).tolist(), "goal": X[0, :, 0].astype(int).tolist()}
+    for rel, key in ((False, "nopos"), (True, "rel")):
+        yhat, (_, _, a, _, _) = w7.attend(ATT[rel, 0], X, rel)
+        row[key] = a[0].round(5).tolist()
+        row[key + "_out"] = round(float(yhat[0]), 3)
+    rows.append(row)
+write_json({"rows": rows, "early": EARLY, "max_back": MAX_BACK,
+            "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED, "surface": style.SURFACE}},
+           "data/w07-attention.json")
+row_at = {r["d"]: r for r in rows}
+QUERY_VALUE = float(np.array([0.0, 0, 1]) @ ATT[True, 0][1][0])   # the query token's own value
+assert all(abs(row_at[d]["rel_out"] - LATE_VAL) < 0.02 for d in range(1, MAX_BACK))
+assert all(np.argmax(row_at[d]["rel"]) == L_EX - 1 and abs(row_at[d]["rel_out"] - QUERY_VALUE) < 0.05
+           for d in range(MAX_BACK + 2, L_EX - 2))           # past training range: attends to itself
+NOPOS_OUT = np.array([r["nopos_out"] for r in rows])
+assert np.ptp(NOPOS_OUT) < 0.02 and abs(NOPOS_OUT.mean() - (EARLY_VAL + LATE_VAL) / 2) < 0.12
+```
+
+A stream of `{python} L_EX` tokens with the earlier goal (`{python} f"{EARLY_VAL:+.1f}"`) near the start and the later goal (`{python} f"{LATE_VAL:+.1f}"`) a chosen number of steps before the query. The bars are the attention weights of the two trained heads (seed 0); the outlined bars mark the goal tokens.
+
+```{ojs}
+attData = FileAttachment("data/w07-attention.json").json()
+viewof backD = Inputs.range([1, 29], {step: 1, value: 5, label: "later goal, steps back"})
+```
+
+```{ojs}
+//| label: fig-attention-explorer
+//| fig-cap: "Attention weights over a 32-token stream for the head without positional information (orange) and the head with a relative-position bias (blue). Outlined bars are the two goal tokens; the text below gives each head's answer."
+//| fig-alt: "Interactive figure with a slider for how many steps back the later goal is, 1 to 29. Two bar charts over token positions 0 to 31. In the orange chart two bars of height about 0.5 stand at the two goal positions at every setting. In the blue chart, for settings up to 14, one bar of height near 1 stands at the later goal; at 15 and 16 the weight shifts, and from 17 on it sits on the last token, the query itself. Text below reports each head's output and the correct answer, −0.8."
+{
+  const r = attData.rows.find(x => x.d === backD), w = Math.min(width, 640), s = attData.style;
+  const bars = (key, color, title) => html`<div><div style="font-size: 0.85em; margin: 0.4em 0 0 44px">${title}</div>${Plot.plot({
+    width: w, height: 150, marginLeft: 44, style: {background: s.surface},
+    x: {label: "token position", domain: [-0.5, 31.5]}, y: {label: "weight", domain: [0, 1]},
+    marks: [
+      Plot.rectY(r[key].map((a, i) => ({i, a, g: r.goal[i]})),
+                 {x1: d => d.i - 0.4, x2: d => d.i + 0.4, y: "a", fill: color,
+                  stroke: d => d.g ? s.ink : "none", strokeWidth: 1.5}),
+      Plot.ruleY([0], {stroke: s.ink})
+    ]
+  })}</div>`;
+  return html`<div>${bars("nopos", s.orange, "no positional information")}${bars("rel", s.blue, "relative-position bias")}</div>`;
+}
+```
+
+```{ojs}
+{
+  const r = attData.rows.find(x => x.d === backD);
+  return md`Correct answer: **−0.80** · no position: **${r.nopos_out.toFixed(2)}** · relative bias: **${r.rel_out.toFixed(2)}**${backD > attData.max_back ? " · *further back than any goal in training*" : ""}`;
+}
+```
+
+**What to try.** Start at 5 steps back: the orange head splits its attention between the two goals and answers `{python} f"{NOPOS_OUT.mean():.2f}"`, near their average; the blue head puts almost all its weight on the later goal and answers `{python} f"{row_at[5]['rel_out']:.2f}"`. Move the slider: the orange chart never changes shape, since without position the head cannot tell the goals apart by when they came. The blue head stays correct up to `{python} MAX_BACK - 1` steps back. Past the training range, from `{python} MAX_BACK + 2` steps back, its weight has moved to the query token itself, the one token with no recency penalty, and it answers that token's learned value, `{python} f"{QUERY_VALUE:.2f}"`, whatever the goals were.
+
+### From motion to tokens
+
+```{python}
+#| label: fig-tokens-slider
+#| fig-cap: "One test chunk of the action toy (first dimension) at the chosen control rate. Top: the motion (grey), its bin tokens decoded to bin centres (orange dots) and the FAST reconstruction (blue). Bottom: the rounded DCT coefficients, lowest frequency first."
+#| fig-alt: "Interactive figure with a slider for the control rate: 2, 5, 10, 20, 50 Hz. The top panel shows a smooth grey curve over one second, orange dots on it at every sample, and a blue curve close to the grey one. The bottom panel shows bars for the rounded DCT coefficients: a few large bars at the lowest frequencies and zeros after them. As the rate increases, the dots become dense, while the number of non-zero bars grows only slowly."
+fig = make_subplots(rows=2, cols=1, vertical_spacing=0.18, row_heights=[0.6, 0.4])
+t_fine = np.linspace(0, 1, 400, endpoint=False)
+for i, f in enumerate(w7.FREQS):
+    d = TOK[f]
+    true = w7.sample_actions(tuple(p[:1] for p in P_TEST), 400)[0, :, 0]
+    t = np.arange(f) / f
+    rec = w7.dct_reconstruct(d["coef"][:1], d["bounds"], SCALE)[0, :, 0]
+    cen = w7.bin_centres(d["bins"][0, :, 0], d["bounds"][:, 0])
+    vis = (f == 20)
+    fig.add_trace(go.Scatter(x=t_fine, y=true.round(4), mode="lines", line=dict(color=style.MUTED, width=2),
+                             name="motion", visible=vis, showlegend=(i == 0)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=cen.round(4), mode="markers", marker=dict(color=ORANGE, size=6),
+                             name=f"bins ({d['n_bins'] // w7.D_ACT} per dimension)", visible=vis), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=rec.round(4), mode="lines+markers", line=dict(color=BLUE, width=2),
+                             marker=dict(size=4), name="FAST reconstruction", visible=vis), row=1, col=1)
+    fig.add_trace(go.Bar(x=np.arange(f), y=d["coef"][0, :, 0], marker_color=BLUE, name="DCT coefficients",
+                         visible=vis, showlegend=False), row=2, col=1)
+steps = [dict(method="update", label=f"{f} Hz", args=[{"visible": [t // 4 == i for t in range(4 * len(w7.FREQS))]}])
+         for i, f in enumerate(w7.FREQS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=470, margin=dict(l=40, r=20, t=30, b=20), legend=dict(orientation="h", y=1.12, x=0),
+                  sliders=[dict(active=w7.FREQS.index(20), steps=steps, pad=dict(t=40), currentvalue=dict(prefix="control rate: "))])
+fig.update_xaxes(title_text="time (s)", row=1, col=1)
+fig.update_yaxes(title_text="action", row=1, col=1)
+fig.update_xaxes(title_text="frequency index j", row=2, col=1)
+fig.update_yaxes(title_text="q_j", row=2, col=1)
+fig.show()
+```
+
+**What to try.** At 2 Hz there are two samples per second: neither scheme has much to work with, and the FAST curve misses the shape between them. Move to 20 and 50 Hz: the orange dots crowd together, each nearly where the previous one was, while the coefficient chart keeps the same few large bars at the left and adds zeros. The zeros are free after BPE; the dots are not.
+
+### Chunk size
+
+```{python}
+#| label: fig-chunks-slider
+#| fig-cap: "One run of the chunk toy (seed 0) for the chosen chunk size k, executed open loop (blue) and with a temporal ensemble (green). The dashed line is the goal, which moves at 1.6 s. The legend gives each scheme's averages over 200 runs."
+#| fig-alt: "Interactive line chart with a slider for the chunk size: 1, 5, 10, 25, 50. The x-axis is time from 0 to 3.6 seconds, the y-axis position from 0 to 1.1. A dashed goal line sits at 1.0, then drops to 0.4 at 1.6 seconds. A blue and a green line rise from 0 towards the goal and then fall towards 0.4. At k = 1 the two lines coincide and wobble. As k grows, the blue line becomes a series of smooth segments with kinks at chunk boundaries and settles further from the goal, while the green line becomes smoother and stays close to the goal; both turn later after the goal moves."
+fig = go.Figure()
+t_ax = np.arange(w7.T_RUN + 1) / w7.HZ
+goal_line = np.where(np.arange(w7.T_RUN + 1) <= w7.T_MOVE, w7.GOAL_A, w7.GOAL_B)
+for i, k in enumerate(KS):
+    for mode, col, name in (("chunk", BLUE, "open loop"), ("ensemble", GREEN, "ensemble")):
+        x = w7.run_chunks(k, mode, np.random.default_rng(0))
+        st = SWEEP[k, mode]
+        fig.add_trace(go.Scatter(x=t_ax, y=x.round(4), mode="lines", line=dict(color=col, width=2.5),
+                                 name=f"{name}: jitter {st['rough']:.4f}, error {st['err']:.3f}, halfway {sec(st['half']):.2f} s",
+                                 visible=(k == K_CH)))
+fig.add_trace(go.Scatter(x=t_ax, y=goal_line, mode="lines", line=dict(color=style.INK, dash="dash", width=1),
+                         name="goal", visible=True))
+steps = [dict(method="update", label=str(k),
+              args=[{"visible": [j // 2 == i for j in range(2 * len(KS))] + [True]}]) for i, k in enumerate(KS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=420, margin=dict(l=40, r=20, t=30, b=20), legend=dict(orientation="h", y=1.2, x=0, font_size=10),
+                  xaxis_title="time (s)", yaxis_title="position", yaxis_range=[0, 1.15],
+                  sliders=[dict(active=KS.index(K_CH), steps=steps, pad=dict(t=40), currentvalue=dict(prefix="chunk size k: "))])
+fig.show()
+```
+
+**What to try.** At $k = 1$ both schemes are single-step control, and the lines coincide. Increase $k$: the open-loop line turns into smooth segments joined at kinks, its error at rest grows (each segment trusts one noisy estimate), and after the goal moves it carries on for up to a whole chunk before turning. The ensemble line gets smoother with $k$ and stays close to the goal, but it also turns later: at $k = 50$, a full second of old predictions has to be averaged out. Neither scheme is best on all three numbers at once.
+
+## Algorithm & code {#code}
+
+### One attention head and its gradient
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w7.attend, w7.attention_grads)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+
+from rlc.toys import w07_sequence as w7
+
+torch.manual_seed(0)
+rng = np.random.default_rng(0)
+params = w7.init_attention(rng)
+X_np, y_np, _ = w7.cue_batch(64, 10, rng)
+
+
+def head(X, W_q, W_k, w_v, lam):
+    """The page's head in torch: X (n, L, 3) -> answer (n,)."""
+    q = X[:, -1] @ W_q                               # (n, d)
+    K = X @ W_k                                      # (n, L, d)
+    back = torch.arange(X.shape[1] - 1, -1, -1)      # steps back, (L,)
+    s = torch.einsum("nld,nd->nl", K, q) / K.shape[-1] ** 0.5
+    a = torch.softmax(s - lam * back, dim=1)         # dim, not axis
+    return (a * (X @ w_v)).sum(dim=1)
+
+
+# Leaf tensors with requires_grad: autograd will fill .grad for each.
+(W_q, W_k), (w_v, lam) = [(torch.tensor(a, requires_grad=True),
+                           torch.tensor(b, requires_grad=True))
+                          for a, b in params]
+X, y = torch.tensor(X_np), torch.tensor(y_np)
+loss = ((head(X, W_q, W_k, w_v, lam[0]) - y) ** 2).mean()
+loss.backward()
+
+# The hand-written NumPy gradients agree with autograd.
+np_loss, np_grads = w7.attention_grads(params, X_np, y_np)
+assert abs(loss.item() - np_loss) < 1e-9
+torch_grads = [W_q.grad, W_k.grad, w_v.grad, lam.grad]
+for g_t, g_np in zip(torch_grads, [g for pair in np_grads for g in pair]):
+    assert np.allclose(g_t.numpy(), g_np, atol=1e-9)
+```
+:::
+
+The NumPy version spells out the softmax's backward pass, $\partial s_i = \alpha_i (\partial \alpha_i - \sum_j \alpha_j \partial \alpha_j)$; the PyTorch version gets the same numbers from autograd, which the snippet checks. In a real transformer this head is one of many, inside layers that also have a feed-forward network, residual connections and layer normalization.
+
+### Next-token prediction on action tokens
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w7.quantile_bounds, w7.normalize, w7.bin_tokens, w7.dct_coefficients, w7.bpe_merge, w7.bpe_train)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import torch.nn as nn
+import torch.nn.functional as F
+
+# Bin tokens of the action toy at 20 Hz: one dimension, 20 steps per chunk.
+P = w7.signal_params(256, np.random.default_rng(1), dims=1)
+A = w7.sample_actions(P, 20)                             # (256, 20, 1)
+VOCAB = 64                                       # coarse bins keep it tiny
+tokens = torch.tensor(w7.bin_tokens(A, w7.quantile_bounds(A), VOCAB)[..., 0])
+L = tokens.shape[1]
+
+
+class TinyGPT(nn.Module):
+    """Token + position embeddings, one causal layer, a linear head."""
+
+    def __init__(self, d=48):
+        super().__init__()
+        self.tok, self.pos = nn.Embedding(VOCAB, d), nn.Embedding(L, d)
+        self.layer = nn.TransformerEncoderLayer(d, nhead=4, dim_feedforward=96,
+                                                batch_first=True, dropout=0.0)
+        self.out = nn.Linear(d, VOCAB)
+
+    def forward(self, x):                                # x: (B, T) token ids
+        T = x.shape[1]
+        h = self.tok(x) + self.pos(torch.arange(T))      # (B, T, d)
+        # Causal mask: True above the diagonal = may not attend to the future.
+        mask = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1)
+        return self.out(self.layer(h, src_mask=mask))    # (B, T, VOCAB) logits
+
+
+model = TinyGPT()
+opt = torch.optim.Adam(model.parameters(), lr=3e-3)
+inputs, targets = tokens[:, :-1], tokens[:, 1:]  # teacher forcing: shift
+losses = []
+for step in range(150):
+    logits = model(inputs)                       # one pass: all positions
+    # cross_entropy wants (N, classes): flatten batch and time together.
+    loss = F.cross_entropy(logits.reshape(-1, VOCAB), targets.reshape(-1))
+    opt.zero_grad(); loss.backward(); opt.step()
+    losses.append(loss.item())
+
+# A uniform guess costs log(64) = 4.16 nats; learning beats it by far.
+assert losses[0] > 3.5 and losses[-1] < 0.5 * losses[0], losses[-1]
+```
+:::
+
+On the NumPy side are the two tokenizers this page compares: bins, and DCT coefficients that BPE then compresses. The PyTorch sketch trains a one-layer causal transformer on bin tokens by teacher forcing: inputs are the tokens shifted by one, and a single forward pass scores every position. This is the recipe of RT-2 and OpenVLA in miniature, without the images and the language model.
+
+### Executing chunks
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w7.plan_chunk, w7.run_chunks)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+from collections import defaultdict
+
+K_CHUNK, ACT_DIM, OBS_DIM = 10, 14, 32               # ACT: two 7-joint arms
+
+
+class ChunkPolicy(nn.Module):
+    """Observation features -> the next K_CHUNK actions, (B, K_CHUNK, ACT_DIM).
+
+    ACT itself is a transformer trained as a conditional VAE; a plain MLP
+    head shows the shape of the output and of the loss."""
+
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(OBS_DIM, 128), nn.ReLU(),
+                                 nn.Linear(128, K_CHUNK * ACT_DIM))
+
+    def forward(self, obs):
+        return self.net(obs).view(-1, K_CHUNK, ACT_DIM)
+
+
+policy = ChunkPolicy()
+obs = torch.randn(256, OBS_DIM)
+demo_chunks = torch.randn(256, K_CHUNK, ACT_DIM)     # stand-in demonstrations
+opt = torch.optim.Adam(policy.parameters(), lr=1e-3)
+first = None
+for step in range(100):
+    loss = F.l1_loss(policy(obs), demo_chunks)   # ACT's reconstruction loss
+    opt.zero_grad(); loss.backward(); opt.step()
+    first = first or loss.item()
+assert loss.item() < first
+
+
+def temporal_ensemble(policy, observations, m=0.0):
+    """Query every step; average all stored predictions for this step."""
+    buffer = defaultdict(list)                   # step -> preds, oldest first
+    executed = []
+    with torch.no_grad():                        # inference: no graph needed
+        for t, o in enumerate(observations):
+            chunk = policy(o[None])[0]               # (K_CHUNK, ACT_DIM)
+            for j in range(K_CHUNK):
+                buffer[t + j].append(chunk[j])
+            preds = torch.stack(buffer.pop(t))       # (n_preds, ACT_DIM)
+            w = torch.exp(-m * torch.arange(len(preds)))
+            executed.append((w[:, None] * preds).sum(0) / w.sum())
+    return torch.stack(executed)                     # (T, ACT_DIM)
+
+
+acts = temporal_ensemble(policy, torch.randn(30, OBS_DIM))
+assert acts.shape == (30, ACT_DIM)
+```
+:::
+
+The toy's `run_chunks` does the same bookkeeping with plain lists. In ACT the policy is a transformer over camera features and joint positions, trained as a conditional VAE (the ALOHA paper's card below has the details); the execution loop is the same.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(7))
+```
+
+## Guest spotlight
+
+**Ted Xiao** (Project Prometheus, previously Google DeepMind) told the last decade of robot learning as three eras, mostly through the work of the Google teams he was part of, and said so [▶ 03:11](https://youtu.be/VS7Ulaugevg?t=191). The starting thesis, around 2016, was that robot hardware was nearly ready (a teleoperated robot could already tidy a room decades ago) and that the missing piece was intelligence, which deep learning was then supplying in games such as Atari and Go [▶ 02:34](https://youtu.be/VS7Ulaugevg?t=154).
+
+The first era, **existence proofs** (about 2016 to 2021), asked whether end-to-end learning on real robots could work at all. Google built "arm farms" of many robots collecting grasps around the clock [▶ 05:38](https://youtu.be/VS7Ulaugevg?t=338), and QT-Opt applied Q-learning to continuous actions and camera images, trained on over half a million grasps [▶ 06:25](https://youtu.be/VS7Ulaugevg?t=385). Online RL at that scale proved hard to run, so the team bet more on imitation (BC-Z) [▶ 08:14](https://youtu.be/VS7Ulaugevg?t=494) and on learning from unstructured play data [▶ 09:03](https://youtu.be/VS7Ulaugevg?t=543), and then started over with a fleet of robots collecting demonstrations of hundreds of tasks for a year and a half [▶ 09:56](https://youtu.be/VS7Ulaugevg?t=596).
+
+The second era, **foundation models**, borrowed the recipe this lecture describes: treat everything as tokens, reuse pre-trained models, and learn offline from large demonstration sets [▶ 12:19](https://youtu.be/VS7Ulaugevg?t=739). RT-1 was a 35-million-parameter transformer from images and instructions to discretized action tokens, running at 3 Hz across hundreds of tasks [▶ 13:34](https://youtu.be/VS7Ulaugevg?t=814). Language models were also used off the shelf: as planners whose suggestions were grounded by a value function saying which skills the robot could actually do now [▶ 15:59](https://youtu.be/VS7Ulaugevg?t=959), and for relabeling robot data with richer instructions [▶ 17:08](https://youtu.be/VS7Ulaugevg?t=1028). RT-2 then made a VLM itself the policy, answering "what should the robot do?" with action tokens, and co-trained on web and robot data so web knowledge transferred to new objects [▶ 18:11](https://youtu.be/VS7Ulaugevg?t=1091). The Open X-Embodiment project pooled data from many labs and robots ("over 30 research labs", in his words) [▶ 19:35](https://youtu.be/VS7Ulaugevg?t=1175).
+
+The third era, **scale**, is the present: large investments in turning those prototypes into products [▶ 22:01](https://youtu.be/VS7Ulaugevg?t=1321). His examples include Gemini Robotics, which combined a frontier multimodal model with dexterous data from the ALOHA platform (this week's discussion paper) [▶ 22:52](https://youtu.be/VS7Ulaugevg?t=1372) and, in its 1.5 version, one policy trained across several robot bodies with a shared action space [▶ 23:45](https://youtu.be/VS7Ulaugevg?t=1425); new evaluation methods, since real-world comparisons need thousands of trials [▶ 25:52](https://youtu.be/VS7Ulaugevg?t=1552); and many competing bets on data: wearable gloves, egocentric video, deployment data [▶ 26:04](https://youtu.be/VS7Ulaugevg?t=1564). He closed with open questions: the role of world models, the value of robot-free data, reasoning models, and how to unite manipulation, learned mostly by imitation, with locomotion, learned by RL in simulation [▶ 27:29](https://youtu.be/VS7Ulaugevg?t=1649). In the Q&A he expects high-quality teleoperation data to stay essential until training on cheaper, broader data is better understood [▶ 29:31](https://youtu.be/VS7Ulaugevg?t=1771), and he sees video-pretrained models as promising but doubts they replace text-based reasoning [▶ 32:41](https://youtu.be/VS7Ulaugevg?t=1961).
+
+**How it connects to this week.** The talk is the lecture's thesis told as history: each era moved closer to "one transformer, tokens in and tokens out, trained on as much data as possible". RT-1 and RT-2 are the per-step action tokens of this page, and the move from them to FAST and to diffusion and flow heads ([Week 6](w06-generative-models.qmd)) is the move this week's last section explains. [Week 9](w09-generalist-robot-policies.qmd) takes up the generalist policies of the third era.
+
+## Solved problems {#problems}
+
+**1. Attention by hand.** Three tokens have values $v = (1, -1, 3)$, and the query's scores against their keys (already divided by $\sqrt{d}$) are $(2, 0, 1)$. Compute the attention weights and the output. Then apply a causal mask that hides the third token, and recompute.
+
+::: {.callout-tip collapse="true" title="Solution"}
+$e^2 = 7.389$, $e^0 = 1$, $e^1 = 2.718$, summing to 11.107. Weights: 0.665, 0.090, 0.245. Output: $0.665 - 0.090 + 3 \times 0.245 = 1.31$. With the third score set to $-\infty$, its weight is 0 and the others renormalize: $7.389 / 8.389 = 0.881$ and $0.119$, so the output is $0.881 - 0.119 = 0.76$. Masking changes the answer because the hidden token carried the largest value.
+:::
+
+**2. Why order needs encoding.** Show that without positional information, permuting the input tokens permutes the attention outputs the same way, so a readout at the last position cannot depend on the order of the earlier tokens. What does this imply for the goal toy?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Each output $\sum_j \alpha_{ij} v_j$ depends on the set of (key, value) pairs and on token $i$'s own query; the weights $\alpha_{ij}$ depend only on the contents $q_i \cdot k_j$. Reordering the other tokens reorders the terms of the sum without changing it. In the goal toy, the query is the last token, so its output is the same whichever goal came first: the head can only treat the two goals symmetrically. The symmetric answer with the least squared error is their average, and with independent standard normal goals its error is $\mathbb{E}[(g_2 - g_1)^2] / 4 = 2/4 = 0.5$, which is what training reached (`{python} f"{MSE[False].mean():.2f}"`).
+:::
+
+**3. Sizing a model.** You have a training budget of $10^{21}$ floating-point operations. Using $C \approx 6ND$ and $D \approx 20 N$, how many parameters and tokens are compute-optimal? If you instead train a model 4 times smaller with the same budget, how many tokens per parameter does it see?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Substituting, $C = 6 N \cdot 20 N = 120 N^2$, so $N = \sqrt{10^{21}/120} \approx 2.9 \times 10^9$ parameters and $D = 20 N \approx 5.8 \times 10^{10}$ tokens. A model of $N/4 \approx 7.2 \times 10^8$ parameters at the same compute sees $D = C/(6 \cdot N/4) = 4 \times 5.8 \times 10^{10} \approx 2.3 \times 10^{11}$ tokens: 320 tokens per parameter, 16 times the Chinchilla ratio. It is worse to train for this budget, but cheaper to run, which is the Llama 3 trade-off.
+:::
+
+**4. The token bill of per-step bins.** A VLA controls a 7-joint arm plus a gripper (8 action dimensions) at 50 Hz with one-second chunks, binned per dimension and per step. How many action tokens does one second of motion take? If the model decodes 200 tokens per second, can it keep up? What compression factor would let it plan each one-second chunk in a fifth of a second?
+
+::: {.callout-tip collapse="true" title="Solution"}
+$8 \times 50 = 400$ tokens per second of motion. At 200 tokens per second the model needs 2 seconds to plan 1 second of motion: it falls behind. To plan in 0.2 s it may use 40 tokens, a compression factor of 10. In this page's toy, FAST compressed 50 Hz chunks by about `{python} f"{TOK[F_HI]['n_bins'] / TOK[F_HI]['n_fast']:.0f}"` times; real motions with more dimensions and sharper features would compress differently, so this is only an indication.
+:::
+
+**5. Ensemble weights.** With chunks of $k = 4$ and a temporal ensemble queried every step, how many predictions are averaged at step 10? With $m = 0.5$, what share of the weight does the oldest get, and what share the newest? After the goal moves, how many steps pass before every averaged prediction was made after the move?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Chunks from the queries at steps 7, 8, 9 and 10 cover step 10: four predictions. Weights $e^{-0.5 i}$ for $i = 0, \dots, 3$ are 1, 0.607, 0.368, 0.223, summing to 2.198; the oldest gets $1/2.198 = 45\%$, the newest $0.223/2.198 = 10\%$. After a move, the prediction made at the move's step enters at once, but the oldest made before the move leaves only $k - 1 = 3$ steps later, so from the fourth step on all four predictions know about the move. Weighting the oldest most, as larger $m$ does, slows the reaction further.
+:::
+
+## Recap
+
+1. **Robots need sequences, in and out.** A single observation hides velocities and past events, and single-step decisions jitter. *Why it matters:* it is the reason the rest of the course uses history-conditioned, chunk-predicting policies.
+2. **Attention gives direct access to the whole history.** Queries, keys and values implement a soft lookup; a causal mask makes it autoregressive; positional encodings supply order, and, as the goal toy shows, reach only as far as training required. *Why it matters:* this one mechanism underlies LLMs, VLMs and VLAs.
+3. **Everything becomes tokens.** Sub-words by BPE, images by patches, vision and language aligned by contrastive training, early fusion, late fusion or native training. *Why it matters:* a robot policy built on a VLM inherits its tokenization and its knowledge.
+4. **Scale is predictable.** Loss falls smoothly with model size, data and compute; Chinchilla's rule splits a budget at about 20 tokens per parameter. *Why it matters:* it frames the course's open question of what robot data at scale will buy.
+5. **Per-step action bins break at high control rates.** Neighbouring tokens become almost entirely predictable from each other, and sequences become long; FAST compresses chunks with a DCT and BPE. *Why it matters:* high rates are what dexterous manipulation needs.
+6. **Chunks trade reactivity for smoothness.** Open-loop chunks are smooth but blind and trust one estimate each; a temporal ensemble is smooth and as accurate as single-step control, but still reacts late. *Why it matters:* nearly every modern robot policy predicts action chunks.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Chain rule ★ | $p(x_{1:T}) = \prod_i p(x_i \mid x_{1:i-1})$ | @eq-chain |
+| RNN | $h_t = f(h_{t-1}, x_t)$ | @eq-rnn |
+| Attention ★ | $\operatorname{softmax}(QK^\top/\sqrt{d})\,V$ | @eq-attention |
+| Causal mask | $s_{ij} = -\infty$ for $j > i$ | @eq-causal |
+| Positional encodings | $e_i + \mathrm{PE}(i)$; $s_{ij} + b(i - j)$ | @eq-position |
+| RoPE | $(R_i q)^\top (R_j k) = q^\top R_{j-i} k$ | @eq-rope |
+| Teacher forcing | $-\frac{1}{T}\sum_t \log p(x_t \mid x_{<t})$ | @eq-teacher |
+| Chinchilla ★ | $C \approx 6ND$, $D^* \approx 20 N^*$ | @eq-scaling |
+| CLIP | symmetric softmax over $s_{ij}/\tau$ | @eq-clip |
+| Flamingo gate | $x + \tanh(\alpha)\,\text{CrossAttn}$ | @eq-flamingo |
+| Action bins | quantile-normalize, 256 bins | @eq-bins |
+| Chunk, ensemble | $\pi(a_{t:t+k} \mid o_t)$, $w_i = e^{-mi}$ | @eq-ensemble |
+| DCT (FAST) | $c_j = \nu_j \sum_n u_n \cos(\cdot)$ | @eq-dct |
+
+**Common pitfalls.**
+
+- Forgetting the causal mask in training: the model sees each answer and learns to copy it, then fails at generation.
+- Assuming relative positional encodings give long-range memory for free: they let the model run on longer inputs, not use what lies beyond the distances it learned.
+- Min-max normalizing actions: one outlier wastes most of the bins.
+- Judging an action tokenizer by next-token loss alone: at high rates a low loss can mean "copy the last token".
+- Executing long chunks open loop in a changing world: the robot is blind until the next query.
+- Comparing chunk sizes on smoothness only: accuracy and reaction time move the other way.
+
+**Connections.** [Week 1](w01-introduction.qmd#tokens) introduced actions as tokens; this week explains the transformer that reads them and why the simplest tokenization fails at speed. [Week 3](w03-imitation-learning.qmd)'s behavior cloning is what ACT does with chunks, and chunking shortens the effective horizon over which Week 3's errors compound. [Weeks 4](w04-reinforcement-learning-1.qmd) and [5](w05-reinforcement-learning-2.qmd) maximize return, while the Decision Transformer conditions on it. [Week 6](w06-generative-models.qmd)'s diffusion and flow policies are the main alternative to autoregressive action tokens, and π0's flow head is the comparison point for FAST. [Week 9](w09-generalist-robot-policies.qmd) builds generalist VLAs from all of these pieces. In the ADM Companion: [beliefs]({{< var adm_url >}}/part4/ch19-beliefs.html#beliefs) and [the belief update]({{< var adm_url >}}/part4/ch19-beliefs.html#the-belief-update), the principled way to act on a history, and [controllers that remember]({{< var adm_url >}}/part4/ch23-controller-abstractions.html#a-policy-that-remembers-just-enough).
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(7))
+```
