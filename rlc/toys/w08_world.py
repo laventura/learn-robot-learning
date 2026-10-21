@@ -24,12 +24,12 @@ Array = np.ndarray
 
 # --- Toy 1: the puck table --------------------------------------------------
 
-DT, GAIN, DRAG = 0.1, 2.0, 0.6          # step (s), push strength, quadratic drag
+DT, GAIN, DRAG = 0.1, 2.0, 0.6          # step (s), push gain, quadratic drag
 HILL_AT, HILL_H, HILL_W = np.array([0.0, 0.0]), 2.5, 0.45
 START, GOAL = np.array([-1.5, 0.0]), np.array([1.5, 0.0])
 BOX = 2.0                               # data cover positions in [-BOX, BOX]^2
 A_MAX = 1.0                             # pushes in the data stay in [-1, 1]^2
-SAT = 1.0                               # the motor saturates: stronger pushes do nothing more
+SAT = 1.0                               # the motor saturates beyond this
 
 
 def hill_force(p) -> Array:
@@ -40,7 +40,7 @@ def hill_force(p) -> Array:
 
 
 def true_step(s, a) -> Array:
-    """The real table: s = (x, y, vx, vy), a = push (ax, ay). Works on (..., 4)."""
+    """The real table: s = (x, y, vx, vy), a = push (ax, ay); (..., 4)."""
     p, v = s[..., :2], s[..., 2:]
     speed = np.linalg.norm(v, axis=-1, keepdims=True)
     push = GAIN * np.clip(a, -SAT, SAT)
@@ -75,7 +75,7 @@ def fit_world_model(n, seed, hidden=64, epochs=400) -> tuple[list, Array]:
 
 
 def model_step(model, s, a) -> Array:
-    """The world model's guess of the next state. Works on (n, 4) and (n, 2)."""
+    """The world model's guess of the next state, for s (n, 4), a (n, 2)."""
     params, out_scale = model
     X = np.concatenate([s, a], axis=-1) / IN_SCALE
     return s + nn.predict(params, X) * out_scale
@@ -135,7 +135,8 @@ def run_mpc(plan_step, rng, T=60, H=15, a_max=A_MAX, look=True, start=None):
         prev, _ = cem_plan(plan_step, here, rng, H=H, a_max=a_max, init=init)
         a = prev[0]
         real.append(true_step(real[-1], a))
-        imag.append(real[-1] if look else plan_step(imag[-1][None], a[None])[0])
+        guess = plan_step(imag[-1][None], a[None])[0]
+        imag.append(real[-1] if look else guess)
     return np.array(real), np.array(imag)
 
 
@@ -157,7 +158,8 @@ def jepa_data(n, rng) -> tuple[Array, Array, Array, Array]:
 
 def jepa_train(variant, seed, steps=3000, n=512, lr=0.01, tau=0.99,
                lam=1.0) -> dict:
-    """Train a linear encoder W and predictor (P_z, P_a) on next-embedding error.
+    """Train a linear encoder W and predictor (P_z, P_a) on next-embedding
+    error.
 
     z = o W, prediction = z P_z + a P_a, target z' = o' W_target.
     plain: the target uses W itself and gradients flow into both sides.
@@ -165,7 +167,8 @@ def jepa_train(variant, seed, steps=3000, n=512, lr=0.01, tau=0.99,
     EMA target: W_target is a slow moving average of W (no gradient).
     frozen encoder: W stays at its random start; only the predictor learns.
     covariance regularizer: plain, plus lam * ||Cov(z) - I||^2.
-    Returns the history of the loss and of the embeddings' spread.
+    Returns W and the history of the loss, the embeddings' spread and
+    their effective rank.
     """
     rng = np.random.default_rng(seed)
     W = rng.standard_normal((OBS_DIM, EMB_DIM)) / np.sqrt(OBS_DIM)
