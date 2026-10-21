@@ -1,6 +1,985 @@
 ---
 title: "Week 8 · World Models"
 subtitle: "Lecture of 13 April 2026 · guest: Scott Reed"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w08_world as w8
+
+style.apply()
+BLUE, ORANGE, GREEN = style.CATEGORICAL[0], style.CATEGORICAL[1], style.CATEGORICAL[2]
+dist = lambda path: float(np.linalg.norm(path[-1, :2] - w8.GOAL))
+
+# --- Toy 1: a learned simulator of the puck table --------------------------------
+NS, SEEDS = (250, 1000, 4000), range(3)
+MODELS = {(n, s): w8.fit_world_model(n, s) for n in NS for s in SEEDS}
+step_of = lambda m: (lambda x, a: w8.model_step(m, x, a))
+
+ev = np.random.default_rng(1)
+s_ev, a_ev, s2_ev = w8.random_transitions(5000, ev)
+ONE_STEP = {n: float(np.mean([np.sqrt(np.mean((w8.model_step(MODELS[n, s], s_ev, a_ev) - s2_ev) ** 2))
+                              for s in SEEDS])) for n in NS}
+assert ONE_STEP[250] > ONE_STEP[1000] > ONE_STEP[4000]
+
+H_ROLL = 40
+s0_ev = np.c_[ev.uniform(-1.5, 1.5, (200, 2)), np.zeros((200, 2))]
+A_ev = np.clip(np.cumsum(ev.normal(0, 0.3, (200, H_ROLL, 2)), 1), -1, 1)
+TRUE_ROLL = w8.rollout(w8.true_step, s0_ev, A_ev)
+ROLL_ERR = {n: np.mean([np.linalg.norm(w8.rollout(step_of(MODELS[n, s]), s0_ev, A_ev)[:, :, :2]
+                                       - TRUE_ROLL[:, :, :2], axis=-1).mean(0) for s in SEEDS], axis=0)
+            for n in NS}
+assert all(ROLL_ERR[n][40] > 20 * ROLL_ERR[n][4] for n in NS)       # far faster than linear growth
+assert all(ROLL_ERR[250][h] > ROLL_ERR[1000][h] > ROLL_ERR[4000][h] for h in (1, 5, 10, 20))
+assert ROLL_ERR[4000][40] > ROLL_ERR[1000][40]                       # ... but not at 40 steps (stated on the page)
+
+RUNS = {}
+for n in NS:
+    for s in SEEDS:
+        look, _ = w8.run_mpc(step_of(MODELS[n, s]), np.random.default_rng(10 + s))
+        blind, imag = w8.run_mpc(step_of(MODELS[n, s]), np.random.default_rng(10 + s), look=False)
+        RUNS[n, s] = dict(look=look, blind=blind, imag=imag)
+D = {(n, k): np.array([dist(RUNS[n, s][k]) for s in SEEDS]) for n in NS for k in ("look", "blind", "imag")}
+assert all(D[n, "imag"].max() < 0.05 for n in NS)                    # every dream reaches the goal
+assert all(D[n, "look"].max() < 0.05 for n in NS[1:]) and D[250, "look"].max() > 0.5
+assert D[250, "blind"].mean() > D[1000, "blind"].mean() > D[4000, "blind"].mean() > 0.15
+
+A_MAXES, PLAN_H = (1.0, 2.0, 3.0), 25
+EXPLOIT = {}
+for a_max in A_MAXES:
+    rows = []
+    for s in SEEDS:
+        for r in range(4):
+            plan, c_im = w8.cem_plan(step_of(MODELS[1000, s]), w8.START_STATE, np.random.default_rng(r),
+                                     H=PLAN_H, a_max=a_max)
+            c_re = float(w8.cost(w8.rollout(w8.true_step, w8.START_STATE[None], plan[None]))[0])
+            rows.append((c_im, c_re))
+    EXPLOIT[a_max] = np.array(rows).mean(0)
+IM = {a: EXPLOIT[a][0] for a in A_MAXES}
+RE = {a: EXPLOIT[a][1] for a in A_MAXES}
+assert IM[1.0] - IM[3.0] > 3 * (RE[1.0] - RE[3.0]) > 0               # imagination improves far more than reality
+assert RE[3.0] - IM[3.0] > 10
+LOOK3 = np.array([dist(w8.run_mpc(step_of(MODELS[1000, s]), np.random.default_rng(0), a_max=3.0)[0])
+                  for s in SEEDS])
+assert LOOK3.max() < 0.15
+
+# --- Toy 2: JEPA ------------------------------------------------------------------
+J_STEPS = 10_000
+JEPA = {(v, s): w8.jepa_train(v, s, steps=J_STEPS) for v in w8.JEPA_VARIANTS for s in SEEDS}
+J_END = {v: dict(spread=np.array([JEPA[v, s]["spread"][-1] for s in SEEDS]),
+                 rank=np.array([JEPA[v, s]["rank"][-1] for s in SEEDS]),
+                 loss=np.array([JEPA[v, s]["loss"][-1] for s in SEEDS]),
+                 probe=np.array([w8.probe_r2(JEPA[v, s]["W"]) for s in SEEDS])) for v in w8.JEPA_VARIANTS}
+J_START = float(np.mean([JEPA["plain", s]["spread"][0] for s in SEEDS]))
+assert J_END["plain"]["spread"].max() < 0.15 * J_START
+assert J_END["plain"]["loss"].max() < min(J_END[v]["loss"].min() for v in w8.JEPA_VARIANTS[1:])
+assert J_END["plain"]["probe"].max() < 0.9 and J_END["covariance regularizer"]["probe"].min() > 0.99
+assert J_END["covariance regularizer"]["rank"].min() > 3.9
+assert all(J_END[v]["spread"].min() > 0.5 for v in w8.JEPA_VARIANTS[1:])   # no other variant collapses
+assert all(J_END[v]["rank"].max() < 2.6 for v in w8.JEPA_VARIANTS[1:4])
+
+# --- Toy 3: a video model and an inverse dynamics model --------------------------
+N_VIDEOS = 40
+S_DEMO, A_DEMO = w8.expert_demos(N_VIDEOS, 0)
+assert np.abs(w8.true_step(S_DEMO[:, :-1], A_DEMO) - S_DEMO[:, 1:]).max() < 1e-9
+KS = (25, 100, 400, 1600)
+success = lambda d: float(np.mean(d < 0.2))
+LABELS = {}
+for k in KS:
+    for s in SEEDS:
+        vam, bc = w8.fit_vam(S_DEMO, k, s), w8.fit_bc(S_DEMO, A_DEMO, k, s)
+        LABELS[k, s] = (success(w8.evaluate(lambda x: w8.vam_act(vam, x), 100 + s)),
+                        success(w8.evaluate(lambda x: np.clip(w8.mlp_apply(bc, x), -1, 1), 100 + s)))
+VAM_K = {k: float(np.mean([LABELS[k, s][0] for s in SEEDS])) for k in KS}
+BC_K = {k: float(np.mean([LABELS[k, s][1] for s in SEEDS])) for k in KS}
+assert VAM_K[25] > 0.9 and BC_K[25] < 0.6 and BC_K[400] > 0.9
+
+
+def oracle_eval(vam, seed, n=20, T=60):
+    """The VAM's decoder fed the expert's true next state instead of a predicted one."""
+    rng, plan_rng = np.random.default_rng(seed), np.random.default_rng(seed + 50)
+    out = []
+    for _ in range(n):
+        x, prev = w8.random_start(rng), None
+        for _ in range(T):
+            init = None if prev is None else np.r_[prev[1:], prev[-1:]]
+            prev, _ = w8.cem_plan(w8.true_step, x, plan_rng, init=init)
+            x = w8.true_step(x, w8.vam_act(vam, x[None], w8.true_step(x, prev[0])[None])[0])
+        out.append(np.linalg.norm(x[:2] - w8.GOAL))
+    return np.array(out)
+
+
+VIDEOS, K_ORACLE = (1, 3, 10, 40), 100
+ORACLE, PRED = {}, {}
+for nv in VIDEOS:
+    o, p = [], []
+    for s in SEEDS:
+        vam = w8.fit_vam(S_DEMO[:nv], K_ORACLE, s)
+        p.append(success(w8.evaluate(lambda x: w8.vam_act(vam, x), 100 + s)))
+        o.append(success(oracle_eval(vam, 100 + s)))
+    ORACLE[nv], PRED[nv] = float(np.mean(o)), float(np.mean(p))
+assert min(ORACLE.values()) > 0.9 and PRED[1] < 0.5 and PRED[N_VIDEOS] > 0.9
+assert all(ORACLE[nv] >= PRED[nv] for nv in VIDEOS)
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 8 · **Lecture:** [video](https://youtu.be/cTTmUZlOF2s) · **Go deeper:** [ADM Ch 16, learning a model]({{< var adm_url >}}/part3/ch16-model-based-methods.html#maximum-likelihood-models) and [ADM Ch 9, model predictive control]({{< var adm_url >}}/part2/ch09-online-planning.html#open-loop-planning-and-model-predictive-control)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(8))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+[Week 7](w07-sequence-modeling-transformers.qmd) built policies that map what the robot sees, and what it was told, to actions. A policy answers "given where I am and what I want, what should I do?" This week's models answer a different question: "given where I am and what I do, what happens next?" [▶ 14:46](https://youtu.be/cTTmUZlOF2s?t=886) That is a **world model**, a learned simulator. With one, a robot can try many plans in its head and carry out only the best, can train a policy in imagination instead of on hardware, and, if the model is built on video, can borrow knowledge of how the physical world moves from internet-scale data.
+
+**The question this week answers:** how do you learn a model of what your actions will do, and how do you use it, for planning, for training policies, or as the backbone of the policy itself?
+
+### The key ideas at a glance
+
+- **A world model predicts consequences.** It models the next state given the current state, an action and a memory of the past. A video model that is not conditioned on actions is, strictly, not a world model.
+- **Plan with it.** Roll out candidate action sequences in the model, keep the best, execute the first step and replan from the next real observation (model predictive control). Pixel-space models showed this works but is costly and blurry.
+- **Errors compound, and planners exploit them.** Each imagined step feeds on the last, so errors grow with the horizon; and an optimizer will find the actions where the model is most wrong in its favour.
+- **Imagine in a latent space.** Compress observations into a small latent state, predict there, and train the policy entirely in imagination (Ha & Schmidhuber's World Models, then PlaNet's RSSM and the Dreamer line, up to Dreamer 4 obtaining diamonds in Minecraft from offline data).
+- **Scale to internet video.** Video must be tokenized far more compactly than per-frame patches. Then the question is where actions live: as inputs (action-conditioned world models), as joint outputs with the video (world action models such as DreamZero), or decoded from video features by an inverse dynamics model (video action models such as mimic-video).
+- **Or skip the pixels.** JEPA-style models predict the next *embedding* instead of the next frame, and must prevent the encoder from collapsing.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| World model | A model of what happens next given the current state and an action, $p(s_{t+1} \mid s_t, a_t, h_t)$ |
+| Action-conditioned | Takes the action as an input, so you can ask "what if I do this?" |
+| Model predictive control (MPC) | Plan a short sequence in the model, execute its first step, replan |
+| Cross-entropy method (CEM) | Sample plans, keep the best, refit the sampling distribution, repeat |
+| Imagination training | Improving a policy on rollouts of a learned model instead of the real world |
+| Latent state | A compact vector summarizing an observation (and the past) |
+| RSSM | Recurrent state-space model: a deterministic memory plus a stochastic latent, with a learned prior |
+| Model exploitation | A planner or policy choosing actions where the model's predictions are wrong in its favour |
+| Video tokenizer | An encoder that turns video into far fewer tokens than per-frame patches |
+| World action model (WAM) | One model that generates future video and actions together |
+| Video action model (VAM) | A pre-trained video model whose features an inverse dynamics model decodes into actions |
+| Inverse dynamics model (IDM) | Predicts the action that turned one observation into the next |
+| JEPA | Joint-embedding predictive architecture: predict the next embedding, not the next image |
+| Representation collapse | An encoder mapping every input to (nearly) the same vector, which makes prediction trivially easy |
+
+### After this week you can
+
+- State what distinguishes a world model from a policy and from a plain video model.
+- Plan with a learned model using CEM and replanning, and explain why replanning from real observations matters.
+- Explain why prediction errors compound over a rollout and how a planner exploits model errors.
+- Describe the World Models, RSSM and Dreamer designs and what each fixed.
+- Estimate the token count of a video clip, and say how video tokenizers compress it.
+- Compare action-conditioned world models, world action models and video action models.
+- Explain representation collapse in JEPA-style models and three ways to prevent it.
+
+{{< video https://youtu.be/cTTmUZlOF2s >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+A batter facing a fastball has about 400 milliseconds before the ball reaches the plate, and the first 100 are spent just getting the image from eye to brain [▶ 12:50](https://youtu.be/cTTmUZlOF2s?t=770). There is no time to see where the ball is and then swing. Batters hit anyway because they predict where the ball will be and start swinging for that point [▶ 13:39](https://youtu.be/cTTmUZlOF2s?t=819). That internal prediction of what the world will do next is a world model, and it lets you act ahead of what your senses tell you.
+:::
+
+### A learned simulator {#simulator-intuition}
+
+A policy maps a state and a goal to an action; a world model maps a state and an action to a distribution over next states [▶ 14:46](https://youtu.be/cTTmUZlOF2s?t=886). With one, the robot can imagine: roll out many candidate plans in the model, score them, and execute only the best, testing many hypothetical futures for the price of one real one [▶ 16:08](https://youtu.be/cTTmUZlOF2s?t=968). It plays the role of a physics simulator, but learned from data instead of built by hand [▶ 17:12](https://youtu.be/cTTmUZlOF2s?t=1032). A hand-built simulator is fast and exact for what its authors modelled, such as rigid bodies, friction and collisions, and wrong for whatever they did not, such as cloth or tissue [▶ 17:54](https://youtu.be/cTTmUZlOF2s?t=1074). A learned model captures whatever its data show, and nothing more.
+
+The lecture's definition is strict: a world model predicts the next state from the current state, an *action* and a memory of the past, and a video model that only takes text is not one [▶ 19:10](https://youtu.be/cTTmUZlOF2s?t=1150). The action input is what makes it useful for control: it can answer "what if I do this?" [▶ 20:40](https://youtu.be/cTTmUZlOF2s?t=1240)
+
+This page's first toy is a puck on a table. Pushes move it, drag slows it, and a hill in the middle repels it; the puck cannot push straight over the hill and must go round. The agent does not know these dynamics. It has only transitions recorded while the puck was shoved around at random, and it fits a small neural network to them: that is its world model. With `{python} f"{4000:,}"` transitions the one-step error is `{python} f"{ONE_STEP[4000]:.4f}"`, with 250 it is `{python} f"{ONE_STEP[250]:.4f}"` (averaged over `{python} len(SEEDS)` models each).
+
+### Planning in pixels {#pixel-intuition}
+
+An early action-conditioned model worked directly on camera images. Predicting every pixel of the next frame is a hard generative problem, so Finn and colleagues predicted instead how each pixel would *move* under the planned action, and warped the current image accordingly [▶ 21:04](https://youtu.be/cTTmUZlOF2s?t=1264). Visual Foresight used that model for **model predictive control**: the user marks a pixel and where it should go, the cross-entropy method samples and refines action sequences in the model, and the robot executes the first action and replans [▶ 22:17](https://youtu.be/cTTmUZlOF2s?t=1337). The training data came from the robot's own random interaction, with no labels [▶ 23:03](https://youtu.be/cTTmUZlOF2s?t=1383). Its limits: a squared-error loss averages over uncertain futures and gives blurry predictions [▶ 24:04](https://youtu.be/cTTmUZlOF2s?t=1444), errors accumulate as rollouts get longer, and evaluating whole image sequences for every candidate is expensive [▶ 24:26](https://youtu.be/cTTmUZlOF2s?t=1466).
+
+The puck toy shows the accumulation. Feed a model and the real table the same 40-step push sequence and compare where the puck ends up. With 1,000 transitions the average position error is `{python} f"{ROLL_ERR[1000][1]:.4f}"` after one step, `{python} f"{ROLL_ERR[1000][10]:.3f}"` after 10 and `{python} f"{ROLL_ERR[1000][40]:.2f}"` after 40 (@fig-compound): every predicted step starts from the previous, slightly wrong, prediction. More data lowers the error over 20 steps, but not reliably over 40: there the 4,000-transition models end up worse than the 1,000-transition ones (`{python} f"{ROLL_ERR[4000][40]:.2f}"` against `{python} f"{ROLL_ERR[1000][40]:.2f}"`). We have not tracked down why; with only three models per data size, it may be chance.
+
+```{python}
+#| label: fig-compound
+#| fig-cap: "Error of imagined rollouts on the puck table: mean distance between the position a world model predicts and the real one, after h steps of the same push sequence, for models fitted to 250, 1,000 and 4,000 random transitions (each line averages 3 models over 200 push sequences)."
+#| fig-alt: "Line chart with a log y-axis. The x-axis is the number of imagined steps, 1 to 40; the y-axis the position error, from about 0.001 to above 1. Three lines, for 250, 1,000 and 4,000 transitions, all rise steeply and steadily. The 250 line is highest throughout. The 4,000 line is lowest up to about 30 steps, then crosses above the 1,000 line. At 40 steps the lines end between about 0.65 and 1.5."
+fig, ax = plt.subplots(figsize=(6.4, 3.4))
+hs = np.arange(1, H_ROLL + 1)
+for n, col in zip(NS, (ORANGE, BLUE, GREEN)):
+    ax.plot(hs, ROLL_ERR[n][1:], color=col, lw=2, label=f"{n:,} transitions")
+ax.set_yscale("log")
+ax.set_xlabel("imagined steps h")
+ax.set_ylabel("position error")
+ax.legend(fontsize=9)
+plt.show()
+```
+
+### Look, or dream? {#look-intuition}
+
+Model predictive control has a built-in defence against compounding errors: every plan starts from the latest *real* observation, so a planning error lasts at most one step. To see how much that matters, run the same planner twice with the same model. Once it looks at the real puck before every replan. Once it never looks: it replans from the state its own model predicted, so the entire run happens in imagination, and the chosen pushes are then replayed on the real table.
+
+In imagination, every one of the `{python} len(NS) * len(SEEDS)` dreamed runs ends within `{python} f"{max(D[n, 'imag'].max() for n in NS):.2f}"` of the goal. Replayed on the real table, the same pushes miss by `{python} f"{D[250, 'blind'].mean():.1f}"` on average with the 250-transition models, `{python} f"{D[1000, 'blind'].mean():.2f}"` with 1,000 and `{python} f"{D[4000, 'blind'].mean():.2f}"` with 4,000. Looking fixes it: with 1,000 or more transitions every run that looks ends within `{python} f"{max(D[n, 'look'].max() for n in NS[1:]):.2f}"` of the goal (@fig-table). With 250 transitions even looking fails in some runs (worst miss `{python} f"{D[250, 'look'].max():.1f}"`): feedback cannot rescue a model that is wrong about which way to go.
+
+```{python}
+#| include: false
+HERO_RUN = RUNS[1000, 0]
+hx = np.linspace(-2.2, 2.2, 160)
+HX, HY = np.meshgrid(hx, np.linspace(-1.6, 1.6, 120))
+HILL = w8.HILL_H * np.exp(-0.5 * ((HX - w8.HILL_AT[0]) ** 2 + (HY - w8.HILL_AT[1]) ** 2) / w8.HILL_W**2)
+hero_paths = {k: HERO_RUN[k] for k in ("imag", "blind", "look")}
+hero_side = {k: float(np.sign(np.median(p[10:40, 1]))) for k, p in hero_paths.items()}
+assert hero_side["imag"] == hero_side["look"]                       # the dream and the real run go round the same side
+hero_end = {k: p[-1, :2] for k, p in hero_paths.items()}
+assert dist(hero_paths["blind"]) > 0.4
+```
+
+```{python}
+#| label: fig-table
+#| fig-cap: "One planning run on the puck table with a world model fitted to 1,000 transitions (model 0). Dashed blue: the run as the model imagined it, replanning from its own predictions. Orange: the same pushes replayed on the real table. Green: the planner looking at the real puck before every replan. The grey shading is the hill; the cross marks the goal."
+#| fig-alt: "Top view of the table, x from −2.2 to 2.2 and y from −1.6 to 1.6, with a grey circular hill in the centre. All three paths start at the left, at (−1.5, 0), and curve round the hill. The dashed blue imagined path and the green path that looks both end on the cross at (1.5, 0). The orange replay of the imagined pushes ends away from the cross."
+fig, ax = plt.subplots(figsize=(6.4, 4.4))
+ax.contourf(HX, HY, HILL, levels=np.linspace(0.2, w8.HILL_H, 6), cmap="Greys", alpha=0.45)
+for k, col, ls, lab in (("imag", BLUE, "--", "imagined (never looks)"), ("blind", ORANGE, "-", "imagined pushes, real table"),
+                        ("look", GREEN, "-", "replans from the real puck")):
+    p = hero_paths[k]
+    ax.plot(p[:, 0], p[:, 1], color=col, ls=ls, lw=2.2, label=lab)
+ax.plot(*w8.START, "o", color=style.INK, ms=6)
+ax.plot(*w8.GOAL, "x", color=style.INK, ms=10, mew=2.5)
+ax.set_xlim(-2.2, 2.2); ax.set_ylim(-1.6, 1.6); ax.set_aspect("equal")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+ax.legend(fontsize=8, loc="lower left")
+plt.show()
+```
+
+The lecture's world action models use the same idea at scale: DreamZero, when running on the robot, replaces the frames it generated with the real camera frames after each action, so its errors cannot compound [▶ 64:36](https://youtu.be/cTTmUZlOF2s?t=3876).
+
+### Planners exploit their models {#exploit-intuition}
+
+A second danger is subtler. A planner optimizes *whatever the model says*, and nothing stops it from steering into situations the model never saw, where its predictions are wrong in the planner's favour. In the toy, the random data only ever pushed with strength up to 1, which is also where the real motor saturates. Let the planner ask for pushes up to 3. The model, never having seen the limit, extrapolates: a push of 3 should be three times as strong. Averaged over `{python} len(SEEDS) * 4` plans of `{python} PLAN_H` steps, allowing stronger pushes improves the *imagined* cost from `{python} f"{IM[1.0]:.1f}"` to `{python} f"{IM[3.0]:.1f}"`, but the *real* cost of the same plans only from `{python} f"{RE[1.0]:.1f}"` to `{python} f"{RE[3.0]:.1f}"` (@fig-exploit-explorer). The planner is mostly fooling itself. Replanning from real observations limits the damage here too: looking at the puck, runs with pushes up to 3 still end within `{python} f"{LOOK3.max():.2f}"` of the goal. The Dreamer papers list the same risk for policies trained in imagination: they can exploit world-model errors.
+
+### Imagine in a latent space {#latent-intuition}
+
+Most pixels in a camera image do not matter for control, so the next idea is to compress each observation into a small **latent** vector and do the prediction and the planning there [▶ 25:07](https://youtu.be/cTTmUZlOF2s?t=1507). The general recipe: an encoder maps observations to latents, a dynamics model with a recurrent memory predicts the next latent and the reward, and a policy acts on the latent and the memory, so it can be trained purely on imagined rollouts [▶ 25:44](https://youtu.be/cTTmUZlOF2s?t=1544).
+
+Ha and Schmidhuber's **World Models** (2018) has three separate parts [▶ 27:03](https://youtu.be/cTTmUZlOF2s?t=1623): a VAE (vision) that compresses each frame into a latent $z_t$, whose reconstructions need not be perfect, only informative enough to act on [▶ 28:03](https://youtu.be/cTTmUZlOF2s?t=1683); a recurrent network with a mixture-density output (memory), which predicts a *distribution* over next latents, so several possible futures are not averaged into one [▶ 28:40](https://youtu.be/cTTmUZlOF2s?t=1720); and a single linear layer (controller) from latent and memory to action [▶ 29:40](https://youtu.be/cTTmUZlOF2s?t=1780). The controller is small on purpose, so that the world model does the representational work, and it is trained by an evolution strategy instead of backpropagation [▶ 30:23](https://youtu.be/cTTmUZlOF2s?t=1823). On a car-racing game, removing the memory makes the car leave the track almost at once: a single frame shows position, not speed or the coming curve [▶ 31:42](https://youtu.be/cTTmUZlOF2s?t=1902).
+
+### Why dreams drift, and the RSSM fix {#rssm-intuition}
+
+World Models has a flaw [▶ 33:09](https://youtu.be/cTTmUZlOF2s?t=1989). Its memory network is trained on latents encoded from *real* frames, but in imagination it must feed on its own sampled latents, which come from a slightly different distribution [▶ 33:35](https://youtu.be/cTTmUZlOF2s?t=2015). Nothing in training teaches it to produce a good latent from its memory alone. The **recurrent state-space model** (RSSM) of PlaNet fixes this by splitting the state in two [▶ 34:41](https://youtu.be/cTTmUZlOF2s?t=2081): a deterministic memory $h_t$, which is never sampled and so cannot be corrupted by sampling noise, and a stochastic latent $z_t$ for what is uncertain. During training, $z_t$ is inferred from the real observation (the posterior); a **prior** learns to predict $z_t$ from $h_t$ alone, and a KL term keeps the two close, so imagined latents stay where the model was trained [▶ 35:57](https://youtu.be/cTTmUZlOF2s?t=2157). In imagination no observation is needed at all: the policy acts, the memory advances, the next latent is drawn from the prior [▶ 36:25](https://youtu.be/cTTmUZlOF2s?t=2185).
+
+PlaNet still planned with CEM at every step. **Dreamer** amortizes that planning into an actor and a critic, trained by backpropagating through imagined rollouts of the frozen model, so at run time the robot simply runs the policy [▶ 38:33](https://youtu.be/cTTmUZlOF2s?t=2313). **DayDreamer** ran the same algorithm on real robots: a quadruped learned to walk from scratch with 1 hour of real interaction [▶ 40:00](https://youtu.be/cTTmUZlOF2s?t=2400). Dreamer 3 was the first to collect diamonds in Minecraft from pixels, a task of over 20,000 actions [▶ 42:46](https://youtu.be/cTTmUZlOF2s?t=2566). **Dreamer 4** does it from offline data only; it pre-trains its dynamics on video without actions and replaces the recurrent memory with a transformer's key-value cache [▶ 43:40](https://youtu.be/cTTmUZlOF2s?t=2620).
+
+```{dot}
+//| label: fig-rssm
+//| fig-width: 5.4
+//| fig-height: 4.0
+//| fig-cap: "One step of a recurrent state-space model. The deterministic memory h carries the past; the stochastic latent z is inferred from the observation during training (posterior) and predicted from h alone in imagination (prior). The KL term ties them together; decoders reconstruct the observation and predict the reward."
+//| fig-alt: "Diagram. 'previous h, z, action' leads, labelled 'RNN', to 'memory h_t (deterministic)'. From h_t, one arrow labelled 'imagination' leads to 'prior p(z_t | h_t)'; another, together with 'observation o_t', leads labelled 'training' to 'posterior q(z_t | h_t, o_t)'. A dashed edge labelled 'KL' joins prior and posterior. Both lead to 'latent z_t (stochastic)', highlighted in orange. h_t and z_t lead to 'decoders: image, reward' and to 'policy a_t'."
+digraph rssm {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.4;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=10];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  prev [label="previous h, z\nand action", fillcolor="#f0efec", color="#52514e"];
+  obs [label="observation o_t", fillcolor="#f0efec", color="#52514e"];
+  h [label="memory h_t\n(deterministic)"];
+  prior [label="prior\np(z_t | h_t)"];
+  post [label="posterior\nq(z_t | h_t, o_t)"];
+  z [label="latent z_t\n(stochastic)", fillcolor="#fbe1d6", color="#eb6834"];
+  dec [label="decoders\nimage, reward"];
+  pol [label="policy a_t"];
+  { rank=same; prev; obs; }
+  { rank=same; prior; post; }
+  { rank=same; dec; pol; }
+  prev -> h [label=" RNN"];
+  h -> prior [label=" imagination"];
+  h -> post [label=" training"];
+  obs -> post;
+  prior -> post [style=dashed, dir=both, label=" KL"];
+  prior -> z;
+  post -> z;
+  z -> dec; z -> pol;
+}
+```
+
+### Scaling to internet video {#video-intuition}
+
+The Dreamer latents are compact but specific to one domain: Minecraft, or one robot [▶ 45:26](https://youtu.be/cTTmUZlOF2s?t=2726). A model of how the visual world moves in general needs internet-scale video [▶ 46:18](https://youtu.be/cTTmUZlOF2s?t=2778), and that runs into token counts first [▶ 46:53](https://youtu.be/cTTmUZlOF2s?t=2813). Per-frame patches of a 256 by 256 image give 256 tokens; at 20 frames per second, a 10-second clip has 51,200 [▶ 47:41](https://youtu.be/cTTmUZlOF2s?t=2861). But video is extremely redundant [▶ 48:38](https://youtu.be/cTTmUZlOF2s?t=2918), and tokenizers compress it along three axes [▶ 48:51](https://youtu.be/cTTmUZlOF2s?t=2931): spatially (deeper encoders, fewer tokens per frame), temporally (several frames per token, causally if the model must run in a control loop) [▶ 49:30](https://youtu.be/cTTmUZlOF2s?t=2970), and adaptively (more tokens for busy scenes, fewer for static ones) [▶ 50:25](https://youtu.be/cTTmUZlOF2s?t=3025). Combined 8 times in each spatial direction and 8 times in time, the 51,200 tokens become 100 [▶ 51:41](https://youtu.be/cTTmUZlOF2s?t=3101).
+
+Where do actions go in a model trained mostly on video without actions [▶ 52:18](https://youtu.be/cTTmUZlOF2s?t=3138)? Three answers (@fig-families):
+
+- **Action-conditioned world models** (the Dreamer line) take actions as *inputs*.
+- **World action models** (WAMs) generate future video and actions *together* as outputs, starting from a pre-trained video model; DreamZero is one [▶ 53:01](https://youtu.be/cTTmUZlOF2s?t=3181).
+- **Video action models** (VAMs) keep a pre-trained video model frozen and train only a light **inverse dynamics model** that reads actions off its features, which needs only robot data for the small part; mimic-video is one [▶ 54:10](https://youtu.be/cTTmUZlOF2s?t=3250).
+
+Why use expensive video backbones at all [▶ 55:23](https://youtu.be/cTTmUZlOF2s?t=3323)? A VLA starts from a vision-language model trained on static images and captions: it knows what "cutting a carrot" means but not how a carrot moves when cut, so robot teleoperation data must teach it the dynamics as well as the control [▶ 56:27](https://youtu.be/cTTmUZlOF2s?t=3387). A video model has seen how things move; the robot data then only need to teach control. mimic-video reports 10 times better sample efficiency than VLA architectures (from its abstract). Its oracle experiment: an action decoder given the *true* future frames succeeds almost always, so the bottleneck is the quality of the predicted video, and better video models should directly give better policies [▶ 59:56](https://youtu.be/cTTmUZlOF2s?t=3596).
+
+The third toy reproduces both findings. A video model learns from `{python} N_VIDEOS` action-free expert videos what the puck does next; an inverse dynamics model learns from $k$ action-labelled *random* pushes which push causes a given change. Behavior cloning instead needs $k$ action-labelled *expert* transitions. With 25 labels the video model plus decoder succeeds in `{python} f"{100 * VAM_K[25]:.0f}"`% of runs and behavior cloning in `{python} f"{100 * BC_K[25]:.0f}"`%; behavior cloning catches up at 400 labels (@fig-vam). Give the decoder the expert's *true* next state and it succeeds in about `{python} f"{100 * min(ORACLE.values()):.0f}"`% of runs whatever the video model learned; with predicted futures, success goes from `{python} f"{100 * PRED[1]:.0f}"`% with one training video to `{python} f"{100 * PRED[N_VIDEOS]:.0f}"`% with `{python} N_VIDEOS`.
+
+```{python}
+#| label: fig-vam
+#| fig-cap: "The video-action toy, success rate (final distance to the goal below 0.2, 20 starts × 3 seeds). Left: against the number of action labels, for a video model plus inverse dynamics model (labels from random pushes) and for behavior cloning (labels on expert data). Right: the video model plus decoder with 100 labels, against the number of action-free expert videos, decoding from predicted futures or from the expert's true next state (oracle)."
+#| fig-alt: "Two line charts. Left: x-axis action labels on a log scale, 25, 100, 400, 1,600; the video-model line stays near 1 throughout, the behavior-cloning line rises from about 0.4 at 25 to 1 at 400. Right: x-axis number of training videos, 1, 3, 10, 40, on a log scale; the oracle line stays near 1, the predicted-future line is low for few videos and reaches about 1 at 40."
+fig, (axl, axr) = plt.subplots(1, 2, figsize=(7.2, 3.1))
+axl.plot(KS, [VAM_K[k] for k in KS], "o-", color=BLUE, label="video model + IDM")
+axl.plot(KS, [BC_K[k] for k in KS], "o-", color=ORANGE, label="behavior cloning")
+axl.set_xscale("log"); axl.set_xticks(KS, [f"{k:,}" for k in KS]); axl.minorticks_off()
+axl.set_ylim(0, 1.05); axl.set_xlabel("action labels"); axl.set_ylabel("success rate"); axl.legend(fontsize=8)
+axr.plot(VIDEOS, [ORACLE[v] for v in VIDEOS], "o-", color=GREEN, label="true next state (oracle)")
+axr.plot(VIDEOS, [PRED[v] for v in VIDEOS], "o-", color=BLUE, label="predicted next state")
+axr.set_xscale("log"); axr.set_xticks(VIDEOS, [str(v) for v in VIDEOS]); axr.minorticks_off()
+axr.set_ylim(0, 1.05); axr.set_xlabel("action-free expert videos"); axr.legend(fontsize=8)
+plt.tight_layout()
+plt.show()
+```
+
+```{dot}
+//| label: fig-families
+//| fig-width: 6.6
+//| fig-height: 3.2
+//| fig-cap: "Where actions live. An action-conditioned world model takes actions as input and predicts the future; a world action model outputs future video and actions together; a video action model decodes actions from a frozen video model's features with an inverse dynamics model."
+//| fig-alt: "Diagram with three columns. Left, 'action-conditioned WM (Dreamer)': 'state + action' leads, labelled 'input', to 'world model', which leads to 'next state'. Middle, 'world action model (DreamZero)': 'video so far + instruction' leads to 'one video model', which leads, labelled 'output', to 'future video + actions', highlighted. Right, 'video action model (mimic-video)': 'video so far + instruction' leads to 'frozen video model', which leads, labelled 'features', to 'inverse dynamics model', which leads to 'actions'."
+digraph families {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=10];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  a1 [label="ACTION-CONDITIONED WM\n(Dreamer)\nstate + action", fillcolor="#f0efec", color="#52514e"];
+  a2 [label="world model"];
+  a3 [label="next state"];
+  b1 [label="WORLD ACTION MODEL\n(DreamZero)\nvideo so far + instruction", fillcolor="#f0efec", color="#52514e"];
+  b2 [label="one video model"];
+  b3 [label="future video\n+ actions", fillcolor="#fbe1d6", color="#eb6834"];
+  c1 [label="VIDEO ACTION MODEL\n(mimic-video)\nvideo so far + instruction", fillcolor="#f0efec", color="#52514e"];
+  c2 [label="frozen video model"];
+  c3 [label="inverse dynamics\nmodel → actions"];
+  a1 -> a2 [label=" input"]; a2 -> a3;
+  b1 -> b2; b2 -> b3 [label=" output"];
+  c1 -> c2; c2 -> c3 [label=" features"];
+}
+```
+
+### Do we need pixels at all? {#jepa-intuition}
+
+Every approach so far decodes back to pixels somewhere. **JEPA** models do not: they encode the current frame, predict the *embedding* of the next frame given the action, encode the real next frame with the same encoder, and minimize the distance between the two embeddings, with no decoder and no pixel loss [▶ 68:50](https://youtu.be/cTTmUZlOF2s?t=4130). The catch is **collapse**: an encoder that maps every frame to the same vector makes the prediction error exactly zero, and gradient descent is happy to find it [▶ 69:53](https://youtu.be/cTTmUZlOF2s?t=4193). Remedies include a slowly moving (EMA) copy of the encoder for the targets (V-JEPA 2), a frozen pre-trained encoder (DINO-WM), and a regularizer that forces the embeddings to spread out like a Gaussian (the most recent work the lecture cites) [▶ 70:34](https://youtu.be/cTTmUZlOF2s?t=4234).
+
+The second toy shows the trap. Observations are a 16-dimensional view of the puck's state; a linear encoder maps them to 4-dimensional embeddings, and a linear predictor maps (embedding, push) to the next embedding. Trained on prediction error alone, the embeddings shrink from a spread of `{python} f"{J_START:.2f}"` to `{python} f"{J_END['plain']['spread'].mean():.3f}"` in `{python} f"{J_STEPS:,}"` steps, and are still shrinking; this run has the *lowest* loss of all variants (`{python} f"{J_END['plain']['loss'].mean():.4f}"`), yet a linear readout recovers only `{python} f"{100 * J_END['plain']['probe'].mean():.0f}"`% of the puck's position from them. With a regularizer pulling the embeddings' covariance to the identity, they use all 4 directions (effective rank `{python} f"{J_END['covariance regularizer']['rank'].mean():.2f}"`) and the readout recovers `{python} f"{100 * J_END['covariance regularizer']['probe'].mean():.1f}"`% (@fig-jepa). The other safeguards also prevent collapse here, but leave the embeddings using about two directions.
+
+```{python}
+#| label: fig-jepa
+#| fig-cap: "The JEPA toy over 10,000 training steps, for five training variants (seed 0). Left: the embeddings' spread (mean standard deviation per dimension). Right: their effective rank, the number of directions they really use (at most 4)."
+#| fig-alt: "Two line charts sharing an x-axis of training steps, 0 to 10,000. Left, spread on a log scale: the plain variant falls steadily from about 0.7 to about 0.05; stop-gradient and EMA target rise to about 1.2 to 1.3; frozen encoder stays near 0.65; the covariance regularizer settles at 1. Right, effective rank from 1 to 4: the covariance regularizer quickly reaches 4; the others stay between about 1.2 and 2.5."
+fig, (axl, axr) = plt.subplots(1, 2, figsize=(7.2, 3.1))
+cols = dict(zip(w8.JEPA_VARIANTS, (ORANGE, BLUE, style.CATEGORICAL[4], style.MUTED, GREEN)))
+xs = np.arange(J_STEPS)[::50]
+for v in w8.JEPA_VARIANTS:
+    axl.plot(xs, JEPA[v, 0]["spread"][::50], color=cols[v], lw=1.8, label=v)
+    axr.plot(xs, JEPA[v, 0]["rank"][::50], color=cols[v], lw=1.8)
+axl.set_yscale("log"); axl.set_xlabel("training step"); axl.set_ylabel("spread of embeddings")
+axr.set_ylim(1, 4.2); axr.set_xlabel("training step"); axr.set_ylabel("effective rank")
+axl.legend(fontsize=7)
+plt.tight_layout()
+plt.show()
+```
+
+The lecture closes on its master formula: every family predicts the next state from the current state, an action and a memory, and they differ in how they represent the state, where the actions live, and what data they can use [▶ 71:01](https://youtu.be/cTTmUZlOF2s?t=4261).
+
+```{python}
+#| include: false
+b_end = hero_paths["blind"][-1, :2]
+hero_miss = dist(hero_paths["blind"])
+assert b_end[1] < w8.GOAL[1] - 0.4                                  # the replay ends below the goal
+hero_top = {k: float(p[:, 1].max()) for k, p in hero_paths.items()}
+assert hero_top["blind"] > hero_top["imag"] and hero_top["look"] > hero_top["imag"]   # real arcs run wider
+assert all(hero_paths[k][:, 1].min() > -0.05 for k in ("imag", "look"))               # over the top side
+assert dist(hero_paths["look"]) < 0.05 and dist(hero_paths["imag"]) < 0.05
+```
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w08-dream",
+    caption="The puck toy's dream and reality: a run planned entirely inside the learned model, the same pushes on "
+            "the real table, and a run that looks at the real puck before every replan.",
+    alt=f"Animation, about 22 seconds, looping. The table seen from above: grey rings mark a hill in the centre, a "
+        f"dot on the left marks the start and a cross on the right the goal. First a blue puck draws a dashed path "
+        f"that curves over the upper side of the hill and comes down onto the goal, under the caption 'Planning only "
+        f"in its own model: the dream reaches the goal'. Then an orange puck replays the same pushes on the real "
+        f"table: its path runs on a slightly wider arc, passes the goal and ends below it, about {hero_miss:.1f} away. "
+        f"Last, a green puck that replans from the real puck follows almost the orange course and stops on the "
+        f"goal. The paths then fade and the table is empty again.",
+))
+```
+
+**What to watch for.** All three runs use the same world model (1,000 transitions, model 0) and the same planner. The blue dream curves over the upper side of the hill and lands exactly on the goal: by its own model's account the plan is perfect. The orange puck receives the same pushes on the real table. Its path starts close to the dream's but runs on a slightly wider arc, so every later push, chosen for where the dream puck was, is a little wrong; it passes the goal and ends below it, `{python} f"{hero_miss:.1f}"` away, with a few wiggles at the end as the remaining pushes, meant to brake at the goal, act on a puck that is elsewhere. The green puck uses the same model but looks before every replan: its path follows almost the orange course, since the real table behaves the same, but each new plan starts from where the puck really is, and it stops on the goal.
+
+## Key concepts & formulae
+
+The lecture writes $s_t$ for the state, $a_t$ for the action, $h_t$ for memory and $z_t$ for a latent; observations are $o_t$. The ADM book calls the learned transition model $T(s' \mid s, a)$ and treats model-based reinforcement learning in its chapter on model-based methods.
+
+### What a world model is
+
+::: {.key-equation data-name="Policy versus world model"}
+$$
+\begin{aligned}
+\text{policy:}\quad & \pi(a_t \mid s_t, g) \\
+\text{world model:}\quad & p(s_{t+1} \mid s_t, a_t)
+\end{aligned}
+$$ {#eq-policy-vs-wm}
+:::
+
+**In words.** A policy picks what to do for a goal; a world model predicts what will happen if you do it.
+
+**Term by term.**
+
+- $g$: the goal, for a VLA a language instruction.
+- $p(s_{t+1} \mid s_t, a_t)$: a *distribution*, because the same action can have several outcomes. It is the transition model $P$ of [Week 2](w02-robot-control-mdps.qmd)'s MDP, now learned instead of given.
+
+::: {.key-equation .famous data-name="World model (the lecture's master formula)"}
+$$
+p(s_{t+1} \mid s_t, a_t, h_t)
+$$ {#eq-world-model}
+:::
+
+**In words.** The next state, predicted from the current state, the action and a memory of the past.
+
+**Term by term.**
+
+- $h_t$: memory, needed because the robot's observation is not the full state ([Week 7](w07-sequence-modeling-transformers.qmd)) and because motion is only visible across frames.
+- The action input is what separates a world model from a video model $p(\text{video} \mid \text{text})$.
+
+### Planning with a model
+
+::: {.key-equation data-name="Model predictive control"}
+$$
+\begin{aligned}
+a^*_{t:t+H-1} &= \arg\min_{a_{t:t+H-1}} \sum_{k=1}^{H} c(\hat s_{t+k}),
+\quad \hat s_{t+k} \sim p(\cdot \mid \hat s_{t+k-1}, a_{t+k-1})
+\end{aligned}
+$$ {#eq-mpc}
+:::
+
+**In words.** Search for the action sequence whose imagined rollout has the lowest cost, execute its first action, observe, and search again.
+
+**Term by term.**
+
+- $\hat s_t = s_t$: each search starts from the latest real state; that reset is what keeps errors from compounding.
+- $c$: the task cost; in the puck toy, the distance to the goal at every step plus the final speed.
+- The search here is the **cross-entropy method**: sample sequences from a Gaussian, keep the best, refit the Gaussian to them, repeat ([Week 4](w04-reinforcement-learning-1.qmd) used it over single actions).
+
+::: {.key-equation data-name="Why rollout errors compound"}
+$$
+e_{k+1} \le L\, e_k + \varepsilon
+\;\;\Rightarrow\;\;
+e_H \le \varepsilon\, \frac{L^H - 1}{L - 1}
+$$ {#eq-compound}
+:::
+
+**In words.** If each predicted step adds a small error $\varepsilon$, and the dynamics can stretch an existing error by a factor $L$, the error after $H$ imagined steps can grow exponentially in $H$.
+
+**Term by term.**
+
+- $e_k$: distance between the imagined and the real state after $k$ steps.
+- $L$: how much the (model's) dynamics can amplify a difference in one step; $L > 1$ for dynamics that spread nearby states apart.
+- **Why it holds:** the next error is the model's own one-step error plus the old error carried through the dynamics; unroll the recursion and sum the geometric series. With $L = 1$ the bound is $\varepsilon H$, linear.
+- **Numeric check:** in the puck toy (1,000 transitions) the error grows `{python} f"{ROLL_ERR[1000][40] / ROLL_ERR[1000][4]:.0f}"` times from step 4 to step 40, while the horizon grows 10 times (@fig-compound).
+
+### Latent world models
+
+::: {.key-equation data-name="World Models: vision, memory, controller"}
+$$
+\begin{aligned}
+z_t &= \mathrm{enc}(o_t) \\
+p(z_{t+1} \mid a_t, z_t, h_t) &= \textstyle\sum_i \pi_i\, \mathcal{N}(\mu_i, \sigma_i^2) \\
+a_t &= W [z_t; h_t] + b
+\end{aligned}
+$$ {#eq-vmc}
+:::
+
+**In words.** A VAE compresses each frame; a recurrent network predicts a mixture of Gaussians over the next latent; a linear controller acts on latent and memory.
+
+**Term by term.**
+
+- $\pi_i, \mu_i, \sigma_i$: weights, means and spreads of the mixture, output by the recurrent network (here $\pi_i$ is a mixture weight, not a policy).
+- $W, b$: the controller's only parameters, found by an evolution strategy (CMA-ES) on imagined rollouts.
+
+::: {.key-equation data-name="Recurrent state-space model (RSSM)"}
+$$
+\begin{aligned}
+h_t &= f(h_{t-1}, z_{t-1}, a_{t-1}) \\
+z_t &\sim q(z_t \mid h_t, o_t) \;\;\text{(training)}, \qquad z_t \sim p(z_t \mid h_t) \;\;\text{(imagination)} \\
+\mathcal{L} &= \textstyle\sum_t \big[ -\log p(o_t \mid h_t, z_t) - \log p(r_t \mid h_t, z_t) \\
+&\qquad + \mathrm{KL}\big(q(z_t \mid h_t, o_t) \,\|\, p(z_t \mid h_t)\big) \big]
+\end{aligned}
+$$ {#eq-rssm}
+:::
+
+**In words.** A deterministic memory is updated each step; a stochastic latent is inferred from the observation in training and predicted from memory in imagination; the loss reconstructs observations and rewards and keeps the prior close to the posterior.
+
+**Term by term.**
+
+- $f$: a recurrent cell; $h_t$ is never sampled, so sampling noise cannot corrupt the memory.
+- $q$: the posterior (encoder), which sees the observation; $p(z_t \mid h_t)$: the prior, which must do without.
+- KL term: trains the prior to predict what the posterior would have inferred, so imagined latents stay in the region the decoders understand.
+
+::: {.key-equation data-name="Learning behaviors in imagination (Dreamer)"}
+$$
+\max_\phi\; \mathbb{E}\Big[\sum_{k=0}^{H-1} \gamma^k \hat r_{t+k} + \gamma^H v_\psi(\hat h_{t+H}, \hat z_{t+H})\Big],
+\quad \hat a_{t+k} \sim \pi_\phi(\cdot \mid \hat h_{t+k}, \hat z_{t+k})
+$$ {#eq-dreamer}
+:::
+
+**In words.** Roll the actor out inside the frozen world model for $H$ steps, add up the imagined rewards and the critic's estimate of what follows, and improve the actor by backpropagating through the model.
+
+**Term by term.**
+
+- $\hat r$, $\hat h$, $\hat z$: imagined rewards and states; nothing here touches the real environment.
+- $v_\psi$: the critic, trained on the same imagined rollouts; it lets a short horizon $H$ account for the long-term future.
+- Dreamer uses a $\lambda$-weighted mix of such returns; the form above shows the idea.
+
+### Video and actions
+
+::: {.key-equation data-name="Video token count"}
+$$
+N_{\text{tokens}} = \underbrace{\frac{H W}{p^2}}_{\text{per frame}} \times \underbrace{f\, T}_{\text{frames}} \;\div\; (c_s^2\, c_t)
+$$ {#eq-tokens}
+:::
+
+**In words.** Tokens per frame times the number of frames, divided by the tokenizer's compression in each spatial direction ($c_s$, applied twice) and in time ($c_t$).
+
+**Term by term.**
+
+- $H, W, p$: image height, width and patch size; $f$: frames per second; $T$: seconds.
+- **Numeric check:** $256 \cdot 256 / 16^2 = 256$ tokens per frame, $\times\, 20 \cdot 10 = 200$ frames, gives 51,200; with $c_s = c_t = 8$ it becomes 51,200 / 512 = 100.
+
+::: {.key-equation data-name="World action model and video action model"}
+$$
+\begin{aligned}
+\text{WAM:}\quad & p_\theta(o_{t+1:t+k},\, a_{t:t+k-1} \mid o_{\le t}, \ell) \\
+\text{VAM:}\quad & \hat o_{t+1:t+k} \sim p_\theta(\cdot \mid o_{\le t}, \ell), \quad a_{t:t+k-1} = g_\psi(o_t, \hat o_{t+1:t+k})
+\end{aligned}
+$$ {#eq-wam-vam}
+:::
+
+**In words.** A world action model generates the next stretch of video and the actions jointly. A video action model generates (or partially generates) the video plan and lets an inverse dynamics model $g_\psi$ read off the actions.
+
+**Term by term.**
+
+- $\ell$: the language instruction.
+- $g_\psi$: small, trained on robot data only; in the toy, $k = 1$ and $g_\psi$ is an MLP of the state and the predicted change.
+- Both start from a video model pre-trained on internet video, which supplies the dynamics; mimic-video does not even generate the full video, it uses the model's features part-way through denoising [▶ 62:10](https://youtu.be/cTTmUZlOF2s?t=3730).
+
+### Predicting embeddings
+
+::: {.key-equation data-name="JEPA objective"}
+$$
+\begin{aligned}
+z_t &= \mathrm{enc}_\theta(o_t), \quad \hat z_{t+1} = \mathrm{pred}(z_t, a_t) \\
+\mathcal{L} &= \big\| \hat z_{t+1} - \mathrm{sg}\big[\mathrm{enc}_{\bar\theta}(o_{t+1})\big] \big\|^2
+\end{aligned}
+$$ {#eq-jepa}
+:::
+
+**In words.** Predict the embedding of the next observation; compare it with the actual next observation's embedding, computed by a target encoder that receives no gradient.
+
+**Term by term.**
+
+- $\mathrm{sg}$: stop-gradient. $\bar\theta$: the target encoder's weights, an EMA of $\theta$ (V-JEPA 2), or fixed (a frozen encoder).
+- Without $\mathrm{sg}$ and a separate target, $\mathrm{enc}_\theta \equiv 0$ is a perfect solution: collapse.
+- The regularized alternative keeps $\bar\theta = \theta$ and adds a penalty such as $\lambda \|\mathrm{Cov}(z) - I\|^2$, which makes the constant solution costly.
+- **Numeric check:** in the toy, stop-gradient alone already prevents collapse (spread `{python} f"{J_END['stop-gradient']['spread'].mean():.2f}"` after `{python} f"{J_STEPS:,}"` steps), as does the EMA target (`{python} f"{J_END['EMA target']['spread'].mean():.2f}"`), but only the covariance regularizer uses all 4 directions.
+
+## Worked examples
+
+### Example 1: the cross-entropy method, iteration by iteration {#ex-cem}
+
+```{python}
+#| include: false
+cem_rng = np.random.default_rng(0)
+m0 = step_of(MODELS[1000, 0])
+s0 = w8.START_STATE
+mu, std = np.zeros((15, 2)), np.full((15, 2), 0.5)
+CEM_ROWS = []
+for it in range(6):
+    A = np.clip(mu + std * cem_rng.standard_normal((200, 15, 2)), -1, 1)
+    c = w8.cost(w8.rollout(m0, np.repeat(s0[None], 200, 0), A))
+    order = np.argsort(c)
+    best = A[order[:20]]
+    CEM_ROWS.append((it + 1, float(c.mean()), float(c[order[0]]), float(c[order[19]])))
+    mu, std = best.mean(0), best.std(0) + 0.05
+    CEM_ROWS[-1] += (float(std.mean()),)
+means = [r[1] for r in CEM_ROWS]
+assert all(a > b for a, b in zip(means, means[1:])) and means[-1] < 0.9 * means[0]
+assert 0.6 < CEM_ROWS[-1][4] / CEM_ROWS[0][4] < 0.9                  # the spread shrinks only modestly
+```
+
+Planning the first 15 pushes from the start, in the 1,000-transition model: 200 sampled plans per iteration, the 20 cheapest kept.
+
+```{python}
+#| output: asis
+print("| iteration | mean cost of samples | best | 20th best | new spread |")
+print("|---:|---:|---:|---:|---:|")
+for it, mean_c, best_c, tw, sd in CEM_ROWS:
+    print(f"| {it} | {mean_c:.1f} | {best_c:.1f} | {tw:.1f} | {sd:.3f} |")
+```
+
+The first samples are random pushes. Refitting the Gaussian to the 20 best moves the whole population towards better plans: the mean cost of the samples falls in every iteration, from `{python} f"{CEM_ROWS[0][1]:.1f}"` to `{python} f"{CEM_ROWS[-1][1]:.1f}"`. Six iterations do not make the samples agree, though: their spread shrinks only from `{python} f"{CEM_ROWS[0][4]:.2f}"` to `{python} f"{CEM_ROWS[-1][4]:.2f}"`. That is enough for MPC, which executes only the first push and then plans again from a warm start. The mean of the last Gaussian is the plan. CEM needs no gradient of the model, which is why it works equally with the true table and with a learned model.
+
+### Example 2: compounding, by hand {#ex-compound}
+
+A model makes a one-step error of $\varepsilon = 0.01$, and the dynamics stretch any existing error by $L = 1.1$ per step. After 20 imagined steps the bound of @eq-compound is $0.01 \times (1.1^{20} - 1)/0.1 = 0.01 \times 57.3 = 0.57$, against $0.01 \times 20 = 0.2$ if errors simply added up ($L = 1$). After 40 steps the two are $4.4$ and $0.4$. With replanning from real observations every step, the horizon that matters is 1, and the bound is $\varepsilon$.
+
+### Example 3: the push the planner wanted {#ex-exploit}
+
+```{python}
+#| include: false
+plan3, c3_im = w8.cem_plan(step_of(MODELS[1000, 0]), w8.START_STATE, np.random.default_rng(0), H=PLAN_H, a_max=3.0)
+big = np.abs(plan3).max(1)
+im_path = w8.rollout(step_of(MODELS[1000, 0]), w8.START_STATE[None], plan3[None])[0]
+re_path = w8.rollout(w8.true_step, w8.START_STATE[None], plan3[None])[0]
+first5 = [(t, plan3[t], im_path[t + 1, 2:], re_path[t + 1, 2:]) for t in range(5)]
+assert big[:5].max() > 1.5
+assert np.linalg.norm(im_path[5, 2:]) > 1.2 * np.linalg.norm(re_path[5, 2:])
+```
+
+The first five pushes of a plan made in the 1,000-transition model with pushes allowed up to 3, and the speed after each push in imagination and on the real table:
+
+```{python}
+#| output: asis
+print("| step | push (x, y) | imagined velocity | real velocity |")
+print("|---:|:---|:---|:---|")
+for t, a, vi, vr in first5:
+    print(f"| {t + 1} | ({a[0]:+.2f}, {a[1]:+.2f}) | ({vi[0]:+.2f}, {vi[1]:+.2f}) | ({vr[0]:+.2f}, {vr[1]:+.2f}) |")
+```
+
+The planner asks for pushes well beyond 1, and in imagination the puck accelerates accordingly. On the real table the motor gives no more than 1, so the puck is slower: after five steps its speed is `{python} f"{np.linalg.norm(re_path[5, 2:]):.2f}"` instead of the imagined `{python} f"{np.linalg.norm(im_path[5, 2:]):.2f}"`. Every later step of the plan was chosen for a puck that is not where the plan thinks it is.
+
+## Interactive
+
+### Dream versus reality, by data size
+
+```{python}
+#| label: fig-dream-slider
+#| fig-cap: "Planning runs on the puck table for world models fitted to the chosen number of random transitions (three models each). Dashed: the runs as imagined, never looking; solid orange: those pushes on the real table; solid green: runs that replan from the real puck."
+#| fig-alt: "Interactive top view of the table with a slider for the data size: 250, 1,000, 4,000 transitions. A grey hill sits in the centre, a cross marks the goal at (1.5, 0). For each setting, three dashed blue paths all end on the cross; three orange paths end far from it at 250, closer at 1,000 and closer still at 4,000; the green paths end on the cross at 1,000 and 4,000, while at 250 some miss."
+fig = go.Figure()
+fig.add_trace(go.Contour(x=hx, y=np.linspace(-1.6, 1.6, 120), z=HILL.round(3), showscale=False, hoverinfo="skip",
+                         colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(120,120,120,0.55)"]],
+                         contours=dict(start=0.2, end=w8.HILL_H, size=0.45), line=dict(width=0)))
+for i, n in enumerate(NS):
+    for s in SEEDS:
+        for k, col, dash, name in (("imag", BLUE, "dash", "imagined"), ("blind", ORANGE, "solid", "imagined pushes, real table"),
+                                   ("look", GREEN, "solid", "replans from the real puck")):
+            p = RUNS[n, s][k]
+            fig.add_trace(go.Scatter(x=p[:, 0].round(3), y=p[:, 1].round(3), mode="lines",
+                                     line=dict(color=col, dash=dash, width=2), name=name, legendgroup=k,
+                                     showlegend=(s == 0), visible=(n == 1000)))
+fig.add_trace(go.Scatter(x=[w8.GOAL[0]], y=[w8.GOAL[1]], mode="markers", marker=dict(symbol="x", size=12, color=style.INK),
+                         name="goal", visible=True))
+per = 3 * len(SEEDS)
+steps = [dict(method="update", label=f"{n:,}",
+              args=[{"visible": [True] + [j // per == i for j in range(per * len(NS))] + [True]}]) for i, n in enumerate(NS)]
+fig.update_layout(**style.plotly_layout())
+fig.update_layout(height=430, margin=dict(l=40, r=20, t=30, b=20), legend=dict(orientation="h", y=1.15, x=0, font_size=10),
+                  xaxis=dict(range=[-2.2, 2.6], title="x"), yaxis=dict(range=[-1.6, 1.6], title="y", scaleanchor="x"),
+                  sliders=[dict(active=1, steps=steps, pad=dict(t=40), currentvalue=dict(prefix="random transitions: "))])
+fig.show()
+```
+
+**What to try.** At 1,000 transitions the dashed dreams all end on the goal, the orange replays drift off, and the green runs that look end on the goal. Move to 250: the dreams still look perfect (a model always believes itself), but the replays end far away, and even looking does not always help. At 4,000 the replays come closer but still miss.
+
+### Asking for more than the motor can give
+
+```{python}
+#| include: false
+EX_ROWS = []
+for a_max in (1.0, 1.5, 2.0, 2.5, 3.0):
+    plan, c_im = w8.cem_plan(step_of(MODELS[1000, 0]), w8.START_STATE, np.random.default_rng(0), H=PLAN_H, a_max=a_max)
+    ip = w8.rollout(step_of(MODELS[1000, 0]), w8.START_STATE[None], plan[None])[0]
+    rp = w8.rollout(w8.true_step, w8.START_STATE[None], plan[None])[0]
+    c_re = float(w8.cost(rp[None])[0])
+    EX_ROWS.append({"a_max": a_max, "imag": ip[:, :2].round(4).tolist(), "real": rp[:, :2].round(4).tolist(),
+                    "push": np.abs(plan).max(1).round(3).tolist(), "c_im": round(c_im, 2), "c_re": round(c_re, 2)})
+write_json({"rows": EX_ROWS, "goal": w8.GOAL.tolist(), "hill": {"at": w8.HILL_AT.tolist(), "w": w8.HILL_W},
+            "style": {"blue": BLUE, "orange": ORANGE, "ink": style.INK, "muted": style.MUTED, "surface": style.SURFACE}},
+           "data/w08-exploit.json")
+gaps = [r["c_re"] - r["c_im"] for r in EX_ROWS]
+assert gaps[-1] > 3 * max(gaps[0], 1.0)
+```
+
+One 25-step plan from the start, made in the 1,000-transition model (model 0) with pushes limited to the chosen strength. The motor, and the data, stop at 1.
+
+```{ojs}
+exData = FileAttachment("data/w08-exploit.json").json()
+viewof aMax = Inputs.range([1, 3], {step: 0.5, value: 1, label: "strongest push allowed"})
+```
+
+```{ojs}
+//| label: fig-exploit-explorer
+//| fig-cap: "The plan in imagination (dashed blue) and the same pushes on the real table (orange), with the hill (grey circle) and the goal (cross). Below: the strength of each push in the plan, against the motor's limit (dashed). The text compares the plan's cost in imagination and in reality."
+//| fig-alt: "Interactive figure with a slider for the strongest push allowed, from 1 to 3. The top panel shows the table from above with a grey circle for the hill, a dashed blue imagined path and an orange real path, both starting at the left. At 1 the two paths nearly coincide. As the slider rises, the blue path gets further along in 25 steps while the orange path lags behind it. The bottom panel shows bars of push strength per step, rising above a dashed line at 1 as the slider rises. Text below reports the imagined and the real cost."
+{
+  const r = exData.rows.find(x => x.a_max === aMax), s = exData.style, w = Math.min(width, 640);
+  const pts = (arr, k) => arr.map((p, i) => ({x: p[0], y: p[1], i, k}));
+  const circle = d3.range(0, 2 * Math.PI + 0.01, 0.1).map(t => ({x: exData.hill.at[0] + 2 * exData.hill.w * Math.cos(t),
+                                                                   y: exData.hill.at[1] + 2 * exData.hill.w * Math.sin(t)}));
+  const top = Plot.plot({
+    width: w, height: Math.round(w * 0.55), style: {background: s.surface},
+    x: {domain: [-2.2, 2.4], label: "x"}, y: {domain: [-1.4, 1.4], label: "y"},
+    marks: [
+      Plot.areaY(circle, {x: "x", y: "y", fill: s.muted, fillOpacity: 0.3, curve: "linear-closed"}),
+      Plot.line(pts(r.imag, "imagined"), {x: "x", y: "y", stroke: s.blue, strokeWidth: 2.5, strokeDasharray: "6,4"}),
+      Plot.line(pts(r.real, "real"), {x: "x", y: "y", stroke: s.orange, strokeWidth: 2.5}),
+      Plot.dot([{x: exData.goal[0], y: exData.goal[1]}], {x: "x", y: "y", symbol: "times", r: 7, stroke: s.ink, strokeWidth: 2.5})
+    ]
+  });
+  const bottom = Plot.plot({
+    width: w, height: 140, marginLeft: 44, style: {background: s.surface},
+    x: {label: "plan step"}, y: {label: "push strength", domain: [0, 3.1]},
+    marks: [
+      Plot.rectY(r.push.map((p, i) => ({i, p})), {x1: d => d.i + 0.6, x2: d => d.i + 1.4, y: "p", fill: s.blue}),
+      Plot.ruleY([1], {stroke: s.ink, strokeDasharray: "4,3"})
+    ]
+  });
+  return html`<div>${top}${bottom}</div>`;
+}
+```
+
+```{ojs}
+{
+  const r = exData.rows.find(x => x.a_max === aMax);
+  return md`Cost in imagination: **${r.c_im.toFixed(1)}** · cost of the same pushes on the real table: **${r.c_re.toFixed(1)}**`;
+}
+```
+
+**What to try.** At 1 the plan respects the motor, and imagination and reality agree closely. Raise the limit: the planner immediately uses the extra strength, the imagined path gets further in 25 steps and its cost drops, but the real puck, held back by the motor, falls behind, and the real cost barely moves. The gap between the two numbers is how much the planner is fooling itself.
+
+## Algorithm & code
+
+### Planning in a learned model
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w8.rollout, w8.cost, w8.cem_plan, w8.run_mpc)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+import torch.nn as nn
+
+from rlc.toys import w08_world as w8
+
+torch.manual_seed(0)
+rng = np.random.default_rng(0)
+
+# Data: random transitions of the page's puck table.
+s, a, s2 = (torch.tensor(x, dtype=torch.float32)
+            for x in w8.random_transitions(2000, rng))
+scale_in = torch.tensor(w8.IN_SCALE, dtype=torch.float32)
+delta = s2 - s
+scale_out = delta.std(0)
+
+# World model: (state, push) -> change of state, both scaled to unit size.
+model = nn.Sequential(nn.Linear(6, 64), nn.Tanh(), nn.Linear(64, 64),
+                      nn.Tanh(), nn.Linear(64, 4))
+opt = torch.optim.Adam(model.parameters(), lr=3e-3)
+X = torch.cat([s, a], dim=1) / scale_in
+for epoch in range(300):
+    for idx in torch.randperm(len(X)).split(256):
+        loss = ((model(X[idx]) - delta[idx] / scale_out) ** 2).mean()
+        opt.zero_grad(); loss.backward(); opt.step()
+
+
+@torch.no_grad()                     # planning needs no gradients of the model
+def step(state, push):
+    x = torch.cat([state, push], dim=-1) / scale_in
+    return state + model(x) * scale_out
+
+
+@torch.no_grad()
+def cem(state, H=15, n=200, elite=20, iters=6):
+    """CEM over push sequences, all n candidates rolled out as one batch."""
+    goal = torch.tensor(w8.GOAL, dtype=torch.float32)
+    mu, std = torch.zeros(H, 2), torch.full((H, 2), 0.5)
+    for _ in range(iters):
+        A = (mu + std * torch.randn(n, H, 2)).clamp(-1, 1)   # (n, H, 2)
+        x, c = state.expand(n, 4), torch.zeros(n)
+        for t in range(H):
+            x = step(x, A[:, t])
+            c += (x[:, :2] - goal).norm(dim=1)
+        best = A[c.argsort()[:elite]]                         # (elite, H, 2)
+        mu, std = best.mean(0), best.std(0) + 0.05
+    return mu
+
+
+# Model predictive control on the real (NumPy) table.
+state = torch.tensor(w8.START_STATE, dtype=torch.float32)
+for t in range(60):
+    push = cem(state)[0]
+    state = torch.tensor(w8.true_step(state.numpy(), push.numpy()),
+                         dtype=torch.float32)
+final = (state[:2] - torch.tensor(w8.GOAL, dtype=torch.float32)).norm()
+assert final < 0.1, final
+```
+:::
+
+The planner never differentiates the model: CEM only needs to *evaluate* rollouts, so batching all candidates is the main speed-up. Dreamer replaces this search with an actor trained by backpropagating through the model (@eq-dreamer).
+
+### Predicting embeddings, and collapse
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w8.jepa_train, w8.effective_rank)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import copy
+
+OBS, EMB = w8.OBS_DIM, w8.EMB_DIM
+
+
+def train_jepa(target="ema", steps=3000, reg=0.0, tau=0.99):
+    """Encoder + predictor on next-embedding error. target: 'same' (gradient
+    flows into the target too), 'ema' (slow copy, no gradient)."""
+    torch.manual_seed(0)
+    enc = nn.Linear(OBS, EMB, bias=False)
+    pred = nn.Linear(EMB + 2, EMB, bias=False)
+    enc_tgt = copy.deepcopy(enc).requires_grad_(False)
+    opt = torch.optim.SGD([*enc.parameters(), *pred.parameters()], lr=0.01)
+    data_rng = np.random.default_rng(0)
+    for _ in range(steps):
+        o, a, o2, _ = (torch.tensor(x, dtype=torch.float32)
+                       for x in w8.jepa_data(512, data_rng))
+        z = enc(o)                                         # (B, EMB)
+        z_next = enc(o2) if target == "same" else enc_tgt(o2).detach()
+        # Squared error summed over the EMB dimensions, averaged over the
+        # batch (F.mse_loss would also average over dimensions).
+        err = pred(torch.cat([z, a], dim=1)) - z_next
+        loss = (err ** 2).sum(dim=1).mean()
+        if reg:
+            zc = z - z.mean(0)
+            cov = zc.T @ zc / (len(z) - 1)
+            loss = loss + reg * ((cov - torch.eye(EMB)) ** 2).sum()
+        opt.zero_grad(); loss.backward(); opt.step()
+        with torch.no_grad():                              # EMA update
+            for p_t, p in zip(enc_tgt.parameters(), enc.parameters()):
+                p_t.mul_(tau).add_((1 - tau) * p)          # in-place ops
+    return z.std(0).mean().item()
+
+
+spread_same = train_jepa("same")
+spread_reg = train_jepa("same", reg=1.0)
+assert spread_same < 0.5 * spread_reg     # no safeguard: embeddings shrink
+assert abs(spread_reg - 1) < 0.1          # regularized: unit spread
+```
+:::
+
+`detach()` is the stop-gradient of @eq-jepa: the target is treated as a constant, so the loss cannot be lowered by moving it. Without it, and without a regularizer, the cheapest way to predict the target is to shrink both towards zero.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(8))
+```
+
+## Guest spotlight
+
+**Scott Reed** (NVIDIA's GEAR lab, earlier Google DeepMind, where he led the Gato generalist agent) asked what the right *backbone* for a robot policy is: the network that encodes cameras, robot state and instructions into a shared representation for predicting actions [▶ 01:09](https://youtu.be/fqkp_wkov6M?t=69). It decides not only how the policy runs but how much knowledge it can soak up in pre-training and carry to new tasks. The options are training from scratch, starting from a vision-language model (a VLA), and the newer choice of starting from a video model.
+
+On **VLAs**, he walked from OpenVLA's binned action tokens [▶ 05:28](https://youtu.be/fqkp_wkov6M?t=328) to the π models, which pair discrete FAST tokens with a separate flow-matching action expert [▶ 06:15](https://youtu.be/fqkp_wkov6M?t=375). His reasons: back-propagating flow-matching gradients straight through the language model can destroy its language abilities [▶ 07:13](https://youtu.be/fqkp_wkov6M?t=433), and a continuous expert never produces the malformed decodes that discrete tokens occasionally do, which on a robot arm is a safety issue [▶ 07:55](https://youtu.be/fqkp_wkov6M?t=475). He singled out TRI's large-behavior-model study for its double-blind, statistically careful real-robot evaluation, which found that multi-task pre-training does help [▶ 09:42](https://youtu.be/fqkp_wkov6M?t=582). The weaknesses he sees: reasoning happens in action space, action outputs are bolted on after pre-training with a risk of forgetting, and data from different robots may stay as separate "data islands" with little transfer between them [▶ 11:35](https://youtu.be/fqkp_wkov6M?t=695).
+
+**World action models** predict the world in pixels before or while acting, so pre-training can extract more from each video than action prediction alone [▶ 13:09](https://youtu.be/fqkp_wkov6M?t=789). DreamZero, of which he is a co-author, encodes frames with a VAE and jointly denoises a chunk of future frames and actions with a block-causal transformer; a "Flash" variant barely denoises the frames and performs as well [▶ 14:01](https://youtu.be/fqkp_wkov6M?t=841). Its failures mostly came from bad video generation rather than bad action prediction, and performance rose with model size (14B better than 2B), which suggests better video models will directly mean better policies [▶ 20:05](https://youtu.be/fqkp_wkov6M?t=1205). The costs: sampling is expensive, modelling every pixel is probably overkill for control, and context length is limited [▶ 21:20](https://youtu.be/fqkp_wkov6M?t=1280).
+
+**From scratch** is coming back through human data: wearable sensors and head-mounted cameras can record far more demonstrations than robots can, and recent work shows scaling-law behavior as human data grows [▶ 24:52](https://youtu.be/fqkp_wkov6M?t=1492). He ended "bullish" on world action models combined with large-scale human data [▶ 26:11](https://youtu.be/fqkp_wkov6M?t=1571). In the Q&A he called JEPA-style latent world models promising but unproven, since nobody yet knows which features control needs [▶ 27:02](https://youtu.be/fqkp_wkov6M?t=1622), expected hand-built simulators to keep their place for whole-body control while learned simulators help with contact and deformables, and expected tactile data to be needed in much smaller amounts than video [▶ 30:57](https://youtu.be/fqkp_wkov6M?t=1857).
+
+**How it connects to this week.** The talk is the lecture's second half from the inside: the choice between VLMs and video models as the backbone is the choice between "semantics first" and "dynamics first", and DreamZero's failure analysis is the same finding as mimic-video's oracle test and this page's third toy.
+
+## Solved problems {#problems}
+
+**1. Bounding a rollout.** A world model has a one-step error of 0.01, and the dynamics stretch errors by at most $L = 1.1$ per step. Bound the error after 20 imagined steps. How does the bound change if the robot replans from a real observation every 5 steps?
+
+::: {.callout-tip collapse="true" title="Solution"}
+@eq-compound gives $0.01 \times (1.1^{20} - 1)/0.1 = 0.01 \times 57.3 \approx 0.57$. Replanning from a real observation resets the error to 0 every 5 steps, so the worst error is that of a 5-step rollout: $0.01 \times (1.1^5 - 1)/0.1 = 0.01 \times 6.1 \approx 0.061$, nine times smaller. That is what looking at the real puck buys in @fig-table.
+:::
+
+**2. Counting video tokens.** A 30-second clip at 30 frames per second, 256 by 256 pixels, 16 by 16 patches. How many tokens per frame and in total without compression? With a tokenizer that compresses 8 times in each spatial direction and 8 times in time?
+
+::: {.callout-tip collapse="true" title="Solution"}
+$256 \cdot 256 / 16^2 = 256$ tokens per frame and $30 \cdot 30 = 900$ frames, so 230,400 tokens: far beyond a typical context. With $c_s = c_t = 8$: $256/64 = 4$ tokens per frame-group and $900/8 = 112.5$, about 113 time steps, so about 450 tokens. (@eq-tokens; temporal compression rounds up at the end of the clip.)
+:::
+
+**3. Why collapse is a minimum.** For the plain JEPA loss $\|\mathrm{pred}(\mathrm{enc}(o_t), a_t) - \mathrm{enc}(o_{t+1})\|^2$ with linear encoder $z = oW$ and linear predictor, show that $W = 0$, $P_a = 0$ gives zero loss. Why does a stop-gradient target change the picture?
+
+::: {.callout-tip collapse="true" title="Solution"}
+With $W = 0$ every embedding is 0, the predictor's output $0 \cdot P_z + a P_a$ is 0 when $P_a = 0$, and the target is 0: the loss is exactly 0, its global minimum, while carrying no information about the observation. Gradient descent on both sides moves the target towards the prediction as well as the prediction towards the target, and shrinking everything reduces the loss. With a stop-gradient, the target is a constant at each step; the encoder is then only pushed to make *predictions* match fixed targets, and shrinking the online embeddings no longer shrinks the target. Whether collapse is then avoided depends on the training dynamics: in this page's linear toy it is, but the lecture's methods add an EMA target or a regularizer to make it robust.
+:::
+
+**4. Which family can use which data?** You have (a) internet videos of people cooking, (b) 50 hours of robot play data with actions but no instructions, (c) 5 hours of instruction-labelled teleoperation. Which data can an action-conditioned world model (Dreamer-style), a world action model and a video action model each use, and for what?
+
+::: {.callout-tip collapse="true" title="Solution"}
+An action-conditioned model learns dynamics from (b), including failures, and from (c); (a) has no actions, but Dreamer 4 shows dynamics can be pre-trained on action-free video and then conditioned on actions with a little labelled data. A world action model starts from a video model pre-trained on data like (a), then learns joint video and action prediction from (c); (b) is harder to use because the model is conditioned on instructions, unless the play is relabelled with instructions after the fact. A video action model also starts from (a); its inverse dynamics model can learn from (b) and (c), since it needs (observation, next observation, action) triples, not instructions. This matches the lecture's comparison of the families [▶ 65:55](https://youtu.be/cTTmUZlOF2s?t=3955).
+:::
+
+**5. Dream or look?** Your planner reports that its plan reaches the goal, but the robot misses. Name two different causes, and say which one replanning from real observations fixes.
+
+::: {.callout-tip collapse="true" title="Solution"}
+(i) Compounding: small one-step errors grow along the imagined rollout, so the plan's later steps are made for a state the robot is not in. Replanning from real observations fixes this, because every plan starts from the truth and only its first step is executed. (ii) Exploitation: the planner chose actions outside the data, where the model is wrong in its favour, such as pushes beyond the motor's limit. Replanning limits the damage but does not remove it, since every new plan still trusts the model's wrong prediction; the fixes are constraining the planner to the data's range, penalizing model uncertainty, or collecting data where the planner wants to go.
+:::
+
+## Recap
+
+1. **A world model predicts consequences of actions.** $p(s_{t+1} \mid s_t, a_t, h_t)$; without the action it is a video model, not a world model. *Why it matters:* only an action-conditioned model lets a robot ask "what if?".
+2. **Planning in a model needs feedback.** Imagined rollouts compound their errors, and replanning from real observations resets them each step. *Why it matters:* it is why MPC and closed-loop world action models work while open-loop dreams drift.
+3. **Planners exploit model errors.** Optimization finds the actions where the model is wrong in its favour, especially outside the data. *Why it matters:* every imagination-trained policy inherits the risk.
+4. **Latent world models make imagination cheap.** World Models, then RSSM's deterministic memory and learned prior, then Dreamer's actor-critic in imagination, up to Dreamer 4's offline Minecraft diamonds. *Why it matters:* real-robot learning in hours (DayDreamer) instead of days.
+5. **Video backbones supply dynamics; robot data then teach control.** World action models generate video and actions together; video action models decode actions from video features; failures trace back to video quality. *Why it matters:* it is the main challenger to VLAs as the backbone of generalist policies.
+6. **Predicting embeddings needs a guard against collapse.** Stop-gradient targets, EMA or frozen encoders, or covariance regularizers. *Why it matters:* the lowest prediction loss can be the worst representation.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Policy vs world model | $\pi(a \mid s, g)$ vs $p(s' \mid s, a)$ | @eq-policy-vs-wm |
+| World model ★ | $p(s_{t+1} \mid s_t, a_t, h_t)$ | @eq-world-model |
+| MPC | argmin of imagined cost, execute first step, replan | @eq-mpc |
+| Compounding bound | $e_H \le \varepsilon (L^H - 1)/(L - 1)$ | @eq-compound |
+| World Models (V-M-C) | VAE, MDN-RNN, linear controller | @eq-vmc |
+| RSSM | $h_t$ deterministic; $q(z \mid h, o)$, $p(z \mid h)$, KL | @eq-rssm |
+| Dreamer | maximize imagined return + critic | @eq-dreamer |
+| Video tokens | $\frac{HW}{p^2} f T / (c_s^2 c_t)$ | @eq-tokens |
+| WAM, VAM | joint $p(o, a)$; or $\hat o$ then IDM | @eq-wam-vam |
+| JEPA | $\|\mathrm{pred}(z_t, a_t) - \mathrm{sg}[z_{t+1}]\|^2$ | @eq-jepa |
+
+**Common pitfalls.**
+
+- Calling a text-to-video model a world model: without action conditioning it cannot evaluate your plan.
+- Executing a long imagined plan open loop; the dream always looks perfect.
+- Letting the planner use actions or states outside the training data, and believing its predicted cost.
+- Judging a JEPA by its prediction loss alone; a collapsed encoder has the lowest loss.
+- Judging collapse with a scale-invariant probe only: shrinking embeddings still decode well until noise dominates; track their spread and effective rank.
+- Comparing world-model families without saying which data each can use.
+
+**Connections.** [Week 2](w02-robot-control-mdps.qmd)'s transition model $P(s' \mid s, a)$ is what a world model learns. [Week 4](w04-reinforcement-learning-1.qmd) used CEM over actions and Q-learning without a model; Dreamer's actor-critic is [Week 5](w05-reinforcement-learning-2.qmd)'s, trained in imagination. [Week 3](w03-imitation-learning.qmd)'s compounding errors return here as compounding prediction errors, and the fix is again feedback from the real world. [Week 6](w06-generative-models.qmd)'s VAEs and flow matching are the encoders and video generators of this week; [Week 7](w07-sequence-modeling-transformers.qmd)'s tokenizers and transformers become video tokenizers and causal video transformers. [Week 9](w09-generalist-robot-policies.qmd) returns to VLAs as generalist policies. In the ADM Companion: [learning a model from data]({{< var adm_url >}}/part3/ch16-model-based-methods.html#maximum-likelihood-models), [model predictive control]({{< var adm_url >}}/part2/ch09-online-planning.html#open-loop-planning-and-model-predictive-control) and [open versus closed loop]({{< var adm_url >}}/part2/ch09-online-planning.html#open-loop-vs.-closed-loop), which is this page's "dream or look".
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(8))
+```
