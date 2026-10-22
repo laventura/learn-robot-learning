@@ -185,6 +185,26 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | VLA | Vision-language-action model: a VLM fine-tuned to output actions |
 | OXE | Open X-Embodiment, the pooled data set of over a million real-robot episodes |
 
+## Week 10 · Embodied Reasoning and Test-time Scaling
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $c$ | The reasoning chain written before the action (plan, subtask, move, objects, gripper) |
+| $p_{\text{drop}}$, $m$ | Reasoning-dropout probability, and the mask that hides the reasoning ($m = 0$) |
+| ECoT, ECoT-Lite | Embodied chain-of-thought; its recipes that write no reasoning at test time |
+| $N$ | Number of samples drawn at test time (best-of-N) |
+| $p$ | Chance that one sample (or one answer) is right |
+| $V(o, a)$ | A verifier's score for candidate $a$ |
+| $\sigma_V$, $w$ | The toy verifier's error on the gap position; the gap's width |
+| $E_A$, $\Delta$ | An Elo rating; a rating gap |
+| $L$, $T$ | Transformer layers; reasoning tokens written before the answer |
+| $q$, $o_i$, $G$ | A question, the $i$-th sampled answer, and the group size (GRPO) |
+| $r_i$, $\hat A_{i,t}$ | Answer $i$'s reward, and its group-relative advantage, shared by all its tokens $t$ |
+| $\rho_{i,t}$ | Probability ratio of token $t$ of answer $i$, new policy over old |
+| $\beta$, $\pi_{\text{ref}}$ | KL weight and the frozen reference policy |
+| GRPO | Group relative policy optimization: PPO with a group-average baseline instead of a critic |
+| Verifiable reward | A reward a rule can compute, such as checking the final answer |
+
 ## Overloaded symbols
 
 Symbols that mean different things in different weeks.
@@ -227,3 +247,9 @@ Symbols that mean different things in different weeks.
 | $M$ | Mu-law range parameter; $m$ is a loss mask | 9 |
 | $I_t$ | π\*0.6's improvement indicator, 1 when the advantage beats the threshold (not an identity matrix) | 9 |
 | $\epsilon_\ell$ | π\*0.6's advantage threshold for task $\ell$ | 9 |
+| $o_i$ | The $i$-th sampled answer in a GRPO group (not an observation) | 10 |
+| $c$ | A reasoning chain (elsewhere a constant) | 10 |
+| $\beta$ | Weight of GRPO's KL penalty to the reference policy | 10 |
+| $N$ | Samples drawn by best-of-N search | 10 |
+| $L$ | Number of transformer layers | 10 |
+| $T$ | Reasoning tokens written before the answer | 10 |

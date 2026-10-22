@@ -183,7 +183,7 @@
     youtube: oBEkY6NeE_o
     duration_s: 1939
   homework: null
-  papers: [icrt, voyager, ecot-lite]
+  papers: [icrt, voyager, ecot-lite, ecot, cot-prompting, cot-serial, test-time-compute, grpo, deepseek-r1, alphago-zero]
 
 - week: 11
   date: 2026-05-11

@@ -889,11 +889,15 @@
   title: "In-Context Imitation Learning via Next-Token Prediction"
   authors: "Fu et al."
   year: 2024
-  venue: "arXiv"            # TODO(venue): believed ICRA 2025; not confirmed
+  venue: "ICRA"             # ICRA 2025: authors' camera-ready on autolab.berkeley.edu and the code repo; earlier a NeurIPS 2024 workshop paper
   url: https://arxiv.org/abs/2408.15980
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "ICRT, a causal transformer over robot trajectories (images, proprioception, actions) that learns a new task from its prompt: show it one or more teleoperated demonstrations of the task, and it carries the task out in a differently arranged scene, with no fine-tuning. It is the robot version of in-context learning in language models."
+  contributions:
+    - "Training sequences that concatenate several trajectories of the same task, the first few marked as the prompt, so the model must read earlier trajectories to predict later actions (Sec. IV-A)."
+    - "Multi-task scenes in which more than one task is possible from the same start, so the model cannot ignore the prompt (Sec. IV-A); trained only on single-task DROID data it fails every test task (Table II)."
+    - "No loss on the prompt's own actions: adding one drops average success from 79.2% to 22.5% (Table II, Sec. VI-C)."
+    - "79.2% average success on unseen pick-and-place and poking tasks, against 9.2% for Octo and 7.5% for OpenVLA after fine-tuning (Table I), at 39.6 Hz with a key-value cache (Sec. IV)."
+  connects_to: "Test-time adaptation without any change to the weights: the prompt is extra computation at inference, the theme of this page. Also Week 7's sequence models, and Gato's prompting with a demonstration (Week 9)."
 
 - id: voyager
   role: discussion
@@ -901,11 +905,15 @@
   title: "Voyager: An Open-Ended Embodied Agent with Large Language Models"
   authors: "Wang et al."
   year: 2023
-  venue: "arXiv"            # TODO(venue): believed later in TMLR; not confirmed
+  venue: "TMLR"             # TMLR 2024 per UT Austin RPL publication page (wang-tmlr24-voyager); numbers here from arXiv v2
   url: https://arxiv.org/abs/2305.16291
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "An agent that plays Minecraft by writing code with GPT-4, never updating any weights. It proposes its own next task, writes a program for it, runs it, and revises the program from the game's feedback, error messages and its own check of whether the task succeeded; programs that work are stored in a skill library and reused in later programs."
+  contributions:
+    - "Three parts: an automatic curriculum that proposes tasks matched to the agent's state, a growing library of verified skills retrieved by embedding, and iterative prompting with environment feedback, execution errors and self-verification (Abstract, Sec. 2)."
+    - "3.3× more unique items, 2.3× longer distances and tech-tree milestones up to 15.3× faster than earlier LLM agents (Abstract, arXiv v2)."
+    - "Ablations: a random curriculum finds 93% fewer items, and removing self-verification costs 73% (Sec. 3.4)."
+    - "Limits: GPT-4's cost, a curriculum that sometimes proposes items that do not exist, and code that calls functions that do not exist (Sec. 4)."
+  connects_to: "Reasoning and test-time compute at the level of whole tasks: plan, act, verify, retry. Its self-verification is the 'verifier' of this page's search toy, and its failures are the hallucinations the lecture's ARGOS work targets."
 
 - id: ecot-lite
   role: discussion
@@ -913,11 +921,121 @@
   title: "Training Strategies for Efficient Embodied Reasoning"
   authors: "Chen et al."
   year: 2025
-  venue: "arXiv"            # TODO(venue): the PDF mentions CoRL in its references only; not confirmed
+  venue: "CoRL"             # PMLR 305:365-391 (9th Conference on Robot Learning)
   url: https://arxiv.org/abs/2505.08243
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Asks why embodied chain-of-thought helps a VLA, by testing three explanations separately: reasoning labels shape better internal features, reasoning acts as a learning curriculum, or extra tokens simply give the model more computation. The answer leads to two recipes that keep most of the gain without writing any reasoning at test time."
+  contributions:
+    - "Isolating variants trained on the same data: reasoning pre-training, co-training, reasoning dropout, reasoning as an in-context 'scaffold' with no loss, and meaningless 'thinking tokens' (Sec. 4–5, Fig. 3)."
+    - "On LIBERO-90, full ECoT 90.8% and reasoning dropout 89.4% against 82.0% for the standard VLA; thinking tokens make things worse, −3.8 points on average (Table 1, Sec. 6.5)."
+    - "On real Bridge tasks, ECoT 77.5% and reasoning pre-training 69.4% against 50.5% for the standard VLA (Table 2), with the ECoT-Lite variants about 3× faster (Sec. 6.2, 7)."
+    - "A prescription: full ECoT for best performance, dropout in narrow domains or when switching reasoning on must stay possible, pre-training in diverse domains or with unpaired reasoning data (Sec. 7)."
+  connects_to: "This page's first toy runs the same variants on a tiny network. Its finding that test-time reasoning adds little on the narrow LIBERO tasks matches the toy, which is narrow too."
+
+# Key papers from the Week 10 lecture (cards written from the abstracts and the passages cited).
+- id: ecot
+  role: lecture
+  weeks: [10]
+  title: "Robotic Control via Embodied Chain-of-Thought Reasoning"
+  authors: "Zawalski, Chen, Pertsch, Mees, Finn & Levine"
+  year: 2024
+  venue: "CoRL"             # PMLR 270:3157-3181 (8th Conference on Robot Learning)
+  url: https://arxiv.org/abs/2407.08693
+  summary: "ECoT trains a VLA to write out a plan, the current subtask, the motion it needs, and grounded features such as object bounding boxes and the gripper's position, before it outputs the action. The reasoning labels are generated automatically for existing robot data by a pipeline of foundation models."
+  contributions:
+    - "Embodied reasoning steps, semantic and grounded in the image, predicted autoregressively before the action tokens (Abstract)."
+    - "A pipeline that labels large robot datasets with such reasoning using pretrained detectors and language models, with no new robot data (Abstract, Sec. 3)."
+    - "+28 points absolute success over OpenVLA on challenging generalization tasks (Abstract)."
+    - "Failures become readable, and a human can correct the robot by editing its reasoning in natural language; the reasoning also transfers to other robots (Abstract)."
+  connects_to: "The 'reason, then act' network of this page's first toy and the interactive where you edit its reasoning."
+
+- id: cot-prompting
+  role: lecture
+  weeks: [10]
+  title: "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models"
+  authors: "Wei, Wang, Schuurmans, Bosma, Ichter, Xia, Chi, Le & Zhou"
+  year: 2022
+  venue: "NeurIPS"          # Advances in Neural Information Processing Systems 35 (2022), proceedings.neurips.cc
+  url: https://arxiv.org/abs/2201.11903
+  summary: "Showing a language model a few worked examples whose answers spell out the intermediate steps makes it write such steps for new questions, and greatly improves arithmetic, commonsense and symbolic reasoning."
+  contributions:
+    - "Few-shot chain-of-thought prompting: exemplars of (question, reasoning, answer) in the prompt, no training (Abstract)."
+    - "With eight exemplars a 540B-parameter model reached the best published GSM8K accuracy, above a fine-tuned GPT-3 with a verifier (Abstract)."
+    - "An emergent ability of scale: below roughly 100B parameters the reasoning is fluent but illogical and can hurt (Sec. 3)."
+  connects_to: "The starting point of the lecture's history of reasoning, and why reasoning needs a capable base model, the same lesson as this page's GRPO toy."
+
+- id: cot-serial
+  role: lecture
+  weeks: [10]
+  title: "Chain of Thought Empowers Transformers to Solve Inherently Serial Problems"
+  authors: "Li, Liu, Zhou & Ma"
+  year: 2024
+  venue: "ICLR"             # ICLR 2024, proceedings.iclr.cc
+  url: https://arxiv.org/abs/2402.12875
+  summary: "A theory of why chain of thought helps: a transformer of fixed depth does a bounded number of sequential steps per token, but each generated token adds another round, so T reasoning tokens let a constant-depth transformer solve any problem that a boolean circuit of size T solves."
+  contributions:
+    - "Without chain of thought, constant-depth transformers with constant-bit precision only solve problems in AC0 (Abstract)."
+    - "With T steps of chain of thought they solve anything a circuit of size T solves (Abstract)."
+    - "Experiments on permutation composition, iterated squaring and circuit evaluation, where chain of thought helps most for shallow transformers (Abstract)."
+  connects_to: "The 'reasoning tokens as extra depth' equation on this page, and the guest's remark that test-time scaling increases the depth of computation."
+
+- id: test-time-compute
+  role: lecture
+  weeks: [10]
+  title: "Scaling LLM Test-Time Compute Optimally Can Be More Effective than Scaling Parameters for Reasoning"
+  authors: "Snell, Lee, Xu & Kumar"
+  year: 2025
+  venue: "ICLR"             # ICLR 2025 (proceedings title as here; arXiv 2408.03314 says "... than Scaling Model Parameters")
+  url: https://arxiv.org/abs/2408.03314
+  summary: "Studies how much a model gains from extra compute at inference, by searching against a learned verifier or by revising its own answers, and finds that the best method depends on how hard the question is for the model. Allocating test-time compute per question by difficulty beats best-of-N with about 4× less compute."
+  contributions:
+    - "Two ways to spend test-time compute: search guided by a process verifier, and sequential revisions by a model fine-tuned to revise (Abstract, Sec. 1)."
+    - "Compute-optimal scaling, chosen per question by its estimated difficulty, more than 4× more efficient than best-of-N (Abstract)."
+    - "In a FLOPs-matched comparison, test-time compute on a small model beats a 14× larger model on questions where the small model has some success; on the hardest questions, pretraining a bigger model wins (Abstract, Sec. 1)."
+  connects_to: "This page's second toy, which reproduces the 'search wins easy problems, size wins hard ones' picture with a path planner."
+
+- id: grpo
+  role: lecture
+  weeks: [10]
+  title: "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models"
+  authors: "Shao et al."
+  year: 2024
+  venue: "arXiv"            # arXiv 2402.03300; one search found no venue
+  url: https://arxiv.org/abs/2402.03300
+  summary: "A 7B model for mathematics, built from carefully selected web data, and the paper that introduced Group Relative Policy Optimization (GRPO), a PPO variant without a value network."
+  contributions:
+    - "GRPO: sample a group of answers per question and use each answer's reward, normalized by the group's mean and standard deviation, as its advantage; no critic, which saves memory (Sec. 4.1, Eq. 3)."
+    - "A KL penalty to a reference policy added to the loss rather than to the reward (Sec. 4.1.1)."
+    - "51.7% on the competition-level MATH benchmark without tools or voting (Abstract)."
+  connects_to: "The GRPO equation and toy on this page; PPO from Week 5."
+
+- id: deepseek-r1
+  role: lecture
+  weeks: [10]
+  title: "DeepSeek-R1 Incentivizes Reasoning in LLMs through Reinforcement Learning"
+  authors: "DeepSeek-AI (Guo et al.)"
+  year: 2025
+  venue: "Nature"           # Nature 645, 633-638 (2025), doi:10.1038/s41586-025-09422-z; numbers here from the arXiv version
+  url: https://arxiv.org/abs/2501.12948
+  summary: "Shows that reasoning can be learned by reinforcement learning alone. A base model trained with GRPO on problems whose answers can be checked by rules learns to write long reasoning, including checking and revising its own steps, without being shown any human reasoning traces."
+  contributions:
+    - "R1-Zero: RL from a base model with rule-based rewards for correct answers and format only (Sec. 2)."
+    - "AIME 2024 pass@1 rises from 15.6% to 77.9% during RL, while the responses grow longer (Sec. 2, Fig. 1)."
+    - "Reflective words such as 'wait' are almost absent early in training and appear suddenly later, the 'aha moment' (Table 2; Fig. 9 of the arXiv version)."
+  connects_to: "The GRPO toy on this page, where the policy learns by itself to take more reasoning steps on harder problems."
+
+- id: alphago-zero
+  role: lecture
+  weeks: [10]
+  title: "Mastering the Game of Go without Human Knowledge"
+  authors: "Silver et al."
+  year: 2017
+  venue: "Nature"           # Nature 550, 354-359 (2017); numbers from the accepted manuscript on UCL Discovery
+  url: https://doi.org/10.1038/nature24270
+  summary: "AlphaGo Zero learns Go from self-play alone, starting from the rules: a network proposes moves and evaluates positions, and Monte Carlo tree search uses the network to look ahead and to produce better training targets."
+  contributions:
+    - "Reinforcement learning from self-play with no human games, beating the earlier champion-defeating AlphaGo 100–0 (Abstract)."
+    - "The raw network alone, picking its most likely move with no search, rates 3,055 Elo; with search, 5,185 (Fig. 6b)."
+  connects_to: "The lecture's canonical example of test-time search, and this page's worked example on what that Elo gap means."
 
 # --- Week 11 · Frontiers & Open Problems -----------------------------------
 - id: path-to-ami
