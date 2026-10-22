@@ -58,5 +58,11 @@
     "hash": "b7e8f7d13a41eadd",
     "render_seconds": 3.6,
     "seconds": 20.7
+  },
+  "w11-stitch": {
+    "bytes": 191432,
+    "hash": "8effea2cf6baefcb",
+    "render_seconds": 2.5,
+    "seconds": 20.5
   }
 }
