@@ -1,6 +1,1011 @@
 ---
 title: "Week 9 · Generalist Robot Policies"
 subtitle: "Lecture of 27 April 2026 · guest: Quan Vuong"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rlc import style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w09_generalist as w9
+
+style.apply()
+BLUE, ORANGE, GREEN, YELLOW = style.CATEGORICAL[:4]
+NAMES = list(w9.ROBOTS)
+FM = "four motors"
+
+# --- Toy 1: one policy for many robots ------------------------------------------
+SEEDS = range(8)
+POLS = {s: w9.pooling_policies(s) for s in SEEDS}
+TEST = {s: w9.test_tasks(s) for s in SEEDS}
+PS = {(m, r): np.array([w9.success(POLS[s][m, r], w9.ROBOTS[r], *TEST[s]) for s in SEEDS])
+      for m in w9.POOL_METHODS for r in NAMES}
+pm = lambda m, r: float(PS[m, r].mean())
+GAIN_FM = PS["heads", FM] - PS["specialist", FM]
+assert GAIN_FM.mean() > 0.15                                         # pooling helps the data-poor robot
+assert pm("heads", "three wheels") > pm("specialist", "three wheels") + 0.05
+assert all(pm("heads", r) > pm("specialist", r) - 0.01 for r in ("point", "turned"))   # and costs the others nothing
+assert abs(pm("padded+cue", FM) - pm("specialist", FM)) < 0.05      # padding did not help four motors
+assert pm("padded+cue", "three wheels") > pm("specialist", "three wheels") + 0.05
+assert all(pm("padded-cue", r) < pm("padded+cue", r) - 0.09 for r in NAMES)         # no cue: worse everywhere
+N_BETTER = int((GAIN_FM > 0).sum())
+assert N_BETTER == 7
+
+NEW = [w9.new_robot_curve(s) for s in SEEDS]
+NC = {(m, n): np.array([o[m, n] for o in NEW]) for m in ("pooled", "scratch") for n in w9.NEW_COUNTS}
+nm = lambda m, n: float(NC[m, n].mean())
+assert all(nm("pooled", n) > nm("scratch", n) + 0.1 for n in (1, 2, 4, 8))
+assert abs(nm("pooled", 32) - nm("scratch", 32)) < 0.02
+
+
+def demos_for(method, level):
+    """Demos needed to reach `level` success, by linear interpolation in log2(n)."""
+    ns = np.array(w9.NEW_COUNTS)
+    ys = np.array([nm(method, n) for n in ns])
+    i = int(np.argmax(ys >= level))
+    assert ys[i] >= level and i > 0 and all(np.diff(ys[:i + 1]) > 0)
+    f = (level - ys[i - 1]) / (ys[i] - ys[i - 1])
+    return float(2 ** (np.log2(ns[i - 1]) + f))
+
+
+N85 = {m: demos_for(m, 0.85) for m in ("pooled", "scratch")}
+assert N85["scratch"] / N85["pooled"] > 2
+
+# The hero clip's runs: seed 0 (pooling gain closest to the 8-seed mean), every 15th task.
+assert int(np.argmin(np.abs(GAIN_FM - GAIN_FM.mean()))) == 0
+
+
+def run_ends(act, x, g):
+    """How each run ends, as the clip draws it: 'goal', 'post' (touched first) or 'time'."""
+    path, _, _ = w9.run_policy(act, w9.ROBOTS[FM], x, g)
+    out = []
+    for i in range(len(x)):
+        p = path[:, i]
+        hit = np.linalg.norm(p - w9.POST, axis=1) < w9.R_POST
+        home = np.linalg.norm(p - g[i], axis=1) < w9.TOL
+        t_hit = int(np.argmax(hit)) if hit.any() else 10**9
+        t_home = int(np.argmax(home)) if home.any() else 10**9
+        out.append("post" if t_hit < t_home else "goal" if home.any() else "time")
+    return out
+
+
+hx, hg = TEST[0][0][::15], TEST[0][1][::15]
+HERO = {m: run_ends(POLS[0][m, FM], hx, hg) for m in ("specialist", "heads")}
+HC = {(m, k): HERO[m].count(k) for m in HERO for k in ("goal", "post", "time")}
+assert (HC["specialist", "goal"], HC["heads", "goal"]) == (11, 15)
+assert HC["specialist", "post"] > HC["heads", "post"]
+
+# --- Toy 2: evaluating in a simulator ---------------------------------------------
+FAMS = range(5)
+SIM = {}
+for f in FAMS:
+    fam = w9.policy_family(f)
+    keys = list(fam)
+    R = np.array([w9.real_success(fam)[k] for k in keys])
+    k_hat, s_hat = w9.sysid(100, np.random.default_rng(f))
+    row = {"R": R, "keys": keys, "k": k_hat, "s": s_hat}
+    for name, gain, noise in (("uncal", 0.4, 0.0), ("gain", k_hat, 0.0), ("full", k_hat, s_hat)):
+        S = np.array([w9.sim_success(fam, gain, noise)[kk] for kk in keys])
+        row[name] = dict(S=S, r=w9.pearson(S, R), mmrv=w9.mmrv(S, R), bias=float(S.mean() - R.mean()))
+    SIM[f] = row
+    if f == 0:
+        FAM0 = fam
+rng_of = lambda name, key: (min(SIM[f][name][key] for f in FAMS), max(SIM[f][name][key] for f in FAMS))
+assert all(SIM[f]["full"]["r"] > 0.95 and SIM[f]["full"]["mmrv"] < 0.02 for f in FAMS)
+assert all(SIM[f]["uncal"]["bias"] < -0.2 and SIM[f]["uncal"]["r"] < 0.9 for f in FAMS)
+assert all(abs(SIM[f]["full"]["bias"]) < 0.01 for f in FAMS)
+assert all(SIM[f]["gain"]["r"] < SIM[f]["full"]["r"] for f in FAMS)
+S0 = SIM[0]
+slow = [i for i, k in enumerate(S0["keys"]) if k[1] == min(w9.SPEEDS)]
+assert S0["uncal"]["S"][slow].max() == 0 and S0["R"][slow].min() > 0.6   # slow policies vanish in the weak sim
+assert S0["uncal"]["mmrv"] < S0["gain"]["mmrv"] and S0["uncal"]["r"] < S0["gain"]["r"]   # the metrics disagree
+assert (S0["gain"]["S"] >= S0["R"] - 0.01).all() and (S0["gain"]["S"] - S0["R"])[slow].min() > 0.05
+assert np.abs(S0["full"]["S"] - S0["R"]).max() < 0.05
+assert all(0 < SIM[f]["gain"]["bias"] < 0.1 for f in FAMS)               # gain alone: a little too optimistic
+
+# --- Toy 3: the data pipeline ------------------------------------------------------
+IMG_TOK, TXT_TOK = 16, 10                      # tokens per camera image; language + action tokens
+LENS = [1 * IMG_TOK + TXT_TOK] * 2 + [3 * IMG_TOK + TXT_TOK] * 2
+USED, PADDED = w9.padding_cost(LENS)
+CU, SEG, POS = w9.pack(LENS)
+PCHECK = w9.packing_check(LENS)
+assert PCHECK["block-diagonal"] < 1e-12 and PCHECK["no mask"] > 0.1
+BUFS, N_TRAJ, T_LEN, BATCH = (2_000, 20_000, 100_000, 500_000), 5000, 100, 256
+DISTINCT = {b: w9.distinct_per_batch(w9.shuffle_buffer_batches(N_TRAJ, T_LEN, b, BATCH, 30,
+                                                               np.random.default_rng(0))) for b in BUFS}
+IID = N_TRAJ * (1 - (1 - 1 / N_TRAJ) ** BATCH)   # expected distinct trajectories for uniform draws
+assert all(DISTINCT[a] < DISTINCT[b] for a, b in zip(BUFS, BUFS[1:])) and abs(DISTINCT[BUFS[-1]] - IID) < 2
+
+# --- Worked examples -------------------------------------------------------------
+CORR_L, CORR_P = 10, 0.8
+CORR = w9.corridor(CORR_L, CORR_P)
+assert (CORR["adv_fwd"] > 0).all() and (CORR["adv_back"] <= -1 + 1e-9).all()
+CLEAN_EP = CORR_P ** CORR_L
+GATO_X = np.array([-2.0, -0.05, 0.0, 0.01, 0.05, 0.5, 3.0])
+GATO_F, GATO_T = w9.mu_law(GATO_X), w9.gato_tokens(GATO_X)
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 9 · **Lecture:** [video](https://youtu.be/dtofzDY9zuo) · **Go deeper:** [ADM Ch 18, behavioral cloning]({{< var adm_url >}}/part3/ch18-imitation-learning.html#behavioral-cloning) and [ADM Ch 13, advantage estimation]({{< var adm_url >}}/part2/ch13-actor-critic-methods.html#generalized-advantage-estimation)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(9))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+The policies of Weeks 3, 6 and 7, such as ACT and Diffusion Policy, are specialists: superb at one task on one robot, and retrained for every new robot or task [▶ 00:30](https://youtu.be/dtofzDY9zuo?t=30). The field's goal is the opposite, a **generalist robot policy**: one model that controls many robots, in many places, on many tasks [▶ 01:32](https://youtu.be/dtofzDY9zuo?t=92), so that you could download a "robot brain" and have it behave sensibly on your robot out of the box. Language and vision got there by training one large model on many tasks, which then beat the specialist models [▶ 03:06](https://youtu.be/dtofzDY9zuo?t=186). This week asks what it takes to repeat that in robotics, where data are scarce, every robot is different, control must be fast, and every evaluation costs hours of robot time [▶ 04:40](https://youtu.be/dtofzDY9zuo?t=280).
+
+**The question this week answers:** where do the data for a generalist robot policy come from, how do you train one model on robots that see and act differently, and how do you tell whether it is any good?
+
+### The key ideas at a glance
+
+- **Pool the data the field already has.** Open X-Embodiment gathered over a million real-robot episodes from 22 robots and 34 labs into one format; one model trained on all of it beat the methods built for each data set.
+- **Treat robotics as sequence modeling.** Tokenize instructions, goal images and camera frames, run a transformer, read actions out (Octo). Different robots get different readout heads (CrossFormer), or one padded action space whose robot the model must infer (π0).
+- **Pretraining pays most when the new task has little data.** Pooled features need far fewer demos to learn a new robot; with plenty of data the advantage fades.
+- **Start from a vision-language model.** Fine-tune a VLM to output actions (a VLA), and protect its knowledge: co-train on web data, and stop the action expert's gradients at the backbone.
+- **Engineering decides a lot.** Batching robots with different camera counts (padding or packing), how randomly the data loader mixes trajectories, and even data normalization can matter more than architecture.
+- **Evaluate in simulation, for rankings.** A simulator calibrated to the real robot cannot predict absolute success, but it can say which of two policies is better (SIMPLER).
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Generalist robot policy | One model that controls several robots on many tasks |
+| Embodiment | A particular robot body: its sensors, its motors, its action space |
+| Open X-Embodiment (OXE) | A pooled data set of over a million episodes from 22 robots |
+| Positive transfer | Data from other robots making a policy better on yours |
+| Goal-conditioned BC | Behavior cloning with the goal (an image or an instruction) as an input |
+| Readout token | A placeholder token whose output embedding a head turns into actions |
+| Action head | The part of the network that turns features into one robot's actions |
+| Action expert | A separate network (in π0, a flow-matching transformer) that produces continuous actions |
+| VLA | Vision-language-action model: a vision-language model fine-tuned to output actions |
+| Knowledge insulation | Training the action expert without letting its gradients change the VLM |
+| Sequence packing | Laying samples of different lengths end to end in one sequence, instead of padding |
+| Shuffle buffer | A pool of samples a streaming data loader draws batches from at random |
+| Real-to-sim evaluation | Scoring real-world policies in a simulator built to resemble the real setup |
+| MMRV | Mean maximum rank violation: how badly a simulator misorders policies |
+
+### After this week you can
+
+- Explain why pooled multi-robot data can beat robot-specific data, and when it helps most.
+- Describe Octo's tokens, block-wise causal attention and readout heads, and how it is fine-tuned to a new robot.
+- Compare per-robot heads with a padded action space, and say how each knows which robot it drives.
+- Describe how a VLM becomes a VLA, and why the current recipe uses co-training and a stop-gradient.
+- Compute the cost of padding a heterogeneous batch, and pack it correctly.
+- Explain advantage conditioning (π\*0.6) and why it can use bad data that filtering throws away.
+- Judge a simulated evaluation by its ranking (MMRV), not its absolute numbers.
+
+{{< video https://youtu.be/dtofzDY9zuo >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+A driving instructor who has taught in cars, vans and tractors can learn a new vehicle in an afternoon. The hard part, reading traffic and planning a route, is the same in every vehicle; only the pedals and levers differ. A generalist robot policy is built the same way: one shared network learns the skill from every robot's data, and a thin robot-specific part maps that skill to each robot's motors.
+:::
+
+### Use the data that already exists {#data-intuition}
+
+Robot data are expensive: every demonstration is a person teleoperating a robot [▶ 05:11](https://youtu.be/dtofzDY9zuo?t=311), and nothing like the internet's text or images exists for robot actions. But almost every robotics lab collects some data for its own papers [▶ 08:21](https://youtu.be/dtofzDY9zuo?t=501). Open X-Embodiment asked labs worldwide for theirs and converted it to one common format, giving over a million real-robot episodes from 22 robots [▶ 09:23](https://youtu.be/dtofzDY9zuo?t=563). The result was the first sign of a generalist: a single model trained on the whole mixture beat the best method designed for each individual setup [▶ 09:53](https://youtu.be/dtofzDY9zuo?t=593).
+
+The catch is that the data are **heterogeneous**: different cameras and camera counts, different action spaces, different control rates [▶ 05:43](https://youtu.be/dtofzDY9zuo?t=343). This page's first toy has the same problem in miniature. Four robots move a point round a post to a goal. The skill, how to get round the post, is the same for all four; but their motors differ: a plain point, one whose axes are turned and scaled, one with three wheels and one with four motors. Their data differ wildly in size: `{python} ", ".join(f"{w9.EPISODES[r]} episodes ({r})" for r in NAMES)`.
+
+```{python}
+#| label: fig-pooling
+#| fig-cap: "First toy: success rate on 300 held-out tasks for each robot (mean ± standard error over 8 seeds). Specialist: one network per robot on its own demos. Heads: one network for all robots, a separate output head each. Padded + cue: one padded output, with a cue telling the robots apart; padded, no cue: the same without the cue."
+#| fig-alt: "Grouped bar chart. The x-axis lists the four robots with their demo counts: point (40), turned (20), three wheels (6), four motors (3). For each, four bars: specialist, heads, padded with cue, padded without cue. For point and turned, the first three bars are all near 1 and the no-cue bar is lower, around 0.8 and 0.65. For three wheels, the specialist is about 0.84, heads and padded with cue about 0.92, no cue about 0.72. For four motors, the specialist is about 0.6, heads about 0.8, padded with cue about 0.6 and no cue about 0.5."
+fig, ax = plt.subplots(figsize=(6.4, 3.6))
+labels = ("specialist", "heads", "padded + cue", "padded, no cue")
+for j, (m, col, lab) in enumerate(zip(w9.POOL_METHODS, (ORANGE, GREEN, BLUE, style.MUTED), labels)):
+    xs = np.arange(4) + (j - 1.5) * 0.2
+    ys = [pm(m, r) for r in NAMES]
+    es = [PS[m, r].std(ddof=1) / np.sqrt(len(SEEDS)) for r in NAMES]
+    ax.bar(xs, ys, width=0.19, color=col, label=lab, yerr=es, capsize=2, ecolor=style.INK_SECONDARY)
+ax.set_xticks(range(4), [f"{r}\n({w9.EPISODES[r]} demos)" for r in NAMES])
+ax.set_ylim(0, 1.05)
+ax.set_ylabel("success rate")
+ax.legend(fontsize=8, ncol=4, loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False)
+plt.show()
+```
+
+Trained alone, the robots with plenty of data do well, and the one with 3 episodes reaches the goal in `{python} f"{pm('specialist', FM):.0%}"` of held-out tasks (@fig-pooling). Trained together, with a separate output head per robot, four motors rises to `{python} f"{pm('heads', FM):.0%}"` and three wheels from `{python} f"{pm('specialist', 'three wheels'):.0%}"` to `{python} f"{pm('heads', 'three wheels'):.0%}"`, while the two data-rich robots lose nothing. The shared layers learn how to get round the post from everyone's demos; each head only has to learn its robot's motor mapping, which is far less to learn from 3 episodes. That is positive transfer. It is not guaranteed: four motors gained in `{python} N_BETTER` of the 8 seeds, not all of them.
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w09-pool",
+    caption="The first toy's data-poor robot, four motors, driven by its own specialist and then by one network "
+            "trained on all four robots' demos (seed 0, 20 held-out tasks).",
+    alt=f"Animation, about 22 seconds, looping. On the left, a table seen from above: a grey disc labelled 'post' "
+        f"in the middle, 20 black dots for starts on the left and 20 small crosses for goals on the right. On the "
+        f"right, four robot names with blue bars for their demos: point 40, turned 20, three wheels 6, four motors 3. "
+        f"First the other robots' bars fade and orange paths grow from every start: many curve under the post to "
+        f"the goals, but {HC['specialist', 'post']} stop at the post, most on its upper-left side, marked by dark squares; the "
+        f"caption reads 'Four motors alone, 3 demos: {HC['specialist', 'goal']} of 20 runs reach the goal'. The paths "
+        f"dim, all four bars turn green under the caption 'Pool all four robots' demos: one network, a head per "
+        f"robot'. Then green paths grow from the same starts; more of them pass over or under the post to the goals, "
+        f"{HC['heads', 'post']} end at the post, and the caption reads 'Four motors, pooled network: "
+        f"{HC['heads', 'goal']} of 20 runs reach the goal'. Everything fades back to the empty table.",
+))
+```
+
+**What to watch for.** The table and the tasks stay the same throughout; only the network driving four motors changes. Trained on its own 3 demos, the specialist steers many runs from the upper starts into the post's upper-left side: `{python} HC['specialist', 'post']` of the 20 runs end at the post, and `{python} HC['specialist', 'goal']` reach their goals. After pooling, the network has learned how to get round the post from all four robots' demos, and its four-motors head only converts that into this robot's four motor commands: `{python} HC['heads', 'goal']` runs reach their goals and `{python} HC['heads', 'post']` touch the post. Seed 0 is the seed whose gain from pooling is closest to the average over 8 seeds; the bar chart above shows the averages.
+
+### Robotics as sequence modeling {#sequence-intuition}
+
+A VLM maps an image and a question to text: "what is in this picture?" → "the Statue of Liberty". A robot policy maps an image and an instruction to actions. Squint, and the second is the first with a different kind of answer [▶ 13:02](https://youtu.be/dtofzDY9zuo?t=782). So the generalist designs treat robotics as **multimodal sequence modeling**: turn everything into tokens and train a transformer [▶ 13:34](https://youtu.be/dtofzDY9zuo?t=814). Gato, from Week 8's guest, did this most literally: Atari frames, text, joint torques and button presses all became integers in one vocabulary.
+
+**Octo** was the first open-source generalist policy, trained on 800,000 OXE trajectories [▶ 14:05](https://youtu.be/dtofzDY9zuo?t=845). A language model encodes the instruction into task tokens; a shallow CNN turns image patches into observation tokens; a transformer much like a ViT processes them [▶ 15:08](https://youtu.be/dtofzDY9zuo?t=908). Attention is block-wise causal: observation tokens see the task and earlier time steps, never later ones [▶ 16:10](https://youtu.be/dtofzDY9zuo?t=970). Extra **readout tokens** collect what the actions need, and a diffusion head turns them into an action chunk [▶ 16:41](https://youtu.be/dtofzDY9zuo?t=1001) [▶ 17:44](https://youtu.be/dtofzDY9zuo?t=1064). It is trained by goal-conditioned behavior cloning, so the goal can be an image or an instruction.
+
+```{dot}
+//| label: fig-octo
+//| fig-width: 5.2
+//| fig-height: 4.6
+//| fig-cap: "Octo's design, drawn from the lecture. Task and observation tokens enter one transformer with block-wise causal attention; readout tokens gather what the action head needs, and a diffusion head produces an action chunk. A new sensor or robot is added by new input tokens or a new head."
+//| fig-alt: "Diagram. At the top, two inputs: 'instruction or goal image' leads through 'language encoder' to 'task tokens', and 'camera images' leads through 'shallow CNN on patches' to 'observation tokens'. Both, together with 'readout tokens', feed 'transformer (block-wise causal)', highlighted in orange. Its readout outputs lead to 'diffusion action head', which leads to 'action chunk'. A dashed box 'new sensor: new input tokens' points into the transformer and a dashed box 'new robot: new head' points to the action head."
+digraph octo {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=10];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  goal [label="instruction or\ngoal image", fillcolor="#f0efec", color="#52514e"];
+  cams [label="camera images", fillcolor="#f0efec", color="#52514e"];
+  task [label="task tokens"];
+  obs [label="observation tokens"];
+  read [label="readout tokens"];
+  tf [label="transformer\n(block-wise causal)", fillcolor="#fbe1d6", color="#eb6834"];
+  head [label="diffusion action head"];
+  act [label="action chunk", fillcolor="#f0efec", color="#52514e"];
+  newin [label="new sensor:\nnew input tokens", style="rounded,dashed", fillcolor="#fcfcfb"];
+  newhead [label="new robot:\nnew head", style="rounded,dashed", fillcolor="#fcfcfb"];
+  { rank=same; goal; cams; }
+  { rank=same; task; obs; read; }
+  goal -> task [label=" language\n encoder"];
+  cams -> obs [label=" shallow\n CNN"];
+  task -> tf; obs -> tf; read -> tf;
+  tf -> head [label=" readouts"];
+  head -> act [label=" denoise"];
+  newin -> tf [style=dashed];
+  newhead -> head [style=dashed];
+}
+```
+
+Two practical choices mattered. Octo did not align coordinate frames across data sets, which kept it scalable, but it did align the gripper command: early failures were mostly grasps at the wrong moment, because data sets encoded "open" and "closed" four different ways [▶ 18:45](https://youtu.be/dtofzDY9zuo?t=1125). And it was meant to be fine-tuned: a new sensor, such as a force-torque reading, enters as a few new tokens, a new action space gets a new head, and since most parameters sit in the transformer, most of the knowledge survives [▶ 22:58](https://youtu.be/dtofzDY9zuo?t=1378). Fine-tuning a generalist worked much better than starting from the best pretrained visual representations [▶ 24:01](https://youtu.be/dtofzDY9zuo?t=1441).
+
+### One network, many bodies {#heads-intuition}
+
+How does one network output actions for robots with 7, 14 or 2 action dimensions, at 5 or 50 Hz? There are two designs [▶ 45:49](https://youtu.be/dtofzDY9zuo?t=2749). **CrossFormer** gives each kind of embodiment its own action head on a shared transformer, so each head can predict a chunk of its own length and rate [▶ 28:11](https://youtu.be/dtofzDY9zuo?t=1691); one checkpoint drove arms, bimanual robots, quadrupeds, wheeled robots and drones, and matched the specialists [▶ 30:15](https://youtu.be/dtofzDY9zuo?t=1815). **π0** has a single action expert writing into one padded action space as large as the biggest robot's; smaller robots pad with zeros [▶ 46:51](https://youtu.be/dtofzDY9zuo?t=2811).
+
+Then how does the network know which robot it is driving? With heads, it does not need to: the user picks the head [▶ 50:01](https://youtu.be/dtofzDY9zuo?t=3001). With one padded output, the model has to infer the robot from what it sees: the camera views, the joint readings it gets as input, even the instruction ("cut the sushi" is not a task for a vacuum robot) [▶ 50:33](https://youtu.be/dtofzDY9zuo?t=3033). The toy's padded network gets a one-hot cue standing in for those signals. With the cue it matches the heads on three of the robots; without it, it fails on every robot (@fig-pooling), because positions and goals alone do not say whose motors are attached. On four motors it did no better than the specialist (`{python} f"{pm('padded+cue', FM):.0%}"`), possibly because its fourth output is trained by four motors' 3 episodes alone, while the heads network gives each robot its own output weights on shared features; we have not tested this further.
+
+```{dot}
+//| label: fig-heads
+//| fig-width: 6.6
+//| fig-height: 3.3
+//| fig-cap: "Two ways to output many action spaces. Left (CrossFormer): a head per kind of robot; the user says which head to use. Right (π0): one action expert writes a padded action vector; the model infers the robot from its observations, joint readings and instruction."
+//| fig-alt: "Diagram with two side-by-side panels. Left panel 'separate heads (CrossFormer)': 'observations: images, language, joint readings' leads to 'shared transformer', which branches into four heads: 'single-arm head', 'bimanual head', 'quadruped head', 'drone head'; an edge into the branching is labelled 'user picks'. Right panel 'padded action space (π0)': the same observations lead to 'shared transformer', then to 'action expert', then to 'padded action vector, zeros where a robot has fewer motors'; the edge into the action expert is labelled 'model infers the robot'."
+digraph heads {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.2; ranksep=0.32; newrank=true;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=9];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.6, fontname="Helvetica", fontsize=8, fontcolor="#52514e"];
+  subgraph cluster_pi { label="padded action space (π0)"; fontname="Helvetica"; fontsize=10; color="#c3c2b7";
+    o2 [label="observations: images,\nlanguage, joint readings", fillcolor="#f0efec", color="#52514e"];
+    b2 [label="shared transformer"];
+    ex [label="action expert", fillcolor="#fbe1d6", color="#eb6834"];
+    pad [label="padded action vector\n(zeros where a robot\nhas fewer motors)", fillcolor="#f0efec", color="#52514e"];
+    o2 -> b2; b2 -> ex [label=" model infers\n the robot"]; ex -> pad;
+  }
+  subgraph cluster_cf { label="separate heads (CrossFormer)"; fontname="Helvetica"; fontsize=10; color="#c3c2b7";
+    o1 [label="observations: images,\nlanguage, joint readings", fillcolor="#f0efec", color="#52514e"];
+    b1 [label="shared transformer"];
+    h1 [label="single-arm\nhead"]; h2 [label="bimanual\nhead"]; h3 [label="quadruped\nhead"]; h4 [label="drone\nhead"];
+    o1 -> b1; b1 -> h1 [label=" user\n picks"]; b1 -> h2; b1 -> h3; b1 -> h4;
+  }
+}
+```
+
+### Pretraining pays most when data are scarce {#transfer-intuition}
+
+Does pretraining on many tasks actually help a new one? Many believed so, but it was hard to show in robotics [▶ 30:46](https://youtu.be/dtofzDY9zuo?t=1846). TRI's large-behavior-model study tested it with blind, randomized real-robot trials and found pretraining made fine-tuning about 3 to 5 times more sample efficient, with the largest gains when the new task had little data [▶ 32:50](https://youtu.be/dtofzDY9zuo?t=1970). It also found that how the data were normalized often mattered more than architecture or algorithm [▶ 33:20](https://youtu.be/dtofzDY9zuo?t=2000). (The 3 to 5 times is the lecturer's summary; we checked only the paper's abstract, which says new tasks are learned with less data but gives no single factor.)
+
+The toy reproduces the pattern. A fifth robot arrives with a handful of demos. Either train a network on them from scratch, or keep the pooled network frozen and fit only a new linear head on its features.
+
+```{python}
+#| label: fig-newrobot
+#| fig-cap: "First toy, a new robot: success rate against the number of its demos, for a network trained on them from scratch and for a new head on the frozen pooled network (mean over 8 seeds; shading: ± one standard error)."
+#| fig-alt: "Line chart. The x-axis is the number of demos on a log scale: 1, 2, 4, 8, 16, 32; the y-axis the success rate from 0 to 1. The pooled-head line starts at about 0.25 with 1 demo, rises to about 0.6 at 2, about 0.87 at 4 and 0.89 at 8, then about 0.99 from 16 on. The scratch line starts lower, about 0.09, and stays below the pooled line up to 8 demos; at 16 both are near 0.96 to 0.99, and at 32 they coincide."
+fig, ax = plt.subplots(figsize=(6.4, 3.3))
+ns = np.array(w9.NEW_COUNTS)
+for m, col, lab in (("pooled", GREEN, "new head on pooled features"), ("scratch", ORANGE, "trained from scratch")):
+    mu = np.array([nm(m, n) for n in ns])
+    se = np.array([NC[m, n].std(ddof=1) / np.sqrt(len(SEEDS)) for n in ns])
+    ax.plot(ns, mu, "o-", color=col, lw=2, label=lab)
+    ax.fill_between(ns, mu - se, mu + se, color=col, alpha=0.2, lw=0)
+ax.set_xscale("log", base=2)
+ax.set_xticks(ns, [str(n) for n in ns])
+ax.set_ylim(0, 1.05)
+ax.set_xlabel("demos on the new robot")
+ax.set_ylabel("success rate")
+ax.legend(fontsize=9, loc="lower right")
+plt.show()
+```
+
+With 1 demo, the pooled features give `{python} f"{nm('pooled', 1):.0%}"` against `{python} f"{nm('scratch', 1):.0%}"`; with 4, `{python} f"{nm('pooled', 4):.0%}"` against `{python} f"{nm('scratch', 4):.0%}"` (@fig-newrobot). Interpolating, the pooled network reaches 85% success with about `{python} f"{N85['pooled']:.1f}"` demos and the scratch network needs about `{python} f"{N85['scratch']:.1f}"`, `{python} f"{N85['scratch'] / N85['pooled']:.1f}"` times as many. By 32 demos the two are equal: with enough data of its own, the new robot no longer needs the others.
+
+### Start from a vision-language model {#vla-intuition}
+
+Even a million robot episodes are tiny next to what vision-language models are trained on, so the next question was whether internet-scale knowledge transfers to control [▶ 33:51](https://youtu.be/dtofzDY9zuo?t=2031). LLaVA showed the template: put image tokens in front of the text and let the language model attend over both [▶ 34:22](https://youtu.be/dtofzDY9zuo?t=2062). Treat actions the same way: turn them into tokens, add them to the vocabulary (overwriting the least used tokens), and fine-tune with the usual next-token loss [▶ 35:24](https://youtu.be/dtofzDY9zuo?t=2124). RT-2 and OpenVLA did this with the simple per-dimension binning of [Week 7](w07-sequence-modeling-transformers.qmd) [▶ 36:26](https://youtu.be/dtofzDY9zuo?t=2186).
+
+The recipe many labs now follow comes from π0.5 and knowledge insulation [▶ 51:35](https://youtu.be/dtofzDY9zuo?t=3095). The VLM backbone is trained by next-token prediction on FAST-tokenized robot actions *and* web data; the web data keep it from forgetting what it knew [▶ 52:37](https://youtu.be/dtofzDY9zuo?t=3157). A separate action expert produces continuous actions by flow matching ([Week 6](w06-generative-models.qmd)); it reads the backbone, but a stop-gradient keeps its gradients out of it, which protects the VLM's knowledge and speeds up training [▶ 53:08](https://youtu.be/dtofzDY9zuo?t=3188).
+
+```{dot}
+//| label: fig-recipe
+//| fig-width: 5.4
+//| fig-height: 4.3
+//| fig-cap: "The current VLA recipe as the lecture summarizes it (π0.5 with knowledge insulation). The backbone learns from next-token prediction on language and FAST action tokens, co-trained with web data; the flow-matching action expert reads the backbone through a stop-gradient."
+//| fig-alt: "Diagram. Three inputs at the top: 'images: robot cameras and web', 'language', 'robot actions as FAST tokens'. All lead to 'VLM backbone', which has a loss edge to 'next-token loss on language and FAST tokens'. From the backbone a dashed edge labelled 'stop-gradient' leads to 'action expert (flow matching)', highlighted in orange, which leads to 'continuous action chunk' and has its own 'flow-matching loss'."
+digraph recipe {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.3; ranksep=0.38;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=10];
+  edge [color="#52514e", penwidth=1.1, arrowsize=0.7, fontname="Helvetica", fontsize=9, fontcolor="#52514e"];
+  img [label="images: robot\ncameras and web", fillcolor="#f0efec", color="#52514e"];
+  lang [label="language", fillcolor="#f0efec", color="#52514e"];
+  fast [label="robot actions as\nFAST tokens", fillcolor="#f0efec", color="#52514e"];
+  vlm [label="VLM backbone"];
+  ntp [label="next-token loss on\nlanguage and FAST tokens", fillcolor="#f0efec", color="#52514e"];
+  ex [label="action expert\n(flow matching)", fillcolor="#fbe1d6", color="#eb6834"];
+  fm [label="flow-matching loss", fillcolor="#f0efec", color="#52514e"];
+  out [label="continuous action chunk", fillcolor="#f0efec", color="#52514e"];
+  { rank=same; img; lang; fast; }
+  { rank=same; ntp; ex; }
+  img -> vlm; lang -> vlm; fast -> vlm;
+  vlm -> ntp [label=" trains\n backbone"];
+  vlm -> ex [style=dashed, label=" stop-\n gradient"];
+  ex -> fm; ex -> out;
+}
+```
+
+### Feeding the model: batches and buffers {#pipeline-intuition}
+
+Pooled data break the simple assumption that every sample has the same shape. One data set has a single third-person camera, another adds two wrist cameras [▶ 39:03](https://youtu.be/dtofzDY9zuo?t=2343). **Padding** every sample to the longest one is easy, but in a mixed batch much of the compute goes on zeros [▶ 40:05](https://youtu.be/dtofzDY9zuo?t=2405). **Sequence packing** lays the samples end to end instead, so every token is real; the price is bookkeeping: the start of each sample, an attention mask that keeps samples from looking at each other, and positions that restart at each sample [▶ 40:35](https://youtu.be/dtofzDY9zuo?t=2435) [▶ 41:39](https://youtu.be/dtofzDY9zuo?t=2499). In the page's example batch, two samples with 1 camera and two with 3, padding computes `{python} f"{PADDED}"` tokens for `{python} f"{USED}"` real ones, `{python} f"{1 - USED / PADDED:.0%}"` wasted ([worked example](#ex-packing)).
+
+How randomly the loader mixes data mattered as much. Octo streamed trajectories from disk into a **shuffle buffer** and drew batches from it; with a buffer of 20,000 frames, batches held frames from too few trajectories and the policy generalized poorly, and enlarging it to 500,000 made a large difference with nothing else changed [▶ 42:41](https://youtu.be/dtofzDY9zuo?t=2561) [▶ 43:43](https://youtu.be/dtofzDY9zuo?t=2623). The toy streams `{python} f"{N_TRAJ:,}"` trajectories of `{python} T_LEN` frames and draws batches of `{python} BATCH`.
+
+```{python}
+#| label: fig-buffer
+#| fig-cap: "Third toy: the average number of different trajectories in a batch of 256 frames, against the shuffle buffer's size (5,000 trajectories of 100 frames, streamed one trajectory at a time; 30 batches each). The dashed line is what drawing frames uniformly from the whole data set would give."
+#| fig-alt: "Line chart with a log x-axis for buffer size: 2,000, 20,000, 100,000 and 500,000 frames. The y-axis is distinct trajectories per batch, 0 to about 260. The line rises from about 48 at 2,000 to about 156 at 20,000, about 226 at 100,000 and about 249 at 500,000, where it meets a dashed horizontal line at about 250 labelled uniform draws."
+fig, ax = plt.subplots(figsize=(6.4, 3.0))
+ax.plot(BUFS, [DISTINCT[b] for b in BUFS], "o-", color=BLUE, lw=2)
+ax.axhline(IID, color=style.MUTED, ls="--", lw=1.2)
+ax.text(BUFS[0], IID - 14, "uniform draws from the whole data set", fontsize=8, color=style.INK_SECONDARY)
+ax.set_xscale("log")
+ax.set_xticks(BUFS, [f"{b:,}" for b in BUFS])
+ax.set_ylim(0, 270)
+ax.set_xlabel("shuffle buffer (frames)")
+ax.set_ylabel("trajectories per batch")
+plt.show()
+```
+
+A batch from a `{python} f"{BUFS[0]:,}"`-frame buffer holds frames from only `{python} f"{DISTINCT[BUFS[0]]:.0f}"` trajectories on average, so each gradient step sees a few situations many times over; a `{python} f"{BUFS[1]:,}"`-frame buffer gives `{python} f"{DISTINCT[BUFS[1]]:.0f}"`, and only a buffer near the size of the data set approaches the `{python} f"{IID:.0f}"` of truly random draws (@fig-buffer). Loading by random reads from a flat index avoids the problem at the price of fast storage [▶ 44:14](https://youtu.be/dtofzDY9zuo?t=2654).
+
+### Learning from data of mixed quality {#quality-intuition}
+
+Pooling also mixes skill levels: careful demos, hesitant ones, the robot's own failed attempts. Cloning all of it copies the average, mistakes included. This week's guest showed that adding the lowest-quality data *hurt* π0.7 when the model was not told about quality, and *helped* when each episode came with metadata on its speed and quality [▶ 10:33](https://youtu.be/pzolgvyWEFY?t=633). The discussion paper π\*0.6 does this per action: a value function estimates each action's advantage, the policy is trained on all data with one more input saying whether the advantage beat a threshold, and at test time it is asked for the good actions. Unlike filtering, nothing is thrown away: the bad steps still teach what the situations look like. The [corridor example](#ex-advantage) works this out exactly.
+
+### Evaluate in simulation, for rankings {#eval-intuition}
+
+A generalist must be tested on many tasks and robots, and real evaluation is slow and fragile: someone bumps a camera, a motor is replaced and the joint readings shift, and a single trial takes minutes [▶ 54:10](https://youtu.be/dtofzDY9zuo?t=3250) [▶ 55:13](https://youtu.be/dtofzDY9zuo?t=3313). Simulation is cheaper and reproducible [▶ 56:47](https://youtu.be/dtofzDY9zuo?t=3407). SIMPLER evaluates policies trained only on real data in simulated copies of the real setups [▶ 57:18](https://youtu.be/dtofzDY9zuo?t=3438), after narrowing two gaps: the **control gap**, by system identification so that the simulated arm responds to commands like the real one [▶ 58:52](https://youtu.be/dtofzDY9zuo?t=3532), and the **visual gap**, by green-screening real backgrounds behind simulated objects and projecting real textures onto them [▶ 59:23](https://youtu.be/dtofzDY9zuo?t=3563). What it promises is a ranking, not absolute numbers: 50% in simulation does not mean 50% on the robot, but if policy A beats B in SIMPLER, it should on the real robot too [▶ 60:55](https://youtu.be/dtofzDY9zuo?t=3655).
+
+The second toy tests the control gap only. Nine policies, from 3 cloning budgets each run at 3 speed factors, are scored on the "real" point robot, whose motors are noisy, and in simulators whose motor gain is wrong (0.4 instead of 1) or estimated by system identification from 100 test commands.
+
+```{python}
+#| label: fig-simreal
+#| fig-cap: "Second toy (policy family 0): each dot is one of 9 policies, its real success rate (x) against its success rate in a simulator (y). Left: uncalibrated, motor gain 0.4 and no noise. Middle: gain identified from 100 real commands, no noise. Right: gain and motor noise identified. The diagonal marks equal success."
+#| fig-alt: "Three square scatter plots side by side, each with 9 dots and a dashed diagonal, both axes from 0 to 1. Left, uncalibrated: three dots sit at 0 in simulation although their real success is between about 0.65 and 0.8; the other six lie close to the diagonal. Middle, gain only: all dots lie on or above the diagonal, the three slowest policies furthest above it, by about 0.1 to 0.16. Right, gain and noise: all nine dots lie on the diagonal."
+fig, axs = plt.subplots(1, 3, figsize=(7.0, 2.7), sharey=True)
+speed_col = dict(zip(w9.SPEEDS, (ORANGE, BLUE, GREEN)))
+for ax, (name, title) in zip(axs, (("uncal", "uncalibrated"), ("gain", "gain identified"),
+                                   ("full", "gain + noise identified"))):
+    d = S0[name]
+    for (n, s), r, sv in zip(S0["keys"], S0["R"], d["S"]):
+        ax.scatter(r, sv, s=14 + 6 * np.log2(n), color=speed_col[s], zorder=3)
+    ax.plot([0, 1], [0, 1], "--", color=style.MUTED, lw=1)
+    ax.set_title(f"{title}\nr = {d['r']:.2f}, MMRV = {d['mmrv']:.3f}", fontsize=9)
+    ax.set_xlim(-0.03, 1.03); ax.set_ylim(-0.03, 1.03); ax.set_aspect("equal")
+    ax.set_xlabel("real success")
+axs[0].set_ylabel("simulated success")
+for s, c in speed_col.items():
+    axs[0].scatter([], [], color=c, s=20, label=f"speed {s}")
+axs[0].legend(fontsize=7, loc="upper left")
+plt.tight_layout()
+plt.show()
+```
+
+The uncalibrated simulator is badly wrong in absolute terms, `{python} f"{-S0['uncal']['bias']:.2f}"` too low on average, because its weak motors leave the slowest policies far short of their goals: they score 0 in simulation and between `{python} f"{S0['R'][slow].min():.0%}"` and `{python} f"{S0['R'][slow].max():.0%}"` on the real robot (@fig-simreal). Identifying the gain brings the average much closer (now `{python} f"{S0['gain']['bias']:.2f}"` too high) but not the ranking, because the simulator still lacks the motor noise, which hurts slow policies most: they now look `{python} f"{(S0['gain']['S'] - S0['R'])[slow].min():.2f}"` to `{python} f"{(S0['gain']['S'] - S0['R'])[slow].max():.2f}"` better in simulation than on the robot. With gain and noise identified, simulated and real success agree for every policy. Over 5 policy families the pattern holds: correlation `{python} f"{rng_of('uncal', 'r')[0]:.2f}"`–`{python} f"{rng_of('uncal', 'r')[1]:.2f}"` uncalibrated, `{python} f"{rng_of('gain', 'r')[0]:.2f}"`–`{python} f"{rng_of('gain', 'r')[1]:.2f}"` with the gain alone, and at least `{python} f"{rng_of('full', 'r')[0]:.3f}"` fully calibrated. In this toy calibration closes the gap completely because the simulator's model has the same form as the "real" robot; real setups always keep some gap, which is why SIMPLER reports rankings.
+
+## Key concepts & formulae
+
+The lecture writes $o_t$ for observations, $a_t$ for actions and $\ell$ for a language instruction; $g$ is a goal, an image or an instruction. The ADM book writes the cloning objective as maximum likelihood over expert state-action pairs, the same thing without the goal.
+
+### Training on many robots
+
+::: {.key-equation data-name="Goal-conditioned behavior cloning (Octo)"}
+$$
+\mathcal{L}(\theta) = -\,\mathbb{E}_{(o_{t-h:t},\, g,\, a_{t:t+H-1}) \sim \mathcal{D}}
+\big[\log \pi_\theta(a_{t:t+H-1} \mid o_{t-h:t}, g)\big]
+$$ {#eq-gcbc}
+:::
+
+**In words.** Make the demonstrated chunk of actions likely, given a short history of observations and the goal.
+
+**Term by term.**
+
+- $o_{t-h:t}$: the last $h+1$ observations (Octo uses a short window).
+- $g$: a goal image, or an instruction $\ell$; one model learns to accept either.
+- $a_{t:t+H-1}$: a chunk of $H$ actions ([Week 7](w07-sequence-modeling-transformers.qmd)); Octo's diffusion head models its distribution, so the log-likelihood is replaced by the denoising loss of [Week 6](w06-generative-models.qmd).
+- $\mathcal{D}$: the pooled data of all robots and tasks.
+
+::: {.key-equation data-name="Multicontext imitation (LangLfP)"}
+$$
+\mathcal{L}(\theta, f_1, \dots, f_K) = \frac{1}{K}\sum_{k=1}^{K} \mathbb{E}_{(\tau, c) \sim \mathcal{D}_k}
+\Big[ \textstyle\sum_{t} -\log \pi_\theta\big(a_t \mid s_t, f_k(c)\big) \Big]
+$$ {#eq-mcil}
+:::
+
+**In words.** Several data sets describe tasks in different ways; each gets its own encoder into one shared goal space, and one policy learns from all of them.
+
+**Term by term.**
+
+- $\mathcal{D}_k$: data set $k$, demonstrations $\tau$ paired with a task description $c$ of kind $k$: a goal image from hindsight relabelling, or a sentence.
+- $f_k$: the encoder for kind $k$; all map into the same latent goal $z = f_k(c)$.
+- Why it pays: goal images come free (the last frame of any window), sentences cost an annotator; in Lynch and Sermanet's paper under 1% of the data needed language.
+
+::: {.key-equation data-name="Masked loss for many action spaces"}
+$$
+\mathcal{L}(\theta) = \frac{1}{N} \sum_{i=1}^{N} \sum_{j=1}^{D} m_{ij}\,\big(\hat a_{ij} - a_{ij}\big)^2,
+\qquad m_{ij} \in \{0, 1\}
+$$ {#eq-masked}
+:::
+
+**In words.** The network outputs $D$ numbers per sample; only the entries that belong to this sample's robot count.
+
+**Term by term.**
+
+- Padded action space (π0): $D = \max_e d_e$; robot $e$ fills the first $d_e$ entries and $m_{ij} = 0$ for the rest.
+- Separate heads (CrossFormer): $D = \sum_e d_e$, each robot owns a block of columns, and $m_{ij} = 1$ only on that block. Since the last layer is linear, a block of its columns *is* a separate head reading shared features.
+- **Numeric check:** the toy's heads network has `{python} sum(J.shape[1] for J in w9.ROBOTS.values())` outputs (2 + 2 + 3 + 4); a four-motors sample trains only the last four and leaves the other heads' weights untouched.
+
+### Tokens for everything
+
+::: {.key-equation data-name="Gato's sequence loss"}
+$$
+\mathcal{L}(\theta) = -\sum_{b=1}^{B} \sum_{l=1}^{L} m(b, l)\, \log p_\theta\big(s^{(b)}_l \mid s^{(b)}_1, \dots, s^{(b)}_{l-1}\big)
+$$ {#eq-gato}
+:::
+
+**In words.** Next-token prediction over a flat token sequence of text, image patches, observations and actions, scoring only text and action tokens.
+
+**Term by term.**
+
+- $s^{(b)}_l$: token $l$ of training sequence $b$, from one shared vocabulary.
+- $m(b, l)$: 1 if the token is text or an action, 0 for image and observation tokens, which are context only.
+- Tasks are told apart by prompting with a demonstration of the same task, not by a task id.
+
+::: {.key-equation .famous data-name="Mu-law companding"}
+$$
+F(x) = \operatorname{sgn}(x)\,\frac{\log(|x|\,\mu + 1)}{\log(M\mu + 1)}, \qquad \mu = 100,\; M = 256
+$$ {#eq-mulaw}
+:::
+
+**In words.** Squeeze a real number into $[-1, 1]$ on a roughly logarithmic scale, so small values keep fine resolution and large ones share coarse bins.
+
+**Term by term.**
+
+- Borrowed from audio coding (and WaveNet); Gato applies it to continuous observations, clips to $[-1, 1]$, cuts that range into 1,024 equal bins, and shifts the bin index past the 32,000 text tokens.
+- **Numeric check:** $F(0.01) =$ `{python} f"{float(w9.mu_law(0.01)):.4f}"`, so 1% of the input scale takes about 7% of the output range ([worked example](#ex-gato)).
+
+### Batching heterogeneous samples
+
+::: {.key-equation data-name="Cost of padding"}
+$$
+\text{waste} = 1 - \frac{\sum_{i=1}^{B} L_i}{B \cdot \max_i L_i}
+$$ {#eq-padding}
+:::
+
+**In words.** The share of computed tokens that are padding, when every sample is padded to the longest.
+
+**Term by term.** $L_i$: tokens in sample $i$; $B$: samples in the batch. Attention costs grow with the square of the padded length, so the wasted share of attention compute is larger still.
+
+::: {.key-equation data-name="Sequence packing"}
+$$
+\begin{aligned}
+c_i &= \textstyle\sum_{j < i} L_j \quad (\texttt{cu\_seqlens}) \\
+M_{pq} &= \mathbb{1}[\,\mathrm{seg}(p) = \mathrm{seg}(q)\,] \\
+\mathrm{pos}(p) &= p - c_{\mathrm{seg}(p)}
+\end{aligned}
+$$ {#eq-packing}
+:::
+
+**In words.** Lay the samples end to end; remember where each starts; let a token attend only within its own sample; and number positions from 0 again in every sample.
+
+**Term by term.**
+
+- $\mathrm{seg}(p)$: which sample token $p$ belongs to; $M$ is block-diagonal (a causal model also needs $q \le p$).
+- Without the mask, a sample attends to its neighbours' images; without the position reset, the fourth sample's first token sits at a position no unpacked sample ever has.
+- **Numeric check:** in the toy batch, packed attention with the mask matches per-sample attention to `{python} f"{PCHECK['block-diagonal']:.0e}"`; without it the outputs differ by up to `{python} f"{PCHECK['no mask']:.2f}"`.
+
+### From VLM to VLA
+
+::: {.key-equation data-name="The current VLA recipe (knowledge insulation)"}
+$$
+\mathcal{L} = \underbrace{\mathcal{L}_{\text{next token}}\big(\text{language, FAST tokens; robot + web data}\big)}_{\text{trains the VLM backbone}}
+\;+\; \lambda\, \underbrace{\mathcal{L}_{\text{flow}}\big(v_\phi(\cdot \mid \mathrm{sg}[h_\theta])\big)}_{\text{trains the action expert only}}
+$$ {#eq-ki}
+:::
+
+**In words.** The backbone learns from discrete tokens, robot and web alike; the continuous action expert learns flow matching while reading the backbone's features as constants.
+
+**Term by term.**
+
+- $h_\theta$: the backbone's internal features; $\mathrm{sg}[\cdot]$: stop-gradient, so $\mathcal{L}_{\text{flow}}$ changes $\phi$ but not $\theta$.
+- $v_\phi$: the action expert's velocity field ([Week 6](w06-generative-models.qmd)'s flow matching).
+- FAST tokens ([Week 7](w07-sequence-modeling-transformers.qmd)) give the backbone a robot-action target it can learn by next-token prediction.
+- $\lambda$: a weight between the two losses. The equation is a schematic of the lecture's summary; the paper gives the exact objective.
+- Why: the knowledge-insulation paper finds that letting the action expert's gradients into the VLM slows training and loses the VLM's semantic knowledge.
+
+**Training tips from the lecture.** For a VLA with action tokens, wait until teacher-forced action-token accuracy reaches about 95% before trying the robot; below that, rollouts will not be good [▶ 37:29](https://youtu.be/dtofzDY9zuo?t=2249). Teacher-forced accuracy is not rollout performance, so also track the L1 and L2 error of the decoded continuous actions [▶ 38:32](https://youtu.be/dtofzDY9zuo?t=2312).
+
+### Learning from experience
+
+::: {.key-equation data-name="Advantage-conditioned policy (π*0.6)"}
+$$
+\begin{aligned}
+A(o_t, a_t) &= \textstyle\sum_{t'=t}^{t+N-1} r_{t'} + V(o_{t+N}) - V(o_t), \qquad
+I_t = \mathbb{1}\big[A(o_t, a_t, \ell) > \epsilon_\ell\big] \\
+\min_\theta\; &\mathbb{E}_{\mathcal{D}}\big[-\log \pi_\theta(a_t \mid o_t, \ell) - \alpha \log \pi_\theta(a_t \mid I_t, o_t, \ell)\big]
+\end{aligned}
+$$ {#eq-advcond}
+:::
+
+**In words.** Score each recorded action by how much better than usual it did, label it good or not, train one policy on all actions with that label as an extra input, and ask for "good" at test time.
+
+**Term by term.**
+
+- $V$: a value function of the data's own behavior, fitted to observed returns (π\*0.6 predicts steps to success).
+- $A$: an $N$-step advantage estimate, as in [Week 5](w05-reinforcement-learning-2.qmd); $\epsilon_\ell$: a per-task threshold.
+- First term: plain cloning, which keeps the model able to represent all behavior; second term: cloning conditioned on the label, weighted by $\alpha$.
+- Human corrections during deployment are always labelled good.
+- **Why it holds:** the paper shows that conditioning on "improvement" yields a policy that does at least as well as the data's behavior, for a monotone notion of improvement; in the special case of their $\beta = 1$, the improved policy is exactly $\pi(a \mid I = 1, o, \ell)$.
+
+### Evaluating
+
+::: {.key-equation data-name="Mean maximum rank violation (SIMPLER)"}
+$$
+\mathrm{MMRV} = \frac{1}{N}\sum_{i=1}^{N} \max_{j}\; |R_i - R_j| \cdot \mathbb{1}\big[(R_{S,i} < R_{S,j}) \neq (R_i < R_j)\big]
+$$ {#eq-mmrv}
+:::
+
+**In words.** For each policy, find the worst pair the simulator orders the wrong way round, measured by how far apart the two really are; average over policies.
+
+**Term by term.**
+
+- $R_i$, $R_{S,i}$: real and simulated success of policy $i$. MMRV = 0 means no pair is misordered.
+- A swap of two policies that are really 0.01 apart costs little; a swap of policies 0.3 apart costs a lot. Pearson's $r$ instead rewards a linear relation, and can penalize a simulator that ranks correctly but nonlinearly.
+- **Numeric check:** the toy's uncalibrated simulator has MMRV `{python} f"{S0['uncal']['mmrv']:.3f}"` and $r$ = `{python} f"{S0['uncal']['r']:.2f}"`; identifying the gain alone raises $r$ to `{python} f"{S0['gain']['r']:.2f}"` but worsens MMRV to `{python} f"{S0['gain']['mmrv']:.3f}"`: the two metrics can disagree.
+
+::: {.key-equation data-name="System identification of a gain and its noise"}
+$$
+\hat k = \frac{\sum_i a_i \cdot \Delta x_i}{\Delta t \sum_i a_i \cdot a_i}, \qquad
+\hat\sigma = \operatorname{std}\Big(\frac{\Delta x_i}{\Delta t} - \hat k\, a_i\Big)
+$$ {#eq-sysid}
+:::
+
+**In words.** Send known commands to the real robot, measure how far it moves, and fit the simulator's gain by least squares; what the fit cannot explain is the noise.
+
+**Term by term.** $a_i$: a test command; $\Delta x_i$: the measured motion over one step $\Delta t$. SIMPLER fits arm controller parameters the same way, matching simulated to real end-effector trajectories. **Numeric check:** from 100 commands the toy finds $\hat k$ = `{python} f"{S0['k']:.3f}"` and $\hat\sigma$ = `{python} f"{S0['s']:.3f}"` (true: 1 and `{python} w9.REAL_NOISE`).
+
+::: {.key-equation data-name="Uncertainty of a success rate"}
+$$
+\mathrm{SE}(\hat p) = \sqrt{\frac{\hat p\,(1 - \hat p)}{n}}
+$$ {#eq-se}
+:::
+
+**In words.** A success rate measured from $n$ independent trials is uncertain by about this much.
+
+**Term by term.** With $\hat p = 0.5$ and $n = 20$ trials, SE $= 0.11$: two policies 10 points apart cannot be told apart. This is why real-robot comparisons need many trials, blind scoring and randomized order, as in TRI's study, and why cheap simulated trials are attractive.
+
+## Worked examples
+
+### Example 1: padding against packing {#ex-packing}
+
+Two samples from a data set with one camera and two from a data set with three; each image gives `{python} IMG_TOK` tokens and language plus actions add `{python} TXT_TOK`.
+
+```{python}
+#| output: asis
+print("| sample | cameras | tokens $L_i$ | starts at $c_i$ | positions |")
+print("|---:|---:|---:|---:|:---|")
+for i, L in enumerate(LENS):
+    print(f"| {i + 1} | {(L - TXT_TOK) // IMG_TOK} | {L} | {CU[i]} | 0 … {L - 1} |")
+```
+
+Padded, the batch is $4 \times$ `{python} max(LENS)` $=$ `{python} PADDED` tokens, of which `{python} USED` are real: @eq-padding gives `{python} f"{1 - USED / PADDED:.0%}"` waste. Packed, it is one sequence of `{python} USED` tokens with `cu_seqlens` = `{python} str(CU.tolist())`. Token `{python} int(CU[2])` is the first of sample 3, so its position is reset to 0, not `{python} int(CU[2])`, and the block-diagonal mask lets it attend to tokens `{python} int(CU[2])`–`{python} int(CU[3]) - 1` only. Attention on this packed sequence then equals attention on each sample alone (difference `{python} f"{PCHECK['block-diagonal']:.0e}"`); drop the mask and it differs by up to `{python} f"{PCHECK['no mask']:.2f}"`.
+
+### Example 2: Gato's tokens for continuous values {#ex-gato}
+
+```{python}
+#| output: asis
+print("| value $x$ | $F(x)$ | bin (of 1,024) | token id |")
+print("|---:|---:|---:|---:|")
+for x_, f_, t_ in zip(GATO_X, GATO_F, GATO_T):
+    print(f"| {x_:g} | {f_:+.4f} | {int(t_) - 32000} | {int(t_):,} |")
+```
+
+The values 0.01 and 0.05 are only 0.04 apart but land `{python} int(GATO_T[4] - GATO_T[3])` bins apart; 0.5 and 3.0 are 2.5 apart and land `{python} int(GATO_T[6] - GATO_T[5])` bins apart. Mu-law spends resolution where values are small, which suits joint velocities and torques that are usually small but occasionally large. Every token id is at least 32,000, so the model can never confuse a joint reading with a word.
+
+### Example 3: advantage conditioning in a corridor {#ex-advantage}
+
+A corridor of `{python} CORR_L` cells, the goal at the end. Operators step forward with probability `{python} CORR_P` and back with probability `{python} f"{1 - CORR_P:.1f}"` (at cell 0 they stay put); every step costs $-1$. Solving the value equations exactly:
+
+```{python}
+#| output: asis
+print("| cell $s$ | $V(s)$ | $A(s, \\text{forward})$ | $A(s, \\text{back})$ |")
+print("|---:|---:|---:|---:|")
+for s in (0, 1, 2, 5, 8, 9):
+    print(f"| {s} | {CORR['V'][s]:.2f} | {CORR['adv_fwd'][s]:+.2f} | {CORR['adv_back'][s]:+.2f} |")
+```
+
+Every forward step has a positive advantage and every back step at most $-1$, so the label $I = \mathbb{1}[A > 0]$ separates them exactly. Plain cloning learns the operators' own mix and needs `{python} f"{CORR['steps_bc']:.1f}"` steps on average to reach the goal; the policy conditioned on $I = 1$ steps forward every time and needs `{python} CORR_L`. Filtering whole episodes would keep only those with no back step at all: a fraction $0.8^{10}$ = `{python} f"{CLEAN_EP:.1%}"` of them. Advantage conditioning keeps every step, and in a real task the "bad" steps still show the policy what the world looks like from where mistakes lead. (A first version of this page's toy tried to learn the value function from noisy 2D demos; its one-step labels were only about 80% right, not enough to beat filtering, which is why this example uses the exact values. π\*0.6 trains a large value function on far more data.)
+
+## Interactive
+
+### A new robot, one demo at a time
+
+```{python}
+#| include: false
+NEWP = w9.new_robot_policies(0)
+nx, ngoal = TEST[0][0][::15], TEST[0][1][::15]
+SLIDE = {}
+for (m, n), act in NEWP.items():
+    path, touched, t_goal = w9.run_policy(act, w9.NEW_ROBOT, nx, ngoal)
+    ok = (t_goal < w9.T_RUN) & ~touched
+    SLIDE[m, n] = (path, int(ok.sum()))
+assert all(SLIDE["pooled", n][1] > SLIDE["scratch", n][1] for n in (1, 2, 4, 8))
+assert SLIDE["pooled", 1][1] <= 5 and SLIDE["scratch", 4][1] < 15 <= SLIDE["pooled", 4][1]
+assert all(SLIDE[m, n][1] == 20 for m in ("pooled", "scratch") for n in (16, 32))
+```
+
+```{python}
+#| label: fig-new-slider
+#| fig-cap: "The new robot on 20 held-out tasks (seed 0), after the chosen number of its own demos. Top: a network trained on them from scratch. Bottom: a new head on the frozen pooled network. Grey disc: the post; crosses: goals."
+#| fig-alt: "Interactive figure with two stacked panels and a slider for the number of demos: 1, 2, 4, 8, 16, 32. Each panel shows a top view of the table with a grey disc in the middle, 20 paths starting on the left and goal crosses on the right; panel titles give how many of the 20 runs succeed. With 1 demo, few paths in either panel reach their goals, a few more green ones than orange. As the slider moves right, both sets of paths straighten out round the post, the green ones sooner, and from 16 demos on every path in both panels reaches its goal."
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
+                    subplot_titles=[" ", " "])
+theta = np.linspace(0, 2 * np.pi, 60)
+for row in (1, 2):
+    fig.add_trace(go.Scatter(x=(w9.R_POST * np.cos(theta)).round(3), y=(w9.R_POST * np.sin(theta)).round(3),
+                             fill="toself", mode="lines", line=dict(width=0), fillcolor="rgba(137,135,129,0.35)",
+                             hoverinfo="skip", showlegend=False), row=row, col=1)
+    fig.add_trace(go.Scatter(x=ngoal[:, 0].round(3), y=ngoal[:, 1].round(3), mode="markers", hoverinfo="skip",
+                             marker=dict(symbol="x-thin", size=8, line=dict(width=2, color=style.INK)),
+                             showlegend=False), row=row, col=1)
+fixed = len(fig.data)
+order = []
+for n in w9.NEW_COUNTS:
+    for row, m, col in ((1, "scratch", ORANGE), (2, "pooled", GREEN)):
+        path = SLIDE[m, n][0]
+        xs, ys = [], []
+        for i in range(path.shape[1]):
+            xs += list(path[:, i, 0].round(3)) + [None]
+            ys += list(path[:, i, 1].round(3)) + [None]
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=col, width=1.6), hoverinfo="skip",
+                                 showlegend=False, visible=(n == 1)), row=row, col=1)
+        order.append(n)
+steps = []
+for n in w9.NEW_COUNTS:
+    titles = [f"from scratch: {SLIDE['scratch', n][1]} of 20 reach the goal",
+              f"new head on pooled features: {SLIDE['pooled', n][1]} of 20"]
+    steps.append(dict(method="update", label=str(n),
+                      args=[{"visible": [True] * fixed + [k == n for k in order]},
+                            {"annotations[0].text": titles[0], "annotations[1].text": titles[1]}]))
+fig.update_layout(**style.plotly_layout())
+fig.layout.annotations[0].text = f"from scratch: {SLIDE['scratch', 1][1]} of 20 reach the goal"
+fig.layout.annotations[1].text = f"new head on pooled features: {SLIDE['pooled', 1][1]} of 20"
+for a in fig.layout.annotations:
+    a.font.size = 12
+fig.update_layout(height=620, margin=dict(l=40, r=20, t=40, b=20),
+                  sliders=[dict(active=0, steps=steps, pad=dict(t=30), currentvalue=dict(prefix="demos: "))])
+for row in (1, 2):
+    fig.update_xaxes(range=[-1.2, 1.2], row=row, col=1)
+    fig.update_yaxes(range=[-0.95, 0.95], scaleanchor=f"x{'' if row == 1 else row}", row=row, col=1)
+fig.show()
+```
+
+**What to try.** Start at 1 demo: one demonstration is too little for either network (`{python} SLIDE['scratch', 1][1]` and `{python} SLIDE['pooled', 1][1]` of 20 succeed), since even the pooled network must learn the new robot's whole motor mapping from 60 time steps. Step to 4: the pooled network, which only has to fit that mapping, succeeds on `{python} SLIDE['pooled', 4][1]` of 20 against `{python} SLIDE['scratch', 4][1]` for the network that must also learn how to get round the post. From 16 demos on both succeed on all 20: plenty of the robot's own data makes the pooled knowledge unnecessary.
+
+### Calibrating a simulator
+
+```{python}
+#| include: false
+GAINS = np.round(np.arange(0.4, 1.61, 0.1), 2)
+GRID = []
+for noise in (0.0, S0["s"]):
+    row = []
+    for gain in GAINS:
+        S = np.array([w9.sim_success(FAM0, gain, noise)[k] for k in S0["keys"]])
+        row.append({"sim": S.round(4).tolist(), "r": round(w9.pearson(S, S0["R"]), 3),
+                    "mmrv": round(w9.mmrv(S, S0["R"]), 3), "mean": round(float(S.mean()), 3)})
+    GRID.append(row)
+write_json({"gains": GAINS.tolist(), "grid": GRID, "real": S0["R"].round(4).tolist(),
+            "policies": [{"demos": n, "speed": s} for n, s in S0["keys"]],
+            "k_hat": round(S0["k"], 3), "s_hat": round(S0["s"], 3), "real_mean": round(float(S0["R"].mean()), 3),
+            "style": {"orange": ORANGE, "blue": BLUE, "green": GREEN, "ink": style.INK, "muted": style.MUTED,
+                      "surface": style.SURFACE}},
+           "data/w09-sim.json")
+i10 = int(np.argmin(np.abs(GAINS - 1.0)))
+G_NOISE_10 = GRID[1][i10]
+G_PLAIN_10 = GRID[0][i10]
+assert G_NOISE_10["r"] > 0.98 and G_PLAIN_10["r"] < 0.9
+assert GRID[0][0]["r"] < 0.85
+```
+
+The nine policies of @fig-simreal, scored in a simulator whose motor gain you choose. The real robot's gain is 1 and its motor noise has standard deviation `{python} w9.REAL_NOISE`; system identification estimated `{python} f"{S0['k']:.2f}"` and `{python} f"{S0['s']:.2f}"`.
+
+```{ojs}
+simData = FileAttachment("data/w09-sim.json").json()
+viewof simGain = Inputs.range([0.4, 1.6], {step: 0.1, value: 0.4, label: "simulator's motor gain"})
+viewof simNoise = Inputs.toggle({label: "simulate the motor noise", value: false})
+```
+
+```{ojs}
+//| label: fig-sim-explorer
+//| fig-cap: "Each dot is a policy: its real success rate (x) against its success in the chosen simulator (y); colour is the policy's speed factor, size the number of demos it was cloned from. Dashed: equal success. The line below gives the correlation, the MMRV and the average success in simulation and on the real robot."
+//| fig-alt: "Interactive scatter plot with a slider for the simulator's motor gain from 0.4 to 1.6 and a toggle for simulating motor noise. Nine dots in three colours for speed factors 0.4, 1.0 and 2.2, of three sizes for 4, 8 and 32 demos, against a dashed diagonal; both axes run from 0 to 1. At gain 0.4 without noise the three slowest policies sit at 0 in simulation. Near gain 1 with noise on, all dots lie close to the diagonal. Text below reports r, MMRV and the mean success in simulation and on the real robot."
+{
+  const i = simData.gains.findIndex(g => Math.abs(g - simGain) < 1e-6);
+  const cell = simData.grid[simNoise ? 1 : 0][i], s = simData.style;
+  const colour = {0.4: s.orange, 1: s.blue, 2.2: s.green};
+  const pts = simData.policies.map((p, k) => ({real: simData.real[k], sim: cell.sim[k],
+                                               speed: `speed ${p.speed}`, demos: p.demos, c: colour[p.speed]}));
+  const w = Math.min(width, 460);
+  return Plot.plot({
+    width: w, height: w, style: {background: s.surface}, marginLeft: 46,
+    x: {domain: [0, 1.02], label: "real success"}, y: {domain: [-0.02, 1.02], label: "simulated success"},
+    color: {domain: ["speed 0.4", "speed 1", "speed 2.2"], range: [s.orange, s.blue, s.green], legend: true},
+    marks: [
+      Plot.line([[0, 0], [1, 1]], {stroke: s.muted, strokeDasharray: "4,3"}),
+      Plot.dot(pts, {x: "real", y: "sim", fill: "speed", r: d => 3 + 1.5 * Math.log2(d.demos), stroke: s.ink,
+                     strokeWidth: 0.5, title: d => `${d.demos} demos, ${d.speed}`})
+    ]
+  });
+}
+```
+
+```{ojs}
+{
+  const i = simData.gains.findIndex(g => Math.abs(g - simGain) < 1e-6);
+  const c = simData.grid[simNoise ? 1 : 0][i];
+  return md`r = **${c.r.toFixed(2)}** · MMRV = **${c.mmrv.toFixed(3)}** · mean success: simulated **${c.mean.toFixed(2)}**, real **${simData.real_mean.toFixed(2)}**`;
+}
+```
+
+**What to try.** Start at gain 0.4 with no noise: the slow policies (orange) score 0 in simulation, and $r$ is `{python} f"{GRID[0][0]['r']:.2f}"`. Raise the gain to 1, the real value: the slow policies come back, but without noise every dot sits on or above the diagonal, the slow ones most ($r$ = `{python} f"{G_PLAIN_10['r']:.2f}"`, mean `{python} f"{G_PLAIN_10['mean']:.2f}"` against `{python} f"{S0['R'].mean():.2f}"` real). Now switch the noise on: the dots fall onto the diagonal ($r$ = `{python} f"{G_NOISE_10['r']:.2f}"`). Push the gain past 1.2 and watch which policies the simulator starts to flatter.
+
+## Algorithm & code
+
+### One network, many robots
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w9.fit_masked, w9.train_heads, w9.train_padded, w9.fit_new_head)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+import torch.nn as nn
+
+from rlc.toys import w09_generalist as w9
+
+torch.manual_seed(0)
+
+
+class MultiHeadPolicy(nn.Module):
+    """Shared trunk, one linear head per robot (CrossFormer style)."""
+
+    def __init__(self, action_dims: dict, hidden=64):
+        super().__init__()
+        self.trunk = nn.Sequential(nn.Linear(4, hidden), nn.Tanh(),
+                                   nn.Linear(hidden, hidden), nn.Tanh())
+        self.heads = nn.ModuleDict({name: nn.Linear(hidden, d)
+                                    for name, d in action_dims.items()})
+
+    def forward(self, obs, robot):
+        return self.heads[robot](self.trunk(obs))      # (B, d_robot)
+
+
+names = {k: k.replace(" ", "_") for k in w9.ROBOTS}  # ModuleDict keys
+data = {names[k]: tuple(torch.tensor(x, dtype=torch.float32) for x in v)
+        for k, v in w9.pooled_data(0).items()}       # obs (n, 4), act (n, d)
+policy = MultiHeadPolicy({k: a.shape[1] for k, (_, a) in data.items()})
+opt = torch.optim.Adam(policy.parameters(), lr=3e-3)
+
+# Each step takes a batch from every robot, so the trunk sees all of
+# them; each loss term reaches only its own head (the masking of the
+# NumPy version, done by indexing instead).
+losses = []
+for step in range(1500):
+    loss = 0.0
+    for robot, (obs, act) in data.items():
+        idx = torch.randint(len(obs), (64,))
+        loss = loss + ((policy(obs[idx], robot) - act[idx]) ** 2).sum(1).mean()
+    opt.zero_grad(); loss.backward(); opt.step()
+    losses.append(loss.item())
+assert np.mean(losses[-50:]) < 0.2 * np.mean(losses[:50])
+
+# A new robot: freeze the trunk, fit only a fresh head on 4 demos.
+obs, act = (torch.tensor(x, dtype=torch.float32) for x in
+            w9.demos(w9.NEW_ROBOT, 4, np.random.default_rng(1)))
+policy.trunk.requires_grad_(False)
+policy.heads["new"] = nn.Linear(64, act.shape[1])
+opt = torch.optim.Adam(policy.heads["new"].parameters(), lr=1e-2)
+for step in range(500):
+    loss = ((policy(obs, "new") - act) ** 2).sum(1).mean()
+    opt.zero_grad(); loss.backward(); opt.step()
+assert loss.item() < 0.05, loss.item()
+```
+:::
+
+In the NumPy version, one output layer holds every robot's columns and a mask picks the right block; the PyTorch version gives each robot its own `nn.Linear` and indexes by name. The two are the same model. `requires_grad_(False)` freezes the trunk in place (the trailing underscore marks an in-place method), so the new head trains on fixed features, as `fit_new_head` does by ridge regression.
+
+### Packing a batch
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w9.pack, w9.attend, w9.packing_check)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import torch.nn.functional as F
+
+torch.manual_seed(0)
+lengths = torch.tensor([26, 26, 58, 58])              # tokens per sample
+cu_seqlens = torch.cat([torch.zeros(1, dtype=torch.long),
+                        lengths.cumsum(0)])           # [0, 26, 52, 110, 168]
+seg = torch.repeat_interleave(torch.arange(len(lengths)), lengths)  # (T,)
+pos = torch.arange(len(seg)) - cu_seqlens[seg]        # restarts at 0 per sample
+
+T, H, D = len(seg), 2, 16                             # tokens, heads, head dim
+q, k, v = torch.randn(3, 1, H, T, D).unbind(0)        # each (1, H, T, D)
+
+# Boolean mask, True = may attend: same sample only (block-diagonal).
+# Broadcasts over batch and heads: (T, T) -> (1, H, T, T).
+allowed = seg[:, None] == seg[None, :]
+packed = F.scaled_dot_product_attention(q, k, v, attn_mask=allowed)
+
+# Reference: attend within each sample separately, then concatenate.
+alone = torch.cat([F.scaled_dot_product_attention(q[..., a:b, :], k[..., a:b, :],
+                                                  v[..., a:b, :])
+                   for a, b in zip(cu_seqlens[:-1], cu_seqlens[1:])], dim=2)
+leaky = F.scaled_dot_product_attention(q, k, v)        # no mask
+assert torch.allclose(packed, alone, atol=1e-5)
+assert (leaky - alone).abs().max() > 0.1
+assert pos[cu_seqlens[2]] == 0 and pos.max() == lengths.max() - 1
+```
+:::
+
+Kernels such as FlashAttention's variable-length mode take `cu_seqlens` directly and never build the $T \times T$ mask; the dense mask here is for clarity. Positions must come from `pos`, not from `torch.arange(T)`: with rotary or learned positional encodings, a token's position is part of its input.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(9))
+```
+
+## Guest spotlight
+
+**Quan Vuong** (co-founder of Physical Intelligence; earlier at Google DeepMind, where he started and co-led the RT-X and Open X-Embodiment projects) presented π0.7, whose main claim is a single model that performs many tasks *at specialist level* [▶ 01:01](https://youtu.be/pzolgvyWEFY?t=61). That matters for scaling: until now, top performance on a task meant post-training a model for that task, and every extra checkpoint is one more thing to manage [▶ 01:32](https://youtu.be/pzolgvyWEFY?t=92). It is hard because more data does not automatically mean a better model: train on everything you have and you usually get something worse than a carefully tuned specialist [▶ 02:34](https://youtu.be/pzolgvyWEFY?t=154). He showed a symptom: a policy imitating teleoperation data was *slower* than the teleoperators themselves, while online RL made it faster than them [▶ 03:37](https://youtu.be/pzolgvyWEFY?t=217).
+
+The architecture is close to π0.5 and π0.6: a language model and a pretrained vision encoder with an action expert grafted on, prompted with the task, optionally a subtask, and **metadata** on the speed and quality of each training episode, plus a new ability to condition on goals [▶ 05:10](https://youtu.be/pzolgvyWEFY?t=310). A separate high-level component, a person or a planner, proposes subtasks but never actions [▶ 06:45](https://youtu.be/pzolgvyWEFY?t=405). One checkpoint matched or beat RL- and SFT-tuned specialists on laundry, tiny screws, box assembly and taking out the trash [▶ 08:23](https://youtu.be/pzolgvyWEFY?t=503). His explanation for beating them: in real-robot evaluation every test is partly a generalization test, since something in the scene always changes, and a generalist is more robust to such changes [▶ 09:25](https://youtu.be/pzolgvyWEFY?t=565). The metadata result is this page's quality story: adding the lowest-quality data lowered performance without metadata and raised it sharply with metadata [▶ 10:33](https://youtu.be/pzolgvyWEFY?t=633). Shirt folding learned on one robot pair transferred to a bimanual UR5 station that had no folding data at all [▶ 12:39](https://youtu.be/pzolgvyWEFY?t=759), and a person coaching in language led it through tasks it had no data for [▶ 14:10](https://youtu.be/pzolgvyWEFY?t=850).
+
+He also described deployment with partner companies, such as folding customers' laundry in a laundromat and packing orders through a full working day, where the question is whether remote interventions become rare enough to break even [▶ 16:47](https://youtu.be/pzolgvyWEFY?t=1007) [▶ 19:53](https://youtu.be/pzolgvyWEFY?t=1193), and said the open-sourced π0 and π0.5 weights are the same checkpoints the company's researchers use [▶ 15:14](https://youtu.be/pzolgvyWEFY?t=914). In the Q&A: multi-fingered hands are not yet cheap, reliable and easy to teleoperate all at once, so two-finger grippers serve research at scale better [▶ 21:57](https://youtu.be/pzolgvyWEFY?t=1317); what to scale (many tasks or many demos per task, human video, robots) is an open experimental question [▶ 25:34](https://youtu.be/pzolgvyWEFY?t=1534); whether VLAs or video action models scale better is undecided, with models heading from single-digit to tens of billions of parameters [▶ 30:15](https://youtu.be/pzolgvyWEFY?t=1815) [▶ 31:47](https://youtu.be/pzolgvyWEFY?t=1907); and home robots wait on model capability, since a robot that works in every home would mean physical intelligence is solved [▶ 24:34](https://youtu.be/pzolgvyWEFY?t=1474).
+
+**How it connects to this week.** π0.7 is the lecture's recipe pushed to the point where the generalist beats the specialists; its metadata conditioning and π\*0.6's advantage conditioning are the same move, telling the model about data quality instead of discarding the bad data; and the cross-embodiment folding result is positive transfer at full scale.
+
+## Solved problems {#problems}
+
+**1. Padding a batch.** A batch has 6 samples with one camera and 2 with three cameras; each image is 256 tokens and language plus actions add 20. How much of a padded batch is padding? What is `cu_seqlens` if you pack them in that order?
+
+::: {.callout-tip collapse="true" title="Solution"}
+One camera: 276 tokens; three: 788. Real tokens: $6 \cdot 276 + 2 \cdot 788 = 1656 + 1576 = 3232$. Padded: $8 \cdot 788 = 6304$. Waste (@eq-padding): $1 - 3232/6304 \approx 49\%$: half the batch is zeros, the lecture's warning. `cu_seqlens` = [0, 276, 552, 828, 1104, 1380, 1656, 2444, 3232].
+:::
+
+**2. Which robot am I?** Two robots have the same cameras, the same 2-D action space and the same tasks, but one's motor axes are mirrored. Your model has one padded action output. What happens, and what are two fixes?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Nothing in the input tells the robots apart, so the same observation is paired with two different correct actions; least-squares training averages them, and the average of an action and its mirror image moves the robot along only one axis or not at all, wrong for both robots (the toy's "no cue" bars, @fig-pooling). Fixes: give the model a cue, such as an embodiment token, a camera view that shows the robot, or joint readings that differ; or use separate heads and let the user pick one, as CrossFormer does. Aligning the action spaces by hand also works, at the cost Octo and CrossFormer chose to avoid.
+:::
+
+**3. Is the new policy better?** Policy A succeeded in 12 of 20 trials, policy B in 15 of 20. Is B better? How many trials per policy would make a 15-point gap at about these rates two standard errors of the difference?
+
+::: {.callout-tip collapse="true" title="Solution"}
+$\hat p_A = 0.6$, $\hat p_B = 0.75$. Standard errors (@eq-se): $\sqrt{0.6 \cdot 0.4/20} = 0.110$ and $\sqrt{0.75 \cdot 0.25/20} = 0.097$; the difference has SE $\sqrt{0.110^2 + 0.097^2} = 0.146$, so a 0.15 gap is about one SE: no evidence either way. For the gap to be two SEs, $\sqrt{(0.24 + 0.1875)/n} \le 0.075$, so $n \ge 0.4275 / 0.075^2 \approx 76$ trials per policy. That is hours of robot time for one comparison.
+:::
+
+**4. MMRV by hand.** Three policies have real success 0.2, 0.5 and 0.6, and simulated success 0.3, 0.7 and 0.65. Compute the MMRV and the ranking error it describes.
+
+::: {.callout-tip collapse="true" title="Solution"}
+Real order: 1 < 2 < 3. Simulated order: 1 < 3 < 2, so only the pair (2, 3) is misordered, and it costs $|0.5 - 0.6| = 0.1$. Each policy's worst violation: policy 1, none (0); policy 2, 0.1; policy 3, 0.1. MMRV $= (0 + 0.1 + 0.1)/3 \approx 0.067$ (@eq-mmrv). The simulator confuses two policies that are only 10 points apart in reality; it never confuses either with policy 1.
+:::
+
+**5. Advantage conditioning, quickly.** Operators in a 20-cell corridor step forward with probability 0.9 and back with 0.1. Far from the start, how many steps per cell does a cloned policy take? What fraction of episodes would filtering keep if it kept only flawless ones, and how many steps does the advantage-conditioned policy take?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Each step moves forward on average $0.9 - 0.1 = 0.8$ cells, so cloning takes about $1/0.8 = 1.25$ steps per cell, about 25 steps for 20 cells (slightly fewer, since at cell 0 a back step cannot go further back). A flawless episode needs 20 forward steps in a row: $0.9^{20} \approx 12\%$ of episodes. Forward steps have positive advantage and back steps negative, so conditioning on $I = 1$ gives a policy that always steps forward: 20 steps, trained on all the data (@eq-advcond, [Example 3](#ex-advantage)).
+:::
+
+## Recap
+
+1. **Generalists are built from pooled data.** OXE combined over a million episodes from 22 robots, and one model trained on it beat the per-data-set methods. *Why it matters:* robot data are scarce, so every lab's data has to count.
+2. **One network can drive many bodies.** Tokenize everything, share a transformer, and either give each robot a head (CrossFormer) or one padded action space whose robot the model infers (π0). *Why it matters:* it is how one checkpoint controls arms, quadrupeds and drones; in the toy it lifted the data-poor robot from `{python} f"{pm('specialist', FM):.0%}"` to `{python} f"{pm('heads', FM):.0%}"`.
+3. **Pretraining helps most when the new task has little data.** *Why it matters:* it is the case for robot foundation models, and it sets expectations: with plenty of task data, the advantage fades.
+4. **VLAs inherit web knowledge if you protect it.** Actions as tokens, co-training with web data, and a stop-gradient between the VLM and the action expert. *Why it matters:* it is the recipe behind today's strongest generalist policies and the guest's π0.7.
+5. **Data quality must be represented, not ignored.** Metadata (π0.7) and advantage labels (π\*0.6) let bad data help instead of hurt. *Why it matters:* deployment produces exactly such mixed data, and it is how these policies keep improving after launch.
+6. **Evaluate by rankings.** Real evaluation is slow and noisy; a calibrated simulator can rank policies reliably even when its absolute numbers are off. *Why it matters:* without cheap, trustworthy evaluation, no design choice in this list can be tested.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Goal-conditioned BC | $-\log \pi(a_{t:t+H-1} \mid o_{t-h:t}, g)$ | @eq-gcbc |
+| Multicontext imitation | one policy, encoder $f_k$ per kind of task description | @eq-mcil |
+| Masked multi-robot loss | $\sum_j m_{ij} (\hat a_{ij} - a_{ij})^2$ | @eq-masked |
+| Gato's loss | next-token loss on text and action tokens only | @eq-gato |
+| Mu-law ★ | $\operatorname{sgn}(x) \log(1 + \mu|x|) / \log(1 + M\mu)$ | @eq-mulaw |
+| Padding waste | $1 - \sum L_i / (B \max L_i)$ | @eq-padding |
+| Packing | cu_seqlens, block-diagonal mask, positions reset | @eq-packing |
+| VLA recipe | next-token loss + flow loss through $\mathrm{sg}[h_\theta]$ | @eq-ki |
+| Advantage conditioning | $I_t = \mathbb{1}[A > \epsilon_\ell]$; clone with and without $I$ | @eq-advcond |
+| MMRV | mean worst misordered real gap | @eq-mmrv |
+| SysID | least-squares gain, residual noise | @eq-sysid |
+| Success-rate SE | $\sqrt{\hat p (1 - \hat p) / n}$ | @eq-se |
+
+**Common pitfalls.**
+
+- Pooling data without aligning what must be aligned: Octo had to unify gripper conventions, while TRI found normalization mattered more than architecture.
+- Padding a batch where half the samples have three times the cameras, and paying for the zeros.
+- Packing without a block-diagonal mask, or without resetting positions.
+- A small shuffle buffer: batches full of frames from the same few trajectories.
+- A padded action space with nothing in the input that identifies the robot.
+- Fine-tuning a VLA's action expert with gradients flowing into the VLM, and losing its knowledge.
+- Cloning mixed-quality data as if it were all good, or filtering away most of it.
+- Reading a simulator's absolute success rates as predictions of real ones.
+- Declaring one policy better from 20 trials each.
+
+**Connections.** [Week 3](w03-imitation-learning.qmd)'s behavior cloning is the training objective here, now goal-conditioned and multi-robot. [Week 5](w05-reinforcement-learning-2.qmd)'s advantages return in π\*0.6, used to label data rather than weight gradients. [Week 6](w06-generative-models.qmd)'s diffusion and flow matching are Octo's head and π0's action expert. [Week 7](w07-sequence-modeling-transformers.qmd)'s tokenization, transformers and action chunks are the building blocks of every model on this page. [Week 8](w08-world-models.qmd)'s guest led Gato, and the choice between VLM and video backbones is still open, as this week's guest said. [Week 10](w10-embodied-reasoning.qmd) asks how such policies can reason before acting. In the ADM Companion: [behavioral cloning]({{< var adm_url >}}/part3/ch18-imitation-learning.html#behavioral-cloning) and [advantage estimation]({{< var adm_url >}}/part2/ch13-actor-critic-methods.html#generalized-advantage-estimation).
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(9))
+```
