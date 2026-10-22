@@ -170,6 +170,27 @@ def compare_methods(n, seed, noise=NOISE, test=None):
     return out
 
 
+def edit_test(n, seed, test=None):
+    """Put the *other* object's position in the reasoning slot of the
+    ECoT and dropout networks (n demos, seed `seed`). Returns, for each,
+    the share of test scenes ending at the edited object and at the
+    instructed one, and the trained networks."""
+    test = test_set() if test is None else test
+    O, R, A, _ = demos(np.random.default_rng(seed), n)
+    Ot, Rt, _, (pos, tgt, grip) = test
+    other = pos[np.arange(len(Ot)), (tgt + 1) % K]       # K = 2: the other
+    out, nets = {}, {}
+    for m in ("ecot", "dropout"):
+        p = train_reasoner(O, R, A, m, np.random.default_rng(100 + seed))
+        end = grip + act(p, Ot, True, slot=other)
+        out[m, "edited"] = float(np.mean(
+            np.linalg.norm(end - other, axis=1) < REACH))
+        out[m, "instructed"] = float(np.mean(
+            np.linalg.norm(end - Rt, axis=1) < REACH))
+        nets[m] = p
+    return out, nets
+
+
 # --- Toy 2: best-of-N through a gap --------------------------------------
 
 GAP_W = 0.2                                 # gap width
@@ -240,6 +261,35 @@ def search_curves(n=20000, seed=0):
                 rows.append({b: float(got[lab == b].mean()) for b in BINS})
             out[planner, ver] = rows
     return out, {b: float((lab == b).mean()) for b in BINS}
+
+
+def typical_problem(z, label) -> int:
+    """Index of the problem in difficulty bin `label` whose small-planner
+    success is closest to that bin's mean (the rule for picking the
+    problems the page and the clip show)."""
+    p, lab = p_through(z, "small"), difficulty(z)
+    idx = np.nonzero(lab == label)[0]
+    return int(idx[np.argmin(np.abs(p[idx] - p[idx].mean()))])
+
+
+def hero_runs():
+    """The searches the hero clip shows, in order, from one generator:
+    the small planner on the typical easy problem with 16 samples, then
+    on the typical hard problem with 16 and with 64. Each run is a dict
+    with the gap centre, candidates, which get through, and the perfect
+    verifier's pick."""
+    gap, z = gap_problems(np.random.default_rng(0), 20000)
+    easy, hard = typical_problem(z, "easy"), typical_problem(z, "hard")
+    rng = np.random.default_rng(7)
+    runs = []
+    for i, planner, N in ((easy, "small", 16), (hard, "small", 16),
+                          (hard, "small", 64)):
+        cand, ok, pick = best_of_n(rng, gap[[i]], z[[i]], planner, N,
+                                   "perfect")
+        runs.append(dict(problem=i, planner=planner, N=N, gap=float(gap[i]),
+                         p=float(p_through(z[[i]], planner)[0]),
+                         cand=cand[0], ok=ok[0], pick=int(pick[0])))
+    return runs
 
 
 def verifier_cap() -> float:
