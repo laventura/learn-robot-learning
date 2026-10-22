@@ -254,23 +254,31 @@ def pooled_data(seed) -> dict:
     return {k: demos(J, EPISODES[k], rng) for k, J in ROBOTS.items()}
 
 
-def compare_pooling(seed) -> dict:
-    """Success per method and robot, for one draw of demos and inits.
-    Keys: (method, robot). Methods: specialist, heads, padded+cue,
-    padded-cue."""
+POOL_METHODS = ("specialist", "heads", "padded+cue", "padded-cue")
+
+
+def pooling_policies(seed) -> dict:
+    """Every method's policy for every robot, for one draw of demos and
+    inits. Keys: (method, robot) -> act(x, g)."""
     data = pooled_data(seed)
-    x, g = test_tasks(seed)
     heads = train_heads(data, seed)
     pad = {on: train_padded(data, seed, on) for on in (True, False)}
     out = {}
-    for k, J in ROBOTS.items():
-        spec = train_specialist(*data[k], seed)
-        out["specialist", k] = success(act_specialist(spec), J, x, g)
-        out["heads", k] = success(act_head(heads, k), J, x, g)
-        out["padded+cue", k] = success(act_padded(pad[True], k), J, x, g)
-        out["padded-cue", k] = success(act_padded(pad[False], k, False),
-                                       J, x, g)
+    for k in ROBOTS:
+        out["specialist", k] = act_specialist(train_specialist(*data[k],
+                                                               seed))
+        out["heads", k] = act_head(heads, k)
+        out["padded+cue", k] = act_padded(pad[True], k)
+        out["padded-cue", k] = act_padded(pad[False], k, False)
     return out
+
+
+def compare_pooling(seed) -> dict:
+    """Success per method and robot on held-out tasks. Keys: (method,
+    robot)."""
+    x, g = test_tasks(seed)
+    return {key: success(act, ROBOTS[key[1]], x, g)
+            for key, act in pooling_policies(seed).items()}
 
 
 def features(params, obs) -> Array:
@@ -298,22 +306,27 @@ def act_new_head(params, head):
 NEW_COUNTS = (1, 2, 4, 8, 16, 32)
 
 
-def new_robot_curve(seed, counts=NEW_COUNTS) -> dict:
-    """Success on NEW_ROBOT after n demos, for each n in counts:
+def new_robot_policies(seed, counts=NEW_COUNTS) -> dict:
+    """Policies for NEW_ROBOT after n demos, for each n in counts:
     "scratch" trains a network on them alone, "pooled" fits a new head
     on the features of the multi-head network trained on pooled_data
-    (same seed). Keys: (method, n)."""
+    (same seed). Keys: (method, n) -> act(x, g)."""
     heads = train_heads(pooled_data(seed), seed)
-    x, g = test_tasks(seed)
     out = {}
     for n in counts:
         obs, act = demos(NEW_ROBOT, n, np.random.default_rng(
             20_000 + 100 * seed + n))
-        scratch = train_specialist(obs, act, seed)
-        out["scratch", n] = success(act_specialist(scratch), NEW_ROBOT, x, g)
-        head = fit_new_head(heads, obs, act)
-        out["pooled", n] = success(act_new_head(heads, head), NEW_ROBOT, x, g)
+        out["scratch", n] = act_specialist(train_specialist(obs, act, seed))
+        out["pooled", n] = act_new_head(heads, fit_new_head(heads, obs, act))
     return out
+
+
+def new_robot_curve(seed, counts=NEW_COUNTS) -> dict:
+    """Success of new_robot_policies on held-out tasks. Keys: (method,
+    n)."""
+    x, g = test_tasks(seed)
+    return {key: success(act, NEW_ROBOT, x, g)
+            for key, act in new_robot_policies(seed, counts).items()}
 
 
 # --- Toy 2: evaluating in a simulator -----------------------------------
