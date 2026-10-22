@@ -164,7 +164,8 @@
     youtube: pzolgvyWEFY
     duration_s: 2219
   homework: null
-  papers: [language-conditioned-il, gato, pi-star-06]
+  papers: [language-conditioned-il, gato, pi-star-06, open-x-embodiment,
+           octo, crossformer, lbm, pi0, pi05, knowledge-insulation, simpler]
 
 - week: 10
   date: 2026-05-04

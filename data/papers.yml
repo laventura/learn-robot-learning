@@ -12,7 +12,7 @@
 # No discussion papers this week; these are the papers the lecture relies on.
 - id: open-x-embodiment
   role: lecture
-  weeks: [1]
+  weeks: [1, 9]
   title: "Open X-Embodiment: Robotic Learning Datasets and RT-X Models"
   authors: "Open X-Embodiment Collaboration"
   year: 2024
@@ -23,7 +23,7 @@
     - "A data set of more than a million robot trajectories from 22 robot embodiments, contributed by 21 institutions (Sec. I, Fig. 1)."
     - "RT-1-X and RT-2-X, versions of RT-1 and RT-2 trained on the mixture (Sec. IV)."
     - "Positive transfer: RT-1-X's mean success rate is 50% higher than that of either the original method for each data set or RT-1 (Fig. 4)."
-  connects_to: "The lecture's case for generalist robot policies and for data as the bottleneck; the worked example on data-set sizes."
+  connects_to: "Week 1: the lecture's case for generalist robot policies and for data as the bottleneck, and the worked example on data-set sizes. Week 9: the data behind Octo and CrossFormer, and the positive transfer this page's first toy reproduces."
 
 - id: rt-2
   role: lecture
@@ -31,7 +31,7 @@
   title: "RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control"
   authors: "Brohan et al."
   year: 2023
-  venue: "arXiv"            # TODO(venue): believed CoRL 2023; not confirmed
+  venue: "CoRL"             # PMLR 229:2165-2183 (7th Conference on Robot Learning, 2023)
   url: https://arxiv.org/abs/2307.15818
   summary: "Takes a vision-language model trained on web data and fine-tunes it to output robot actions written as text tokens, alongside its usual web tasks. The resulting vision-language-action model (VLA) follows commands that never appear in the robot data and can do simple reasoning about which object to pick."
   contributions:
@@ -736,11 +736,15 @@
   title: "Language Conditioned Imitation Learning over Unstructured Data"
   authors: "Lynch & Sermanet"
   year: 2021
-  venue: "RSS"
+  venue: "RSS"              # Robotics: Science and Systems XVII, roboticsproceedings.org/rss17/p047
   url: https://arxiv.org/abs/2005.07648
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Teaches one network to follow free-form typed instructions on a simulated tabletop, from pixels to continuous control, while asking people to label almost none of the data. Hours of unscripted teleoperated play are cut into windows and relabelled with the window's last frame as its goal; a small fraction is also described in words after the fact, and one policy learns from both kinds of goal."
+  contributions:
+    - "Multicontext imitation learning: one latent-goal policy trained on several data sets that describe tasks in different ways (goal images, language), each with its own encoder into a shared goal space (Sec. IV-B)."
+    - "Language labels on less than 1% of the data, with goal-image relabelling of the rest supplying most of the perception and control (Abstract, Fig. 1)."
+    - "68.6% success on single instructions over 18 tasks against 20.0% for language-conditioned cloning of conventional task demos, and 52.1% against 7.1% on four-instruction chains (Table I)."
+    - "Feeding instructions through a pretrained multilingual sentence encoder raises success to 74.1% and lets the policy follow unseen synonyms, in 16 languages, without new demonstrations (Table I, Sec. IV-C)."
+  connects_to: "The lecture's 'goal-conditioned behavior cloning' with goal images or language, which Octo inherits; and an early answer to this week's data question: label a little, relabel the rest."
 
 - id: gato
   role: discussion
@@ -748,11 +752,15 @@
   title: "A Generalist Agent"
   authors: "Reed et al."
   year: 2022
-  venue: "TMLR"
+  venue: "TMLR"             # first page: "Published in Transactions on Machine Learning Research (11/2022)"
   url: https://arxiv.org/abs/2205.06175
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Trains a single 1.2-billion-parameter transformer, with one set of weights, to play Atari, caption images, chat, stack blocks with a real arm and much more. Every modality is turned into tokens from one shared vocabulary, and the model is trained like a language model on the flat token sequences; in context it decides whether to emit text, joystick buttons or joint torques."
+  contributions:
+    - "One tokenization for everything: text as subwords, images as 16×16 patches, discrete actions as integers, and continuous values mu-law companded into [−1, 1] and cut into 1,024 bins placed after the 32,000 text tokens (Sec. 2.1, App. B)."
+    - "A masked next-token loss: only text and action tokens are targets, observation tokens are context only (Sec. 2.3, Eq. 2)."
+    - "Tasks are told apart by prompting with a demonstration of the same task rather than a task id (Sec. 2.3)."
+    - "Over 450 of its 604 tasks above 50% of the expert's score, from one checkpoint (Sec. 4.1)."
+  connects_to: "The lecture's 'robotics as multimodal sequence modeling', in its most literal form, and the ancestor of Octo's tokenized observations; its author was Week 8's guest."
 
 - id: pi-star-06
   role: discussion
@@ -760,11 +768,119 @@
   title: "π*0.6: a VLA That Learns From Experience"
   authors: "Physical Intelligence"
   year: 2025
-  venue: "arXiv"
+  venue: "arXiv"            # arXiv 2511.14759 (technical report, no venue)
   url: https://arxiv.org/abs/2511.14759
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Makes a vision-language-action model improve from its own deployments by reinforcement learning. A value function, trained on demonstrations, autonomous attempts and human corrections, scores every action; the policy is trained on all of that data with one extra input saying whether an action's advantage beat a threshold, and at test time it is asked for the good ones."
+  contributions:
+    - "RECAP: collect rollouts with outcome labels and optional human interventions, fit a value function, then retrain the policy conditioned on a binarized advantage, and repeat (Sec. IV, Algorithm 1)."
+    - "Advantage conditioning as policy extraction: unlike policy gradients it needs no tractable likelihood, so it works with flow-matching action experts, and unlike weighted regression it keeps every sample (Sec. IV-B, Eq. 3)."
+    - "A multi-task distributional value function predicting steps to success, from a smaller VLM backbone (Sec. IV-A, Fig. 4)."
+    - "More than doubled throughput and roughly halved failure rates on the hardest tasks; espresso drinks made for 13 hours straight (Abstract, Sec. I)."
+  connects_to: "The worked example on advantage conditioning on this page; the guest's talk on π0.7, which conditions on episode metadata in the same spirit; and the RL of Weeks 4–5 applied to a generalist policy."
+
+# Key papers from the Week 9 lecture (cards written from the abstracts).
+- id: octo
+  role: lecture
+  weeks: [9]
+  title: "Octo: An Open-Source Generalist Robot Policy"
+  authors: "Octo Model Team (Ghosh, Walke, Pertsch, Black, Mees et al.)"
+  year: 2024
+  venue: "RSS"              # Robotics: Science and Systems XX, roboticsproceedings.org/rss20/p090
+  url: https://arxiv.org/abs/2405.12213
+  summary: "An open transformer policy trained on 800k trajectories from the Open X-Embodiment data. It takes language instructions or goal images, and is meant as a starting point: fine-tune it to a robot with new sensors or a new action space in a few hours on a consumer GPU."
+  contributions:
+    - "Language or goal-image conditioning in one model, trained by goal-conditioned behavior cloning with a diffusion action head (Abstract; lecture)."
+    - "Fine-tuning to new observation and action spaces by adding input tokens or a new head, evaluated on 9 robot platforms (Abstract)."
+    - "Released weights and code, with ablations of architecture and data to guide later generalist models (Abstract)."
+  connects_to: "The lecture's main architecture; on this page, the pooled network with a new head added for a new robot."
+
+- id: crossformer
+  role: lecture
+  weeks: [9]
+  title: "Scaling Cross-Embodied Learning: One Policy for Manipulation, Navigation, Locomotion and Aviation"
+  authors: "Doshi, Walke, Mees, Dasari & Levine"
+  year: 2024
+  venue: "CoRL"             # PMLR 270:496-512 (8th Conference on Robot Learning)
+  url: https://arxiv.org/abs/2408.11812
+  summary: "CrossFormer, one transformer trained on about 900k trajectories from 20 embodiments, from arms to wheeled robots, quadcopters and quadrupeds. Observations of any kind become tokens, and each embodiment family has its own action head, so no observation or action spaces have to be aligned by hand."
+  contributions:
+    - "A single set of weights controlling manipulators, wheeled robots, quadcopters and quadrupeds (Abstract)."
+    - "Matches specialist policies trained for each embodiment, and beats earlier cross-embodiment methods (Abstract)."
+    - "Embodiment-specific readout heads that predict action chunks of different lengths, for control rates from 5 to 50 Hz (lecture)."
+  connects_to: "The multi-head network of this page's first toy, and the 'heads' side of the heads-versus-padding diagram."
+
+- id: lbm
+  role: lecture
+  weeks: [9]
+  title: "A Careful Examination of Large Behavior Models for Multitask Dexterous Manipulation"
+  authors: "TRI LBM Team"
+  year: 2025
+  venue: "arXiv"            # arXiv 2507.05331, a TRI report; one search found no venue
+  url: https://arxiv.org/abs/2507.05331
+  summary: "Toyota Research Institute's study of whether multitask pretraining helps dexterous manipulation. Diffusion-transformer policies are pretrained on simulated and real robot data and compared with single-task policies in blind, randomized real-world trials analysed for statistical confidence."
+  contributions:
+    - "An evaluation pipeline built for statistical confidence: blind, randomized comparisons in simulation and on real robots (Abstract)."
+    - "Multitask pretraining makes policies more successful and robust, and lets them learn new complex tasks with less data (Abstract)."
+    - "Performance improves predictably as pretraining scale and diversity grow (Abstract)."
+  connects_to: "The new-robot curve on this page: pretraining helps most when the new task has little data. The lecture also quotes its finding that data normalization mattered more than architecture."
+
+- id: pi0
+  role: lecture
+  weeks: [9]
+  title: "π0: A Vision-Language-Action Flow Model for General Robot Control"
+  authors: "Black et al. (Physical Intelligence)"
+  year: 2025
+  venue: "RSS"              # arXiv comment: "Published in RSS 2025"
+  url: https://arxiv.org/abs/2410.24164
+  summary: "A VLA that grafts a flow-matching action expert onto a pretrained vision-language model, so it keeps the VLM's web knowledge and outputs continuous action chunks. It is trained on a large mixture of data from several dexterous robots."
+  contributions:
+    - "A flow-matching architecture on top of a pretrained VLM, producing continuous actions rather than tokens (Abstract)."
+    - "Pretraining on many dexterous robot platforms, then evaluated zero-shot, on language following, and after fine-tuning (Abstract)."
+    - "Long dexterous tasks such as folding laundry, clearing tables and assembling boxes (Abstract)."
+  connects_to: "The 'padded action space' side of the heads-versus-padding diagram, and Week 6's flow matching put to work."
+
+- id: pi05
+  role: lecture
+  weeks: [9]
+  title: "π0.5: a Vision-Language-Action Model with Open-World Generalization"
+  authors: "Physical Intelligence (Black et al.)"
+  year: 2025
+  venue: "CoRL"             # PMLR 305:17-40 (9th Conference on Robot Learning)
+  url: https://arxiv.org/abs/2504.16054
+  summary: "Builds on π0 with co-training on very mixed data: several robots, high-level subtask prediction, and web data. The claim is that this transfer is what makes the policy generalize to homes it has never seen."
+  contributions:
+    - "Co-training on multi-robot data, semantic subtask prediction and web data in one model (Abstract)."
+    - "An end-to-end learned system cleaning kitchens and bedrooms in entirely new homes, which the authors call a first (Abstract)."
+  connects_to: "The lecture's 'current VLA recipe' diagram, together with knowledge insulation; the base of the guest's π0.6 and π0.7."
+
+- id: knowledge-insulation
+  role: lecture
+  weeks: [9]
+  title: "Knowledge Insulating Vision-Language-Action Models: Train Fast, Run Fast, Generalize Better"
+  authors: "Driess et al."
+  year: 2025
+  venue: "NeurIPS"          # NeurIPS 2025 poster 117079; mlanthology neurips/2025
+  url: https://arxiv.org/abs/2505.23705
+  summary: "Asks what happens to a VLM's knowledge when a continuous action expert is bolted onto it, and finds that naive training slows learning and loses semantic transfer. The fix trains the backbone on discrete action tokens and web data, while the action expert reads the backbone without sending gradients into it."
+  contributions:
+    - "Shows that adding a diffusion or flow-matching action expert without precautions hurts both training speed and knowledge transfer (Abstract)."
+    - "Knowledge insulation: next-token prediction for the backbone, a stop-gradient between backbone and action expert (Abstract; lecture)."
+  connects_to: "The stop-gradient in the 'current VLA recipe' diagram and equation on this page; Week 7's FAST tokens are the backbone's action targets."
+
+- id: simpler
+  role: lecture
+  weeks: [9]
+  title: "Evaluating Real-World Robot Manipulation Policies in Simulation"
+  authors: "Li, Hsu, Gu, Pertsch, Mees et al."
+  year: 2024
+  venue: "CoRL"             # PMLR 270:3705-3728 (8th Conference on Robot Learning)
+  url: https://arxiv.org/abs/2405.05941
+  summary: "SIMPLER, simulated versions of common real robot setups, built to tell which of several real-world policies is better without running them on hardware. Instead of full digital twins it narrows two gaps: control (by system identification) and vision (by green-screening real backgrounds and matching textures)."
+  contributions:
+    - "Identifies the control gap and the visual gap as the main obstacles to trustworthy simulated evaluation, and ways to reduce them without a full digital twin (Abstract)."
+    - "The mean maximum rank violation (MMRV), a ranking metric that weighs each misordered pair by its real-world gap (Sec. III, Eqs. 1–2)."
+    - "Paired sim and real evaluations over about 1,500 episodes showing strong correlation, including under distribution shifts (Abstract)."
+  connects_to: "This page's second toy, which ranks policies in a miscalibrated and a calibrated simulator and scores them with MMRV."
 
 # --- Week 10 · Embodied Reasoning and Test-time Scaling -------------------
 - id: icrt

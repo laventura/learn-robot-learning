@@ -165,6 +165,26 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | WAM, VAM, IDM | World action model; video action model; inverse dynamics model |
 | JEPA | Joint-embedding predictive architecture: predicts embeddings, not pixels |
 
+## Week 9 · Generalist Robot Policies
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $g$ | A goal: a goal image or a language instruction $\ell$ |
+| $e$, $d_e$, $D$ | An embodiment, its number of action dimensions, and the largest $d_e$ (the padded size) |
+| $m_{ij}$ | Loss mask: 1 for a real action entry, 0 for padding or another robot's head |
+| $f_k$ | Multicontext imitation: the encoder of task descriptions of kind $k$ into a shared goal space |
+| $m(b, l)$ | Gato's loss mask: 1 if token $l$ of sequence $b$ is text or an action |
+| $\mu$, $M$ | Mu-law parameters (Gato: $\mu = 100$, $M = 256$) |
+| $L_i$, $B$ | Token length of sample $i$; samples in a batch |
+| $c_i$ (cu_seqlens) | Where sample $i$ starts in a packed sequence: the sum of the lengths before it |
+| $\mathrm{sg}[\cdot]$ | Stop-gradient: the action expert reads the backbone but sends it no gradient |
+| $A$, $I_t$, $\epsilon_\ell$ | Advantage, the improvement indicator $\mathbb{1}[A > \epsilon_\ell]$, and its task threshold (π\*0.6) |
+| $R_i$, $R_{S,i}$ | Real and simulated success rate of policy $i$ |
+| MMRV | Mean maximum rank violation: how badly a simulator misorders policies, weighted by their real gap |
+| SysID | System identification: fitting a simulator's parameters to measurements of the real robot |
+| VLA | Vision-language-action model: a VLM fine-tuned to output actions |
+| OXE | Open X-Embodiment, the pooled data set of over a million real-robot episodes |
+
 ## Overloaded symbols
 
 Symbols that mean different things in different weeks.
@@ -203,3 +223,7 @@ Symbols that mean different things in different weeks.
 | $L$ | How much one step of the dynamics can stretch an error | 8 |
 | $\varepsilon$ | One-step error of a world model | 8 |
 | $q$ | RSSM posterior over the latent, $q(z_t \mid h_t, o_t)$ | 8 |
+| $\mu$ | Mu-law compression parameter in Gato's tokenizer (elsewhere a mean) | 9 |
+| $M$ | Mu-law range parameter; $m$ is a loss mask | 9 |
+| $I_t$ | π\*0.6's improvement indicator, 1 when the advantage beats the threshold (not an identity matrix) | 9 |
+| $\epsilon_\ell$ | π\*0.6's advantage threshold for task $\ell$ | 9 |
