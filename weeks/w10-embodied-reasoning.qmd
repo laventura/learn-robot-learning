@@ -836,7 +836,7 @@ show_source(w.grpo_advantages, w.grpo_train)
 import torch
 
 torch.manual_seed(0)
-L_MAX, G, EPS, BETA = 10, 8, 0.2, 0.01
+L_MAX, G, BETA = 10, 8, 0.01
 need = torch.tensor([1, 4, 8])                       # steps each kind needs
 logits = torch.nn.Parameter(-0.3 * torch.arange(L_MAX + 1.0).repeat(3, 1))
 ref = logits.detach().clone()                        # frozen reference policy
@@ -852,30 +852,27 @@ def accuracy():
 start = accuracy().detach()
 for it in range(150):
     kind = torch.randint(3, (16,))                   # 16 questions
-    with torch.no_grad():                            # sample from pi_old
-        old_logp_all = torch.log_softmax(logits[kind], dim=1)
-        L = torch.multinomial(old_logp_all.exp(), G, replacement=True)  # (16, G)
+    logp_all = torch.log_softmax(logits[kind], dim=1)    # (16, L_MAX + 1)
+    with torch.no_grad():                            # sampling is not differentiated
+        L = torch.multinomial(logp_all.exp(), G, replacement=True)  # (16, G)
         r = ((L >= need[kind, None]) & (torch.rand(16, G) < 0.9)).float()
         sd = r.std(dim=1, unbiased=False, keepdim=True)
         adv = torch.where(sd > 0, (r - r.mean(1, keepdim=True)) / sd.clamp_min(1e-8),
-                          torch.zeros_like(r))       # (16, G)
-        old_logp = old_logp_all.gather(1, L)
-    for _ in range(2):                               # mu = 2 updates per batch
-        logp_all = torch.log_softmax(logits[kind], dim=1)
-        logp = logp_all.gather(1, L)                 # (16, G)
-        ratio = (logp - old_logp).exp()
-        surr = torch.min(ratio * adv, ratio.clamp(1 - EPS, 1 + EPS) * adv)
-        # k3 estimator of KL(pi || ref), always >= 0, as in DeepSeekMath
-        ref_logp = torch.log_softmax(ref[kind], dim=1).gather(1, L)
-        kl = (ref_logp - logp).exp() - (ref_logp - logp) - 1
-        loss = -(surr - BETA * kl).mean()
-        opt.zero_grad(); loss.backward(); opt.step()
+                          torch.zeros_like(r))       # (16, G), group-relative
+    logp = logp_all.gather(1, L)                     # (16, G)
+    # k3 estimator of KL(pi || ref), always >= 0, as in DeepSeekMath
+    ref_logp = torch.log_softmax(ref[kind], dim=1).gather(1, L)
+    kl = (ref_logp - logp).exp() - (ref_logp - logp) - 1
+    # One update per batch: the policy ratio is 1, so this is the gradient
+    # of sum A_i log pi(L_i), plus the KL penalty.
+    loss = -(adv * logp - BETA * kl).mean()
+    opt.zero_grad(); loss.backward(); opt.step()
 end = accuracy().detach()
 assert (end > start).all() and end[2] > 0.5, (start, end)
 ```
 :::
 
-The PyTorch sketch keeps what the NumPy toy leaves out: two updates per batch, so the ratio $\rho$ moves away from 1 and the clip can act, and the KL penalty to a frozen reference (@eq-grpo). For a language model, `L` would be a whole sampled answer and `logp` the sum of its tokens' log-probabilities (or, as in the paper, a per-token average); everything else is the same.
+The PyTorch sketch adds the KL penalty to a frozen reference (@eq-grpo), which the NumPy toy leaves out. Like the toy, it takes one update per batch, so the ratio $\rho$ stays 1 and the clip never acts; with several updates per batch you would add PPO's clipped ratio from @eq-grpo, which this site does not write out as code because the course's fourth homework asks for it. For a language model, `L` would be a whole sampled answer and `logp` the sum of its tokens' log-probabilities (or, as in the paper, a per-token average); everything else is the same.
 
 ## Papers
 
