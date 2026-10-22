@@ -52,5 +52,11 @@
     "hash": "ba0d3f98cb570f5e",
     "render_seconds": 14.3,
     "seconds": 22.3
+  },
+  "w10-search": {
+    "bytes": 228917,
+    "hash": "b7e8f7d13a41eadd",
+    "render_seconds": 3.6,
+    "seconds": 20.7
   }
 }
