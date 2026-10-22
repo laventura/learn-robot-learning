@@ -46,5 +46,11 @@
     "hash": "93c2457f4177d379",
     "render_seconds": 45.4,
     "seconds": 22.4
+  },
+  "w09-pool": {
+    "bytes": 474200,
+    "hash": "ba0d3f98cb570f5e",
+    "render_seconds": 14.3,
+    "seconds": 22.3
   }
 }
