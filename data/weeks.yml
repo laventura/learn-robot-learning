@@ -201,7 +201,7 @@
     youtube: 0XB7fNS_ONg
     duration_s: 4144
   homework: null
-  papers: [path-to-ami, bitter-lesson, intelligence-without-representation]
+  papers: [path-to-ami, bitter-lesson, intelligence-without-representation, fuse, vlmaps, lelan, calvin, big-transfer, clip, siglip, cappa, paligemma]
 
 - week: 12
   date: 2026-05-18

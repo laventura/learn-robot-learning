@@ -1046,9 +1046,13 @@
   year: 2022
   venue: "position paper, OpenReview"
   url: https://openreview.net/pdf?id=BZ5a1r-kVsf
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "A position paper on how machines could learn as efficiently as animals: mostly by observing, with a predictive world model, and acting either reactively or by planning through that model. It proposes a modular architecture whose world model predicts in an abstract representation space (JEPA) rather than in pixels."
+  contributions:
+    - "Six modules: configurator, perception, world model, cost (an intrinsic cost plus a trainable critic), short-term memory and actor; all differentiable (Sec. 3, Fig. 2)."
+    - "Two modes of acting, after Kahneman: Mode-1 reacts directly; Mode-2 plans by optimizing actions through the world model against the cost, like model-predictive control (Sec. 3.1)."
+    - "The Joint Embedding Predictive Architecture: predict the representation of y from that of x, so details that cannot be predicted need not be modelled; trained non-contrastively (Sec. 4.4–4.5, Eqs. 10–12)."
+    - "Hierarchical JEPA for planning at several time scales, and the argument that neither scaling nor reward alone is enough (Sec. 4.6–4.7, 8.3)."
+  connects_to: "Week 8's world models and JEPA, and on this page the 'when should a robot reason?' question: Mode-1 is the fast reactive policy, Mode-2 the slow deliberate one."
 
 - id: bitter-lesson
   role: discussion
@@ -1058,9 +1062,12 @@
   year: 2019
   venue: "essay"
   url: http://www.incompleteideas.net/IncIdeas/BitterLesson.html
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "A one-page essay drawing the lesson of 70 years of AI research: general methods that exploit growing computation, search and learning, eventually beat methods that build in human knowledge of the domain, even though the knowledge-based methods win in the short term."
+  contributions:
+    - "The pattern in four fields: chess, Go, speech recognition and computer vision, where hand-built knowledge gave way to search and learning at scale."
+    - "Why the lesson keeps being relearned: building in knowledge helps at first and satisfies the researcher, then plateaus and gets in the way."
+    - "The prescription: build in the meta-methods that discover structure, not the structure itself."
+  connects_to: "The lecture's flywheel (more data, better models) and the 'train from scratch on enough robot data' camp in the backbone debate; the guest's history of vision, where scaling model, data and training time together won, is the lesson played out."
 
 - id: intelligence-without-representation
   role: discussion
@@ -1068,8 +1075,143 @@
   title: "Intelligence without Representation"
   authors: "Brooks"
   year: 1991
-  venue: "Artificial Intelligence"
+  venue: "Artificial Intelligence"   # Artificial Intelligence 47 (1991), 139–159, per the PDF's first page
   url: https://people.csail.mit.edu/brooks/papers/representation.pdf
-  summary: "TODO"
-  contributions: []
-  connects_to: "TODO"
+  summary: "Argues that AI went wrong by decomposing intelligence into perception, a central world model and action connected by symbolic representations. Brooks instead builds robots ('Creatures') from layers of simple behaviours that each sense and act on the world directly, adding layers one at a time and testing each in the real world."
+  contributions:
+    - "A conclusion and a hypothesis: for simple intelligence, explicit world models get in the way, 'better to use the world as its own model'; and representation is the wrong unit of abstraction for building most of an intelligent system (Sec. 1)."
+    - "The evolutionary argument: evolution spent billions of years on moving and sensing and only a few million on language and reasoning, so the former is the hard part (Sec. 2)."
+    - "Decomposition by activity, not function: parallel layers that each produce behaviour, built and debugged incrementally on robots running in ordinary offices (Sec. 4–6)."
+  connects_to: "The lecture's case that foundation models lack physical grounding, and that embodied data and real-world testing are what close the gap; also the end-to-end learning the lecturer chose over a pipeline of separate modules."
+
+# Key papers from the Week 11 lecture and guest talk (cards written from the abstracts).
+- id: fuse
+  role: lecture
+  weeks: [11]
+  title: "Beyond Sight: Finetuning Generalist Robot Policies with Heterogeneous Sensors via Language Grounding"
+  authors: "Jones, Mees, Sferrazza, Stachowicz, Abbeel & Levine"
+  year: 2025
+  venue: "ICRA"             # ICRA 2025, pp. 5961-5968 (dblp)
+  url: https://arxiv.org/abs/2501.04693
+  summary: "FuSe fine-tunes a generalist robot policy, trained on vision and proprioception only, to use touch and sound as well, though no large data sets of those senses exist. Language is the common ground: the new senses are tied to descriptions of what the robot sees, feels and hears."
+  contributions:
+    - "A multimodal contrastive loss plus a language-generation loss grounded in the senses, used during fine-tuning (Abstract)."
+    - "New zero-shot abilities such as prompting with several senses at once and describing an object the robot is touching (Abstract)."
+    - "Works for both a diffusion-head policy and a large VLA; over 20% higher success than the baselines in real-world tests (Abstract)."
+  connects_to: "The lecture's 'long tail of robot sensing': scarce, unpaired, heterogeneous touch and audio data, bridged with language."
+
+- id: vlmaps
+  role: lecture
+  weeks: [11]
+  title: "Visual Language Maps for Robot Navigation"
+  authors: "Huang, Mees, Zeng & Burgard"
+  year: 2023
+  venue: "ICRA"             # ICRA 2023, per the Google Research blog announcing the paper
+  url: https://arxiv.org/abs/2210.05714
+  summary: "VLMaps fuses features from a pretrained vision-language model into a 3-D reconstruction of the environment, built from the robot's own video while it explores. The map can then be queried in language, so an LLM can turn instructions like 'three meters to the right of the chair' into navigation goals."
+  contributions:
+    - "A spatial map whose cells carry open-vocabulary visual-language features, with no extra labelled data (Abstract)."
+    - "Spatial goals by construction: language commands become sequences of goals located in the map (Abstract)."
+    - "One map shared by robots with different bodies, each deriving its own obstacle map (Abstract)."
+  connects_to: "The lecture's question of how a mobile robot should represent a building: an explicit map enriched with semantics, one end of the spectrum that runs to a walk-through video in the model's context."
+
+- id: lelan
+  role: lecture
+  weeks: [11]
+  title: "LeLaN: Learning a Language-Conditioned Navigation Policy from In-the-Wild Video"
+  authors: "Hirose, Glossop, Sridhar, Mees & Levine"
+  year: 2024
+  venue: "CoRL"             # PMLR 270:666-688 (8th Conference on Robot Learning); arXiv v1 says 130 h of data, the proceedings abstract 50 h
+  url: https://arxiv.org/abs/2410.03603
+  summary: "Learns to navigate to objects described in language from videos that carry no actions: robot recordings, YouTube tours and people walking. Vision-language and robot foundation models label the videos with instructions and actions, and a small policy is trained on the result."
+  contributions:
+    - "Labelling unlabelled, action-free egocentric video with object instructions and actions using foundation models (Abstract)."
+    - "A policy that beats state-of-the-art navigation methods in over 1,000 real trials while running 4× faster on edge hardware (Abstract, arXiv v1)."
+  connects_to: "Mapless navigation learned from internet video, the other end of the map question, and the lecture's point that performance kept rising with more YouTube data."
+
+- id: calvin
+  role: lecture
+  weeks: [11]
+  title: "CALVIN: A Benchmark for Language-Conditioned Policy Learning for Long-Horizon Robot Manipulation Tasks"
+  authors: "Mees, Hermann, Rosete-Beas & Burgard"
+  year: 2022
+  venue: "RA-L"             # IEEE Robotics and Automation Letters 7(3):7327-7334 (dblp); RA-L best paper 2022
+  url: https://arxiv.org/abs/2112.03227
+  summary: "An open simulated benchmark for robots that follow chains of language instructions over long horizons, from onboard sensors, generalizing zero-shot to new instructions and new scenes."
+  contributions:
+    - "Long-horizon, language-conditioned manipulation tasks with flexible sensor suites (Abstract)."
+    - "Zero-shot evaluation on novel instructions and environments (Abstract)."
+    - "A multicontext imitation baseline that performs poorly, leaving room for research (Abstract)."
+  connects_to: "The lecturer's own story on this page: a benchmark that began as a by-product of the simulator he built to iterate faster."
+
+- id: big-transfer
+  role: lecture
+  weeks: [11]
+  title: "Big Transfer (BiT): General Visual Representation Learning"
+  authors: "Kolesnikov, Beyer, Zhai, Puigcerver, Yung, Gelly & Houlsby"
+  year: 2020
+  venue: "ECCV"             # ECCV 2020, ecva.net proceedings
+  url: https://arxiv.org/abs/1912.11370
+  summary: "Revisits supervised pre-training on large labelled data sets followed by fine-tuning, scales it up, and distils it into a simple recipe that transfers well from one example per class to a million examples."
+  contributions:
+    - "A few carefully chosen components and a simple heuristic for setting transfer hyperparameters (Abstract)."
+    - "87.5% on ImageNet, 99.4% on CIFAR-10 and 76.3% on the 19-task VTAB (Abstract)."
+    - "Strong few-shot transfer: 76.8% on ImageNet with 10 examples per class (Abstract)."
+  connects_to: "The guest's lesson that large-scale pre-training only pays off when model size, data and training time all grow together."
+
+- id: clip
+  role: lecture
+  weeks: [11]
+  title: "Learning Transferable Visual Models From Natural Language Supervision"
+  authors: "Radford et al."
+  year: 2021
+  venue: "ICML"             # PMLR 139:8748-8763 (ICML 2021)
+  url: https://arxiv.org/abs/2103.00020
+  summary: "CLIP trains an image encoder and a text encoder together to predict which caption goes with which image, on 400 million image-text pairs from the internet. Language then names any visual concept, so the model classifies images zero-shot."
+  contributions:
+    - "A contrastive objective over a batch: match each image to its own caption among all captions in the batch, and vice versa (Abstract, Sec. 2)."
+    - "Zero-shot transfer to over 30 vision data sets; zero-shot ImageNet accuracy matching the original ResNet-50 without its 1.28 million training examples (Abstract)."
+  connects_to: "The guest's turning point: free-form web text instead of a fixed list of classes. This page's worked examples compute its loss and the batch shortcut that keeps it from learning relations."
+
+- id: siglip
+  role: lecture
+  weeks: [11]
+  title: "Sigmoid Loss for Language Image Pre-Training"
+  authors: "Zhai, Mustafa, Kolesnikov & Beyer"
+  year: 2023
+  venue: "ICCV"             # ICCV 2023, pp. 11975-11986, openaccess.thecvf.com
+  url: https://arxiv.org/abs/2303.15343
+  summary: "Replaces CLIP's softmax over the whole batch with an independent yes/no decision for every image-text pair. The loss needs no global normalization, so it scales to larger batches and also works better at small ones."
+  contributions:
+    - "A pairwise sigmoid loss on image-text pairs (Abstract)."
+    - "84.5% zero-shot ImageNet accuracy with locked-image tuning, trained in two days on four TPUv4 chips (Abstract)."
+    - "A study of batch size up to one million and of the ratio of negatives to positives (Abstract)."
+  connects_to: "The vision encoder of PaliGemma, and so of many VLAs on this course's earlier pages."
+
+- id: cappa
+  role: lecture
+  weeks: [11]
+  title: "Image Captioners Are Scalable Vision Learners Too"
+  authors: "Tschannen, Kumar, Steiner, Zhai, Houlsby & Beyer"
+  year: 2023
+  venue: "NeurIPS"          # NeurIPS 2023 (Advances in Neural Information Processing Systems 36), oral
+  url: https://arxiv.org/abs/2306.07915
+  summary: "A careful, matched comparison of contrastive pre-training and plain image captioning on the same web data, compute and model size. Captioning, long thought inferior, turns out competitive for classification and better for vision-and-language tasks."
+  contributions:
+    - "Captioning produces vision encoders competitive with contrastive ones on classification and better on vision-language tasks (Abstract)."
+    - "Captioning scales as well as or better than contrastive training with architecture, model size and data (Abstract)."
+  connects_to: "The guest's fix for CLIP's blind spot: to predict the word after 'sitting', a captioner must learn 'left of' versus 'right of'."
+
+- id: paligemma
+  role: lecture
+  weeks: [11]
+  title: "PaliGemma: A Versatile 3B VLM for Transfer"
+  authors: "Beyer, Steiner, Pinto, Kolesnikov, Wang et al."
+  year: 2024
+  venue: "arXiv"            # arXiv 2407.07726, a Google technical report; no venue searched
+  url: https://arxiv.org/abs/2407.07726
+  summary: "An open 3-billion-parameter vision-language model, a SigLIP image encoder joined to the Gemma-2B language model, trained to be a base that transfers well rather than a chat model."
+  contributions:
+    - "SigLIP-So400m image encoder plus Gemma-2B, trained in stages: unimodal pre-training, multimodal pre-training, higher resolution, then transfer (Sec. 3.2)."
+    - "Evaluated on almost 40 diverse tasks, including remote sensing and segmentation (Abstract)."
+  connects_to: "The backbone of many VLAs (Week 9), and the guest's example of mid-training: stitching two pre-trained models together and teaching them new skills such as reading text and locating objects."

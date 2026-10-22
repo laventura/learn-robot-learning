@@ -205,6 +205,26 @@ Symbols follow the lecture slides. Where a week's page uses a symbol, it explain
 | GRPO | Group relative policy optimization: PPO with a group-average baseline instead of a critic |
 | Verifiable reward | A reward a rule can compute, such as checking the final answer |
 
+## Week 11 · Frontiers & Open Problems
+
+| Symbol or term | Meaning |
+|:---|:---|
+| $N(s, a)$ | How often the data take action $a$ in state $s$ |
+| $\mathcal{D}$, $\tau$ | A data set of trajectories; one trajectory |
+| $g = s_{t'}$ | A goal relabelled in hindsight: a state the trajectory reached later |
+| $V(s)$ | Cost-to-go (steps to the goal) through transitions in the data |
+| $N_e$, $M$, $k$ | Expert episodes, autonomous episodes per round, rounds of the flywheel |
+| $\pi_m$, $E$, $u(o)$ | Ensemble member $m$ of $E$; the members' disagreement on observation $o$ |
+| $\tau$ (threshold) | Disagreement above which the robot asks for help |
+| Coverage, selective success | Share of tasks the robot takes on; its success on those |
+| $x_i$, $y_i$ | Normalized embeddings of image $i$ and caption $i$ |
+| $t$, $b$ | Contrastive temperature; SigLIP's bias |
+| $z_{ij}$ | SigLIP's label: $+1$ for a matching image-caption pair, $-1$ otherwise |
+| $f$ | Fraction of the data with a property (a possible hard negative) |
+| Stitching | Joining pieces of different trajectories into a new route |
+| Data flywheel | Deploy, collect, retrain, deploy a better robot |
+| Mid-training | Training after pre-training that adds core skills before fine-tuning |
+
 ## Overloaded symbols
 
 Symbols that mean different things in different weeks.
@@ -253,3 +273,7 @@ Symbols that mean different things in different weeks.
 | $N$ | Samples drawn by best-of-N search | 10 |
 | $L$ | Number of transformer layers | 10 |
 | $T$ | Reasoning tokens written before the answer | 10 |
+| $\tau$ | A disagreement threshold (elsewhere a trajectory) | 11 |
+| $t$ | Contrastive temperature (elsewhere a time step) | 11 |
+| $M$ | Autonomous episodes per round of the flywheel | 11 |
+| $V(s)$ | Steps to the goal (a cost, minimized), not a reward-based value | 11 |
