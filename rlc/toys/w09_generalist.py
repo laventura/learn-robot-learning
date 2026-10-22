@@ -463,6 +463,25 @@ def distinct_per_batch(batches) -> float:
     return float(np.mean([len(set(b)) for b in batches]))
 
 
+# --- Worked example: Gato's tokens for continuous values ----------------
+
+def mu_law(x, mu=100.0, M=256.0) -> Array:
+    """Gato's companding, F(x) = sgn(x) log(|x| mu + 1) / log(M mu + 1),
+    then clipped to [-1, 1]: small values get spread out, large ones
+    squeezed together."""
+    x = np.asarray(x, dtype=float)
+    f = np.sign(x) * np.log(np.abs(x) * mu + 1) / np.log(M * mu + 1)
+    return np.clip(f, -1.0, 1.0)
+
+
+def gato_tokens(x, bins=1024, text_vocab=32_000) -> Array:
+    """Continuous values -> token ids: mu-law, then one of `bins` equal
+    bins on [-1, 1] (the top edge goes into the last bin), shifted past
+    the text vocabulary so the two never collide."""
+    b = np.floor((mu_law(x) + 1) / 2 * bins).astype(int)
+    return np.minimum(b, bins - 1) + text_vocab
+
+
 # --- Worked example: advantage conditioning in a corridor ---------------
 
 def corridor(L, p) -> dict:

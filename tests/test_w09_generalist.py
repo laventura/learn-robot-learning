@@ -90,6 +90,17 @@ def test_bigger_shuffle_buffer_mixes_more_trajectories():
     assert d[0] < d[1] < d[2] <= 32
 
 
+# --- Worked example: Gato's tokens --------------------------------------
+
+def test_mu_law_spreads_small_values_and_tokens_follow_text():
+    f = w.mu_law([-1e9, -1.0, 0.0, 0.01, 1.0, 1e9])
+    assert f[0] == -1 and f[-1] == 1 and f[2] == 0
+    assert f[3] > 0.05                       # 1% of the range -> 6.8% of it
+    assert np.allclose(w.mu_law([-0.3]), -w.mu_law([0.3]))
+    t = w.gato_tokens([-1e9, 0.0, 1e9])
+    assert t.tolist() == [32_000, 32_512, 33_023]
+
+
 # --- Worked example: corridor -------------------------------------------
 
 def test_corridor_advantages_separate_forward_from_back():
