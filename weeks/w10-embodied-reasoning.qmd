@@ -1,6 +1,969 @@
 ---
 title: "Week 10 · Embodied Reasoning and Test-time Scaling"
 subtitle: "Lecture of 4 May 2026 · guest: Archit Sharma"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+
+from rlc import nn, style
+from rlc.io import write_json
+from rlc.page import course_map_highlight, hero_video, paper_cards, resources, show_source
+from rlc.toys import w10_reasoning as w
+
+style.apply()
+BLUE, ORANGE, GREEN, YELLOW = style.CATEGORICAL[:4]
+COLOUR_NAMES = ["blue", "orange", "green", "yellow"]          # the toy's C = 4 object colours
+
+# --- Toy 1: reason, then act ------------------------------------------------------
+SIZES, SEEDS = (500, 1000, 2000, 3000, 5000), range(4)
+TEST = w.test_set()
+RES = {(n, s): w.compare_methods(n, s, test=TEST) for n in SIZES for s in SEEDS}
+KEYS1 = ("standard", "ecot", "dropout", "dropout+think", "pretrain", "scaffold")
+t1 = lambda m, n: float(np.mean([RES[n, s][m] for s in SEEDS]))
+se1 = lambda m, n: float(np.std([RES[n, s][m] for s in SEEDS], ddof=1) / np.sqrt(len(SEEDS)))
+assert all(t1(m, n) > t1("standard", n) + 0.04 for m in ("ecot", "dropout", "pretrain") for n in SIZES[1:])
+assert t1("dropout", 2000) > t1("standard", 2000) + 0.15
+assert t1("pretrain", 2000) > t1("standard", 2000) + 0.1
+assert t1("ecot", 2000) > t1("standard", 2000) + 0.05
+assert t1("dropout", 2000) > t1("ecot", 2000) + 0.05            # the toy's surprise
+assert abs(t1("scaffold", 2000) - t1("standard", 2000)) < 0.03   # scaffolding alone: nothing
+assert all(abs(t1("dropout+think", n) - t1("dropout", n)) < 0.03 for n in SIZES)   # thinking adds nothing here
+assert max(t1(m, 500) for m in KEYS1) - min(t1(m, 500) for m in KEYS1) < 0.05      # too little data for anyone
+assert t1("standard", 5000) > 0.88
+R_ERR = {m: float(np.mean([RES[2000, s][m + " reasoning error"] for s in SEEDS])) for m in ("ecot", "dropout")}
+assert R_ERR["ecot"] < R_ERR["dropout"] < 0.1                  # both reason well; ECoT a little better
+CLEAN = w.compare_methods(1000, 0, noise=0.0, test=TEST)          # noise-free control
+assert all(CLEAN[m] > 0.99 for m in KEYS1)
+
+
+def demos_for(m, level):
+    """Demos needed to reach `level`, by linear interpolation in log(n)."""
+    ys = np.array([t1(m, n) for n in SIZES])
+    i = int(np.argmax(ys >= level))
+    assert ys[i] >= level and i > 0 and all(np.diff(ys[:i + 1]) > 0)
+    f = (level - ys[i - 1]) / (ys[i] - ys[i - 1])
+    return float(np.exp(np.log(SIZES[i - 1]) + f * (np.log(SIZES[i]) - np.log(SIZES[i - 1]))))
+
+
+N75 = {m: demos_for(m, 0.75) for m in ("standard", "ecot", "dropout", "pretrain")}
+assert N75["standard"] > 1.4 * N75["dropout"]
+
+EDITS = [w.edit_test(2000, s, TEST) for s in SEEDS]
+ed = lambda m, k: float(np.mean([e[0][m, k] for e in EDITS]))
+assert ed("ecot", "edited") > 0.45 and ed("ecot", "instructed") < 0.1
+assert ed("dropout", "edited") < 0.1 and ed("dropout", "instructed") > 0.7
+ORACLE = {m: w.reach_success(EDITS[0][1][m], True, TEST, slot=TEST[1]) for m in ("ecot", "dropout")}
+
+# --- Toy 2: best-of-N through a gap --------------------------------------------------
+CURVES, SHARE = w.search_curves()
+B = list(w.BUDGETS)
+cv = lambda planner, ver, b, budget: CURVES[planner, ver][B.index(budget)][b]
+assert cv("small", "perfect", "easy", 4) > cv("big", "perfect", "easy", 4) + 0.1          # search wins easy
+assert all(cv("big", "perfect", "hard", bb) > cv("small", "perfect", "hard", bb) + 0.05 for bb in B)   # size wins hard
+assert all(cv("big", "perfect", "medium", bb) > cv("small", "perfect", "medium", bb) for bb in B if bb >= 16)
+assert abs(cv("big", "perfect", "medium", 4) - cv("small", "perfect", "medium", 4)) < 0.02
+CAP = w.verifier_cap()
+assert all(abs(cv(pl, "learned", "easy", 256) - CAP) < 0.015 for pl in w.PLANNERS)
+assert cv("small", "perfect", "hard", 256) < 0.55
+GAP, Z = w.gap_problems(np.random.default_rng(0), 20000)
+TYP = {b: w.typical_problem(Z, b) for b in w.BINS}
+PTYP = {(b, pl): float(w.p_through(Z[[TYP[b]]], pl)[0]) for b in w.BINS for pl in w.PLANNERS}
+HERO = w.hero_runs()
+HN = [int(r["ok"].sum()) for r in HERO]
+assert HN == [11, 0, 0] and HERO[0]["ok"][HERO[0]["pick"]]
+
+# --- Toy 3: GRPO on how long to think --------------------------------------------------
+LAM, GSEEDS = 0.3, range(8)
+RUNS = [w.grpo_train(LAM, np.random.default_rng(s)) for s in GSEEDS]
+ACC = np.mean([r[0] for r in RUNS], axis=0)                  # (steps, kinds)
+LEN = np.mean([r[1] for r in RUNS], axis=0)
+KINDS = list(w.NEED)
+BASE = w.base_success(LAM)
+assert (ACC[-1] > 0.85).all() and LEN[-1][0] < LEN[-1][1] < LEN[-1][2]
+assert LEN[-1][2] > LEN[0][2] + 4
+LAMS = np.round(np.arange(0.1, 1.01, 0.1), 2)
+COLD = []                                                      # (kind, base success, steps per seed)
+for lam in LAMS:
+    accs = [w.grpo_train(lam, np.random.default_rng(s))[0] for s in GSEEDS]     # (steps, kinds) each
+    for i, k in enumerate(KINDS):
+        COLD.append((k, w.base_success(lam)[k], [w.steps_to(a[:, i]) for a in accs]))
+LEARNED = [c for c in COLD if all(s < w.GRPO_STEPS for s in c[2])]
+STALLED = [c for c in COLD if all(s == w.GRPO_STEPS for s in c[2])]
+assert len(LEARNED) + len(STALLED) == len(COLD)                # every setting all-or-nothing over 8 seeds
+P_LO = max(c[1] for c in STALLED)
+P_HI = min(c[1] for c in LEARNED)
+assert P_LO < P_HI < 0.02
+
+# --- Worked examples -------------------------------------------------------------------
+GROUP = np.array([1.0, 0, 0, 1, 0, 0, 0, 0])
+GADV = w.grpo_advantages(GROUP)
+ELO_RAW, ELO_SEARCH = 3055, 5185                                # AlphaGo Zero, Fig. 6b
+ELO_GAP = ELO_SEARCH - ELO_RAW
+DOUBLINGS = ELO_GAP / 120
+assert abs(w.elo_win(100) - 0.64) < 0.005
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 10 · **Lecture:** [video](https://youtu.be/CxhrjQuGEuE) · **Go deeper:** [ADM Ch 9, Monte Carlo tree search]({{< var adm_url >}}/part2/ch09-online-planning.html#monte-carlo-tree-search)
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(10))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+Weeks 7 to 9 built ever larger policies from ever more data. Data gives a policy a better prior over the behaviours it has seen, compressed into its weights [▶ 01:00](https://youtu.be/CxhrjQuGEuE?t=60). What it does not give is a way out of a situation the data never covered: faced with something out of distribution, even the best VLA has no mechanism to work its way through, and simply fails [▶ 02:04](https://youtu.be/CxhrjQuGEuE?t=124). Language models hit the same wall: trained on the whole internet, they still could not solve everything, and the field's answer was to train them specifically to **reason**, recombining pieces of knowledge they already have instead of recalling a stored answer [▶ 02:35](https://youtu.be/CxhrjQuGEuE?t=155) [▶ 03:08](https://youtu.be/CxhrjQuGEuE?t=188). Since robotics is now multimodal sequence modelling too, the lecture asks whether that idea transfers: can a robot that thinks harder act better [▶ 04:11](https://youtu.be/CxhrjQuGEuE?t=251)?
+
+**The question this week answers:** how do you make a policy reason before it acts, why does that help, how do you avoid paying for the reasoning at every control step, and how do models learn to spend more computation at test time on problems that need it?
+
+### The key ideas at a glance
+
+- **Reason, then act.** Embodied chain-of-thought (ECoT) trains a VLA to write a plan, a subtask, a motion and where the relevant objects and its gripper are, before its action. The reasoning labels are made automatically by foundation models.
+- **Reasoning is slow, but you can keep most of the gain without it.** Writing the reasoning made ECoT run at about one action per second instead of several. Training with reasoning and then dropping it at test time (ECoT-Lite) keeps much of the improvement at full speed.
+- **Why it helps.** The lecture weighs three explanations: better internal features, a learning curriculum, or just more computation. The evidence favours the first: learning to *produce* the reasoning is what matters; meaningless extra tokens do not help.
+- **Test-time compute is a scaling axis.** Search on top of a policy (AlphaGo) or sampling many answers and verifying them can substitute for a much larger model, but only on problems the model can sometimes solve.
+- **Reasoning can be learned by RL.** With GRPO and rewards that check the final answer, language models learn to think longer and to check themselves, without human examples, provided the base model is strong enough to sometimes succeed.
+- **Verify the reasoning, not just the answer.** In vision, a model can reach the right answer through hallucinated reasoning; rewarding grounded intermediate steps prevents that.
+
+### Vocabulary
+
+| Term | Plain meaning |
+|:---|:---|
+| Chain of thought (CoT) | Intermediate reasoning written out before the answer |
+| Embodied CoT (ECoT) | CoT for a robot policy: plan, subtask, move, object boxes and gripper position, then the action |
+| ECoT-Lite | Training recipes that use reasoning data but write no reasoning at test time |
+| Reasoning dropout | Training with the reasoning randomly removed, so the policy can act with or without it |
+| Reasoning pre-training | Training to write reasoning first, then fine-tuning to output actions only |
+| Thinking tokens | Meaningless placeholder tokens that add computation but no information |
+| Test-time compute | Computation spent when answering: longer reasoning, many samples, search |
+| Verifier | Something that checks or scores a candidate answer: a simulator, a rule, a learned model |
+| Best-of-N | Sample N candidates and keep the one the verifier rates best |
+| GRPO | Group relative policy optimization: PPO without a critic; advantages from a group of answers |
+| Verifiable reward | A reward a rule can compute, such as "the final answer equals 42" |
+
+### After this week you can
+
+- Describe ECoT's reasoning steps, where its labels come from, and what it costs at inference.
+- Explain the ECoT-Lite variants and what each says about why reasoning helps.
+- Compute the chance that best-of-N succeeds, and explain when search beats a bigger model.
+- Explain why reasoning tokens add serial computation to a fixed-depth transformer.
+- Compute GRPO's group-relative advantages and explain why a weak base model learns nothing.
+- Say why rewarding only the final answer lets hallucinated reasoning through.
+
+{{< video https://youtu.be/CxhrjQuGEuE >}}
+
+## Intuition
+
+::: {.callout-tip title="Analogy"}
+A new chess player who thinks aloud ("their bishop covers that square, so my knight can't go there") learns faster than one who only copies moves, because the commentary teaches what to look at. After a while a good player no longer needs to say it: the habit of looking has stuck. And on a hard position, even a strong player plays better with more time to think, but only if the right move is among those they would consider at all.
+:::
+
+### Reason, then act {#ecot-intuition}
+
+A standard VLA maps an image and an instruction straight to an action. **Embodied chain-of-thought** inserts steps in between [▶ 05:15](https://youtu.be/CxhrjQuGEuE?t=315): first a plan for the whole task, then the current subtask, then the motion it needs ("the watermelon is behind the robot, so move backward"), then the objects in view with their bounding boxes and the gripper's position in the image, and only then the action tokens [▶ 06:49](https://youtu.be/CxhrjQuGEuE?t=409). The action tokens are conditioned on all of it: the model has to look carefully and think before it acts.
+
+Nobody can hand-label millions of robot frames with plans and boxes, so the reasoning is generated: a language model writes plans and subtasks from the instruction, detectors and segmenters find the objects, and the gripper is tracked in the image [▶ 06:17](https://youtu.be/CxhrjQuGEuE?t=377). On generalization tests (unseen objects, instructions and scenes), ECoT raised OpenVLA's absolute success by 28 points with no extra robot data, and the 7B model also beat the 55B RT-2-X [▶ 08:22](https://youtu.be/CxhrjQuGEuE?t=502). Because the reasoning is readable, a person can see why a rollout failed and **correct the robot by editing its reasoning** while it runs [▶ 09:25](https://youtu.be/CxhrjQuGEuE?t=565). Reasoning learned on one robot's data was even plausible on other robots [▶ 10:28](https://youtu.be/CxhrjQuGEuE?t=628), and the idea has spread: Gemini Robotics adopted it as a core component [▶ 12:32](https://youtu.be/CxhrjQuGEuE?t=752).
+
+```{dot}
+//| label: fig-ecot
+//| fig-width: 4.6
+//| fig-height: 5.2
+//| fig-cap: "Embodied chain-of-thought, drawn from the lecture. The VLA writes its reasoning as tokens, from the task-level plan down to grounded features in the image, and the action tokens come last, conditioned on everything before them. The reasoning labels for training are produced offline by foundation models."
+//| fig-alt: "Diagram, top to bottom. 'camera image + instruction' feeds 'VLA (one transformer)', highlighted in orange. From it a chain of blue boxes, each labelled 'then': 'plan: 1. move to the watermelon 2. grasp it ...', 'subtask: move to the watermelon', 'move: it is behind the robot, so move backward', 'objects with boxes, gripper position', and finally 'action tokens'. On the side, a grey box 'foundation models label the robot data offline' points with a dashed arrow labelled 'training labels' to the plan box."
+digraph G {
+  graph [bgcolor="#fcfcfb", rankdir=TB, fontname="Helvetica", nodesep=0.35, ranksep=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#52514e", fillcolor="#f0efec", fontcolor="#0b0b0b"];
+  edge [fontname="Helvetica", fontsize=9, color="#52514e", fontcolor="#52514e"];
+  inp [label="camera image + instruction"];
+  vla [label="VLA (one transformer)", fillcolor="#eb6834", fontcolor="white", color="#eb6834"];
+  plan [label="plan: 1. move to the watermelon\n2. grasp it ...", fillcolor="#cde2fb", color="#2a78d6"];
+  sub [label="subtask: move to the watermelon", fillcolor="#cde2fb", color="#2a78d6"];
+  mv [label="move: it is behind the robot,\nso move backward", fillcolor="#cde2fb", color="#2a78d6"];
+  box [label="objects with boxes,\ngripper position", fillcolor="#cde2fb", color="#2a78d6"];
+  act [label="action tokens", fillcolor="#2a78d6", fontcolor="white", color="#2a78d6"];
+  lab [label="foundation models\nlabel the robot data offline"];
+  inp -> vla [label="reads"];
+  vla -> plan [label="writes"];
+  plan -> sub [label="then"];
+  sub -> mv [label="then"];
+  mv -> box [label="then"];
+  box -> act [label="then"];
+  lab -> plan [style=dashed, label="training labels"];
+  { rank=same; vla; lab; }
+}
+```
+
+This page's first toy has the same structure at a tiny scale. A gripper must reach the object of the instructed colour; each scene has `{python} w.K` objects in `{python} w.C` possible colours. The demonstrated actions come from a "human" and are noisy (standard deviation `{python} w.NOISE` per axis). The **reasoning** is the instructed object's position, a precise label of the kind a detector supplies. One small network plays the VLA: it has an output for the reasoning and one for the action, and a **reasoning slot** in its input. To "think", it runs twice: the first pass writes the reasoning, the second reads it from the slot and writes the action.
+
+```{python}
+#| label: fig-reasoning
+#| fig-cap: "First toy: success at reaching the instructed object on 2,000 held-out scenes, against the number of noisy demonstrations (mean ± standard error over 4 seeds; equal gradient steps for every method). Only ECoT writes its reasoning at test time; the others act in one pass. Dropout with its reasoning switched on lies on top of dropout without it and is not drawn."
+#| fig-alt: "Line chart, x-axis number of demos on a log scale from 500 to 5,000, y-axis success from 0 to 1. Five lines. At 500 demos all sit near 0.3. Standard cloning, grey, rises slowest: about 0.31 at 1,000, 0.59 at 2,000, 0.78 at 3,000 and 0.91 at 5,000. Scaffold, light, lies on top of it. ECoT, orange, is above it from 1,000 demos on: 0.36, 0.69, 0.84, 0.97. Reasoning pre-training, green, is above ECoT up to 3,000 demos: 0.40, 0.76, 0.88, 0.96. Reasoning dropout, blue, is highest throughout: 0.41, 0.80, 0.93, 0.98."
+fig, ax = plt.subplots(figsize=(6.4, 3.6))
+for m, col, lab, ls in (("standard", style.INK_SECONDARY, "standard (no reasoning)", "-"),
+                        ("scaffold", style.MUTED, "scaffold (reasoning in, no loss)", ":"),
+                        ("ecot", ORANGE, "ECoT (writes reasoning)", "-"),
+                        ("pretrain", GREEN, "reasoning pre-training", "-"),
+                        ("dropout", BLUE, "reasoning dropout", "-")):
+    ys = [t1(m, n) for n in SIZES]
+    ax.errorbar(SIZES, ys, yerr=[se1(m, n) for n in SIZES], color=col, ls=ls, marker="o", ms=4,
+                capsize=2, label=lab)
+ax.set_xscale("log")
+ax.set_xticks(SIZES, [f"{n:,}" for n in SIZES])
+ax.minorticks_off()
+ax.set_ylim(0, 1.02)
+ax.set_xlabel("noisy demonstrations")
+ax.set_ylabel("success")
+ax.legend(fontsize=8, loc="upper left", frameon=False)
+plt.show()
+```
+
+With `{python} f"{SIZES[0]}"` demos nobody learns the task (all methods `{python} f"{min(t1(m, 500) for m in KEYS1):.2f}"`–`{python} f"{max(t1(m, 500) for m in KEYS1):.2f}"`). From `{python} f"{SIZES[1]:,}"` on, every network trained to *write* the reasoning beats plain cloning (@fig-reasoning). At 2,000 demos, cloning reaches `{python} f"{t1('standard', 2000):.2f}"`, ECoT `{python} f"{t1('ecot', 2000):.2f}"`, reasoning pre-training `{python} f"{t1('pretrain', 2000):.2f}"` and reasoning dropout `{python} f"{t1('dropout', 2000):.2f}"`. To reach 75%, cloning needs about `{python} f"{N75['standard']:,.0f}"` demos and reasoning dropout about `{python} f"{N75['dropout']:,.0f}"`. The mechanism here is simple and worth stating plainly: the reasoning labels are precise, the action labels are noisy, and the network that is trained to locate the object from clean labels has better features for acting. With noise-free actions every method, plain cloning included, succeeds `{python} f"{min(CLEAN[m] for m in KEYS1):.0%}"` of the time with 1,000 demos: the toy's benefit is exactly this extra, cleaner supervision.
+
+### Reasoning is slow {#slow-intuition}
+
+Writing the reasoning costs tokens, and tokens cost time. OpenVLA, ECoT's base model, produced about four actions per second; with the full reasoning chain it took about four *seconds* per action [▶ 13:34](https://youtu.be/CxhrjQuGEuE?t=814) [▶ 14:06](https://youtu.be/CxhrjQuGEuE?t=846). The ECoT-Lite paper measured 1–1.2 Hz for ECoT even after compilation on an H100, against 3–4 Hz for a VLA of the same architecture without reasoning. A robot needs fast control, so the question is whether you can keep the benefit of reasoning without writing it at every step [▶ 15:08](https://youtu.be/CxhrjQuGEuE?t=908).
+
+Answering that requires knowing *why* reasoning helps [▶ 15:40](https://youtu.be/CxhrjQuGEuE?t=940). Three explanations are plausible:
+
+1. **Better representations** [▶ 16:40](https://youtu.be/CxhrjQuGEuE?t=1000). Supervising the reasoning forces the network to build features that track where things are and what matters. If so, the supervision during training is what counts, and the reasoning could be skipped at test time.
+2. **A curriculum** [▶ 18:13](https://youtu.be/CxhrjQuGEuE?t=1093). Predicting continuous actions is far from anything a VLM was pre-trained on; the reasoning breaks the leap into smaller steps the model can learn first. If so, reasoning could be given as context during training only (a "scaffold"), with no loss on it.
+3. **More computation** [▶ 19:48](https://youtu.be/CxhrjQuGEuE?t=1188). More tokens in the context give a transformer more computation, even if the tokens mean nothing. If so, meaningless "thinking tokens" would do as well.
+
+ECoT-Lite tested each with a matching recipe on LIBERO-90 [▶ 21:20](https://youtu.be/CxhrjQuGEuE?t=1280). **Reasoning pre-training** (first learn only to write the reasoning, then fine-tune only on actions) and **reasoning dropout** (train like ECoT but remove the reasoning from some training examples, so the policy can also act without it) came close to full ECoT while writing no reasoning at test time [▶ 22:23](https://youtu.be/CxhrjQuGEuE?t=1343) [▶ 23:26](https://youtu.be/CxhrjQuGEuE?t=1406); the scaffold helped a little; thinking tokens made things worse. On the real robot full ECoT stayed best, with the Lite variants between it and the standard VLA at the standard VLA's speed [▶ 24:29](https://youtu.be/CxhrjQuGEuE?t=1469). The evidence favours explanation 1.
+
+The toy agrees on the parts it can test. A scaffold without a reasoning loss gives nothing (`{python} f"{t1('scaffold', 2000):.2f}"` against `{python} f"{t1('standard', 2000):.2f}"` at 2,000 demos), and the dropout network does as well without its reasoning as with it (`{python} f"{t1('dropout', 2000):.2f}"` and `{python} f"{t1('dropout+think', 2000):.2f}"`), as on LIBERO, whose tasks are narrow; the paper found test-time reasoning did help on the more varied real-robot tasks. Thinking tokens have no meaning in a network without a sequence, so the toy does not test explanation 3. One result differs from the paper: full ECoT is *below* the two Lite recipes here. Its reasoning is in fact slightly more accurate than the dropout network's (mean error `{python} f"{R_ERR['ecot']:.3f}"` against `{python} f"{R_ERR['dropout']:.3f}"`, in a 2 × 2 workspace); the weak link is its action pass, which with the *true* object position in its slot still reaches only `{python} f"{ORACLE['ecot']:.2f}"` (dropout: `{python} f"{ORACLE['dropout']:.2f}"`). A guess, not tested: ECoT's action pass only ever learned from the slot, so it never shared in the clean features that the reasoning loss built.
+
+### Can you edit what it thinks? {#edit-intuition}
+
+There is a price for not using the reasoning. Put the *other* object's position in the reasoning slot, as a person correcting the robot would, and see where each network goes (@fig-edit).
+
+```{python}
+#| label: fig-edit
+#| fig-cap: "First toy, 2,000 demos: the reasoning slot is overwritten with the other object's position. Bars: share of held-out scenes in which the gripper ends at the edited object or at the instructed one (mean over 4 seeds)."
+#| fig-alt: "Grouped bar chart with two groups, ECoT and reasoning dropout. For ECoT, the bar 'ends at the edited object' is 0.60 and 'ends at the instructed object' 0.04. For reasoning dropout, 'edited' is about 0.04 and 'instructed' about 0.77."
+fig, ax = plt.subplots(figsize=(5.2, 2.8))
+for j, (k, col, lab) in enumerate((("edited", ORANGE, "ends at the edited object"),
+                                   ("instructed", BLUE, "ends at the instructed object"))):
+    ys = [ed(m, k) for m in ("ecot", "dropout")]
+    ax.bar(np.arange(2) + (j - 0.5) * 0.36, ys, width=0.34, color=col, label=lab)
+    for x, y in zip(np.arange(2) + (j - 0.5) * 0.36, ys):
+        ax.text(x, y + 0.02, f"{y:.2f}", ha="center", fontsize=8, color=style.INK_SECONDARY)
+ax.set_xticks(range(2), ["ECoT", "reasoning dropout"])
+ax.set_ylim(0, 1)
+ax.set_ylabel("share of scenes")
+ax.legend(fontsize=8, frameon=False, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.15))
+plt.show()
+```
+
+ECoT follows the edit: it ends at the edited object in `{python} f"{ed('ecot', 'edited'):.0%}"` of scenes and at the instructed one in only `{python} f"{ed('ecot', 'instructed'):.0%}"`. The dropout network ignores it and goes where the instruction says (`{python} f"{ed('dropout', 'instructed'):.0%}"`): it learned to act from its own features, and the reasoning it writes is no longer what drives its actions. Reasoning is an explanation of behaviour, and a handle for correcting it, only if the actions actually depend on it. You can try this yourself in the [first interactive](#edit-explorer).
+
+### Thinking longer: test-time compute {#ttc-intuition}
+
+ECoT spends a fixed amount of reasoning on every step. The second half of the lecture asks: what if the model could think *longer* on harder problems [▶ 26:02](https://youtu.be/CxhrjQuGEuE?t=1562)? Isn't that just planning? In a sense yes: classical planners such as A\* search an explicit, hand-specified model; AlphaGo searches with learned networks; a reasoning LLM searches implicitly, by writing tokens, in open-ended domains [▶ 27:05](https://youtu.be/CxhrjQuGEuE?t=1625).
+
+AlphaGo is the canonical example [▶ 28:07](https://youtu.be/CxhrjQuGEuE?t=1687). AlphaGo Zero's raw network, playing its most likely move with no lookahead, rated `{python} f"{ELO_RAW:,}"` Elo; with Monte Carlo tree search on top, `{python} f"{ELO_SEARCH:,}"`. A rule of thumb the lecture quotes: 120 Elo points take either twice the model size or twice the search [▶ 28:40](https://youtu.be/CxhrjQuGEuE?t=1720). Closing the gap by size alone would then need a network about `{python} f"{2 ** DOUBLINGS:,.0f}"` times larger ([Example 2](#ex-elo)); the lecturer's figure was roughly 100,000×, and he warned the numbers are inflated [▶ 29:12](https://youtu.be/CxhrjQuGEuE?t=1752).
+
+Language works too, with a nuance [▶ 30:45](https://youtu.be/CxhrjQuGEuE?t=1845). Snell et al. found that, at equal compute, spending it at test time on a small model beats a 14× larger model on easy and medium questions, but on the hardest questions the larger model wins [▶ 32:18](https://youtu.be/CxhrjQuGEuE?t=1938). Test-time compute **amplifies what the model already knows**: if the right answer is never among the model's samples, no search finds it [▶ 32:50](https://youtu.be/CxhrjQuGEuE?t=1970).
+
+The second toy shows this with a planner that must send a path through a gap in a wall. A small planner believes the gap is somewhere near where it really is and samples paths around that belief; a verifier picks a sample that gets through. Problems are sorted by how often the small planner's own samples get through (easy: more than 30%, hard: under 2%), as Snell et al. sort questions.
+
+```{python}
+#| output: asis
+print(hero_video(
+    "w10-search",
+    caption="The second toy's small planner on its typical easy problem (16 samples) and on its typical hard "
+            "problem (16, then 64 samples). A perfect verifier keeps a path that gets through, if there is one.",
+    alt=f"Animation, about 21 seconds, looping. A grey vertical wall with a small gap just above the middle, a "
+        f"start dot on the left and a goal dot on the right, under the caption 'A planner samples paths; a verifier "
+        f"keeps one that gets through'. On the easy problem, 16 grey lines grow from the start in a narrow fan "
+        f"towards the gap; {HN[0]} that reach the gap turn green and the rest, which hit the wall just above it, "
+        f"turn orange. The caption reads 'Easy problem: {HN[0]} of 16 samples get through', and one green path is "
+        f"drawn thick on through the gap to the goal. The paths fade, the gap slides down below the middle, and the "
+        f"caption says the planner is wrong about where the gap is: 16 new lines fan out further down, all hit the "
+        f"wall below the gap and turn orange ('Hard problem: {HN[1]} of 16 samples get through'). Then 64 lines, a "
+        f"wider fan but still entirely below the gap, all orange: '{HN[2]} of 64: search only picks among what the "
+        f"planner proposes'. The lines fade and the gap slides back up.",
+))
+```
+
+**What to watch for.** The wall, start and goal stay fixed; only the gap's position and the sampled paths change. On the easy problem the planner's samples fan out narrowly around its belief about the gap, which is close to right: `{python} HN[0]` of 16 pass through, the perfect verifier picks one, and that path is drawn on to the goal. Then the gap moves to the typical hard problem. The planner's belief is now well off, so all 16 samples hit the wall below the gap, and quadrupling the search to 64 samples only fills in the same wrong region: `{python} HN[2]` of 64 get through. A single sample gets through this hard problem with chance `{python} f"{HERO[1]['p']:.4f}"`, so 64 samples would succeed only `{python} f"{1 - (1 - HERO[1]['p']) ** 64:.0%}"` of the time on average. Each problem is the one in its difficulty bin whose single-sample success is closest to the bin's mean, and all samples come from one fixed generator.
+
+```{python}
+#| label: fig-search
+#| fig-cap: "Second toy: success against compute, in samples of the small planner, by difficulty (20,000 problems). The big planner is 4× costlier per sample, so it draws a quarter as many. Solid: a perfect verifier; dashed: a learned verifier that misjudges the gap's position."
+#| fig-alt: "Three panels side by side, easy, medium and hard, each with compute from 4 to 256 on a log x-axis and success from 0 to 1. Easy: the small planner (orange) starts at about 0.92 and the big one (blue) at 0.74; both reach 1 by 16 to 32. Dashed learned-verifier lines level off near 0.96 for both. Medium: both start near 0.42; the big planner is ahead from 16 on (0.86 against 0.78) and both reach 1, with the learned verifier near 0.96. Hard: the small planner climbs slowly from 0.02 to about 0.49 at 256, the big one from 0.10 to about 0.87; solid and dashed lines nearly coincide."
+fig, axs = plt.subplots(1, 3, figsize=(7.2, 2.8), sharey=True)
+for ax, b in zip(axs, w.BINS):
+    for pl, col in (("small", ORANGE), ("big", BLUE)):
+        for ver, ls in (("perfect", "-"), ("learned", "--")):
+            ax.plot(B, [cv(pl, ver, b, bb) for bb in B], color=col, ls=ls, marker="o" if ls == "-" else None,
+                    ms=3, label=f"{pl} planner, {ver} verifier")
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(B[::2], [str(v) for v in B[::2]])
+    ax.minorticks_off()
+    ax.set_title(f"{b} ({SHARE[b]:.0%} of problems)", fontsize=10)
+    ax.set_xlabel("compute (small samples)")
+axs[0].set_ylabel("success")
+axs[0].set_ylim(0, 1.03)
+axs[1].legend(fontsize=7, frameon=False, loc="lower center", bbox_to_anchor=(0.5, 1.13), ncol=2)
+plt.show()
+```
+
+On easy problems search with the small planner is the better buy: with 4 samples' worth of compute it succeeds `{python} f"{cv('small', 'perfect', 'easy', 4):.2f}"` of the time, against `{python} f"{cv('big', 'perfect', 'easy', 4):.2f}"` for the big planner's single sample (@fig-search). On hard problems the big planner wins at every budget: at 64 it reaches `{python} f"{cv('big', 'perfect', 'hard', 64):.2f}"` against `{python} f"{cv('small', 'perfect', 'hard', 64):.2f}"`, because the small planner's samples rarely land in the gap at all. And the verifier matters as much as the planner: a learned verifier that misjudges where the gap is levels off at `{python} f"{CAP:.3f}"` on easy problems however many samples it gets, the chance that its own belief lies inside the gap.
+
+### Why reasoning tokens add computation {#depth-intuition}
+
+A transformer's forward pass has a fixed depth: one pass can do only a fixed number of sequential steps, set by its layers. Each generated token, though, is fed back in and gets another full pass. So writing $T$ intermediate tokens gives the model about $T$ times more sequential computation, and Li et al. proved that with $T$ reasoning tokens a constant-depth transformer can solve any problem a circuit of size $T$ solves, which without them it cannot [▶ 33:22](https://youtu.be/CxhrjQuGEuE?t=2002). This is the formal side of explanation 3; that thinking tokens did not help robots suggests the robot policies were not short of computation, but short of the right features.
+
+### Learning to reason with RL {#rl-intuition}
+
+Chain-of-thought started as a prompting trick: show the model a few worked examples with their reasoning written out, and it writes reasoning for new questions [▶ 34:54](https://youtu.be/CxhrjQuGEuE?t=2094). It only worked in large models, somewhere around 100 billion parameters; in small ones it hurt [▶ 35:26](https://youtu.be/CxhrjQuGEuE?t=2126). And it is brittle: sensitive to the chosen examples, and limited to their style [▶ 37:00](https://youtu.be/CxhrjQuGEuE?t=2220). Can a model instead be *trained* to reason [▶ 38:06](https://youtu.be/CxhrjQuGEuE?t=2286)?
+
+The answer is reinforcement learning, today usually **GRPO** [▶ 40:10](https://youtu.be/CxhrjQuGEuE?t=2410). PPO needs a critic, a second network that predicts the return of every partial answer, which is expensive and hard to train for language [▶ 40:44](https://youtu.be/CxhrjQuGEuE?t=2444). GRPO drops it: sample a group of answers to the same question, score each with a rule ("is the final answer right?"), and use each answer's reward relative to the group as its advantage [▶ 41:15](https://youtu.be/CxhrjQuGEuE?t=2475). No human labels, no reward model, no value function; reasoning emerges because thinking carefully is the only reliable way to get the reward [▶ 41:47](https://youtu.be/CxhrjQuGEuE?t=2507). DeepSeek-R1's model learned to say "wait" and reconsider, a word it almost never used before a point in training [▶ 43:55](https://youtu.be/CxhrjQuGEuE?t=2635).
+
+Why did this not work years earlier? Because RL can only reinforce what the model sometimes does: a base model that never produces a correct answer gives nothing to reinforce [▶ 42:53](https://youtu.be/CxhrjQuGEuE?t=2573). The third toy shows both effects. A policy chooses how many reasoning steps to take; an answer is right (with chance `{python} f"{w.P_RIGHT}"`) only if it took at least `{python} ", ".join(f"{n} ({k})" for k, n in w.NEED.items())` steps. It starts out preferring short answers and is trained by GRPO with groups of `{python} w.G`.
+
+```{python}
+#| label: fig-grpo
+#| fig-cap: "Third toy: GRPO on how many reasoning steps to take (mean over 8 seeds). Left: accuracy per kind of problem; right: mean number of steps taken. The starting policy prefers short answers (λ = 0.3)."
+#| fig-alt: "Two line charts sharing an x-axis of training steps from 0 to 300. Left, accuracy: easy (green) starts at about 0.66 and passes 0.85 after about 45 steps; medium (blue) starts at 0.25 and passes 0.85 after about 140; hard (orange) starts at 0.05, stays low for about 70 steps, then climbs steeply and passes 0.85 after about 190. All end near 0.89. Right, mean reasoning steps: all three start at about 2.5. Easy rises a little and ends near 2.6, medium rises to about 4.3 by step 80 and ends near 4.1, hard rises slowly and then steeply between steps 60 and 150, ending near 7.9."
+fig, axs = plt.subplots(1, 2, figsize=(7.2, 2.9), sharex=True)
+xs = np.arange(1, w.GRPO_STEPS + 1)
+for i, (k, col) in enumerate(zip(KINDS, (GREEN, BLUE, ORANGE))):
+    axs[0].plot(xs, ACC[:, i], color=col, label=f"{k} (needs {w.NEED[k]})")
+    axs[1].plot(xs, LEN[:, i], color=col)
+axs[0].set_ylabel("accuracy")
+axs[0].set_ylim(0, 1)
+axs[1].set_ylabel("mean reasoning steps")
+axs[1].set_ylim(0, w.L_MAX)
+for ax in axs:
+    ax.set_xlabel("GRPO step")
+axs[0].legend(fontsize=8, frameon=False, loc="lower right")
+plt.show()
+```
+
+Nobody tells the policy to think longer; it learns to because longer answers are the ones that earn reward, and only where they do (@fig-grpo). Easy problems stay short (`{python} f"{LEN[-1][0]:.1f}"` steps on average at the end), medium ones settle at `{python} f"{LEN[-1][1]:.1f}"` and hard ones at `{python} f"{LEN[-1][2]:.1f}"`, while every accuracy ends above `{python} f"{ACC[-1].min():.2f}"`. Hard problems start late: the policy first has to stumble on a long enough answer inside a group.
+
+```{python}
+#| label: fig-coldstart
+#| fig-cap: "Third toy, many starting policies (λ from 0.1 to 1.0, 8 seeds each): GRPO steps to reach 80% accuracy on a kind of problem, against the starting policy's accuracy on it. Points at the top never got there within 300 steps."
+#| fig-alt: "Scatter plot, x-axis starting accuracy on a log scale from about 0.0003 to 0.8, y-axis steps to reach 80% from 0 to 300. Green points for easy problems sit at the right, starting accuracy 0.33 to 0.77, at 9 to 32 steps. Blue points for medium problems, starting accuracy 0.016 to 0.46, lie between about 95 and 205 steps, more steps the lower they start. Orange points for hard problems with starting accuracy 0.026 to 0.16 lie between about 130 and 220 steps; the six with starting accuracy 0.013 or less all sit on the top line, 300, labelled 'never in 300 steps'. A dashed vertical line between 0.013 and 0.016 marks the boundary."
+fig, ax = plt.subplots(figsize=(6.0, 3.3))
+for k, col in zip(KINDS, (GREEN, BLUE, ORANGE)):
+    pts = [(p, np.mean(s)) for kk, p, s in COLD if kk == k]
+    ax.scatter([p for p, _ in pts], [s for _, s in pts], color=col, s=22, label=k, zorder=3)
+ax.axhline(w.GRPO_STEPS, color=style.MUTED, lw=0.8, ls=":")
+ax.text(3e-4, w.GRPO_STEPS - 18, "never in 300 steps", fontsize=8, color=style.INK_SECONDARY)
+ax.axvline(np.sqrt(P_LO * P_HI), color=style.MUTED, lw=0.8, ls="--")
+ax.set_xscale("log")
+ax.set_xlabel("starting accuracy on that kind of problem")
+ax.set_ylabel("GRPO steps to 80%")
+ax.set_ylim(0, w.GRPO_STEPS + 15)
+ax.legend(fontsize=8, frameon=False, loc="center left")
+plt.show()
+```
+
+The boundary is sharp (@fig-coldstart). Every setting whose starting accuracy was `{python} f"{P_HI:.2%}"` or more learned within 300 steps in all 8 seeds; none at `{python} f"{P_LO:.2%}"` or less did, in any seed. A group of 8 answers then holds a right one only `{python} f"{w.group_has_success(P_LO):.0%}"` of the time, and a group with no right answer has all its advantages equal to zero. That is the lecture's point about base models: RL amplifies a capability that is already there.
+
+### From answers to grounded reasoning {#verify-intuition}
+
+The same recipe works for vision: Visual-RFT applied GRPO with the overlap between a predicted and a true bounding box (IoU) as the verifiable reward [▶ 46:29](https://youtu.be/CxhrjQuGEuE?t=2789). But rewarding only the final answer has a failure mode. In mathematics a right answer from wrong reasoning is rare; in vision, a model can describe a scene that is not there and still output the right box, by luck or by pattern matching, and get the full reward [▶ 48:33](https://youtu.be/CxhrjQuGEuE?t=2913). ARGOS, the lecturer's work at Microsoft, also rewards the intermediate steps, checking with other models whether the objects and moments the reasoning refers to are really where it says [▶ 49:37](https://youtu.be/CxhrjQuGEuE?t=2977). On embodied planning benchmarks, reasoning trained this way did 3–4× better than supervised chain-of-thought on the hardest tasks [▶ 51:13](https://youtu.be/CxhrjQuGEuE?t=3073).
+
+For continuous control, writing reasoning at every step stays too slow, so the picture the lecture ends with has two levels [▶ 52:15](https://youtu.be/CxhrjQuGEuE?t=3135) [▶ 52:46](https://youtu.be/CxhrjQuGEuE?t=3166):
+
+```{dot}
+//| label: fig-twolevel
+//| fig-width: 4.4
+//| fig-height: 4.4
+//| fig-cap: "The two-level design the lecture ends with: a slow reasoner, trained by RL with verifiable rewards, thinks at test time and plans subtasks; a fast VLA, trained with reasoning that it no longer writes (ECoT-Lite), turns each subtask into actions."
+//| fig-alt: "Diagram, top to bottom. 'instruction' leads to 'high-level reasoner: thinks at test time (RL with verifiable rewards)', in orange. It passes 'next subtask' to 'low-level VLA: reasoning internalized (ECoT-Lite)', in blue, which outputs 'actions, several per second'. 'camera images' feeds both levels. A dashed arrow labelled 'progress' runs from the low level back to the high level."
+digraph G {
+  graph [bgcolor="#fcfcfb", rankdir=TB, fontname="Helvetica", nodesep=0.4, ranksep=0.4];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#52514e", fillcolor="#f0efec", fontcolor="#0b0b0b"];
+  edge [fontname="Helvetica", fontsize=9, color="#52514e", fontcolor="#52514e"];
+  ins [label="instruction"];
+  cam [label="camera images"];
+  hi [label="high-level reasoner\nthinks at test time\n(RL with verifiable rewards)", fillcolor="#eb6834", fontcolor="white", color="#eb6834"];
+  lo [label="low-level VLA\nreasoning internalized\n(ECoT-Lite)", fillcolor="#cde2fb", color="#2a78d6"];
+  act [label="actions,\nseveral per second", fillcolor="#2a78d6", fontcolor="white", color="#2a78d6"];
+  ins -> hi [label="task"];
+  cam -> hi [label="sees"];
+  cam -> lo [label="sees"];
+  hi -> lo [label="next subtask"];
+  lo -> act [label="outputs"];
+  lo -> hi [style=dashed, label="progress"];
+  { rank=same; ins; cam; }
+}
+```
+
+## Key concepts & formulae
+
+### Reasoning before acting
+
+::: {.key-equation data-name="Embodied chain of thought"}
+$$
+p_\theta(c, a \mid o, \ell) = p_\theta(c \mid o, \ell)\; p_\theta(a \mid o, \ell, c), \qquad
+\mathcal{L}_{\text{ECoT}} = -\log p_\theta(c \mid o, \ell) - \log p_\theta(a \mid o, \ell, c)
+$$ {#eq-ecot}
+:::
+
+**In words.** One model first writes the reasoning, then the action given the reasoning; training maximizes the likelihood of both the labelled reasoning and the demonstrated action.
+
+**Term by term.**
+
+- $o$, $\ell$: the observation (camera images) and the language instruction.
+- $c$: the reasoning chain, a sequence of tokens (plan, subtask, move, objects with boxes, gripper position).
+- $a$: the action tokens.
+- $p_\theta(c \mid o, \ell)$: the same autoregressive model writing the reasoning, token by token.
+- $p_\theta(a \mid o, \ell, c)$: the action, conditioned on the reasoning written so far. During training the *labelled* $c$ is used (teacher forcing); at test time the model's own.
+
+**Why it holds.** It is the chain rule of probability, and an autoregressive transformer already factors a sequence this way: putting $c$ before $a$ in the token order is all it takes. The toy's network does the same with two passes: pass 1 is $p(c \mid o, \ell)$, pass 2 reads $c$ from its slot.
+
+::: {.key-equation data-name="Reasoning dropout (ECoT-Lite)"}
+$$
+\mathcal{L}_{\text{drop}} = -\log p_\theta(c \mid o, \ell) - \log p_\theta(a \mid o, \ell, m \cdot c), \qquad m \sim \text{Bernoulli}(1 - p_{\text{drop}})
+$$ {#eq-dropout}
+:::
+
+**In words.** Train like ECoT, but in a random share $p_{\text{drop}}$ of examples hide the reasoning from the action, so the policy learns to act with or without it.
+
+**Term by term.**
+
+- $m \cdot c$: the reasoning when $m = 1$, an empty slot when $m = 0$.
+- $p_{\text{drop}}$: how often the reasoning is hidden; the toy uses `{python} w.P_DROP`.
+- At test time, act with $m = 0$ (one fast pass) or $m = 1$ (write the reasoning first).
+
+The other recipes change the losses. **Reasoning pre-training**: minimize $-\log p_\theta(c \mid o, \ell)$ first, then only $-\log p_\theta(a \mid o, \ell)$. **Scaffold**: keep $c$ in the input during training but drop its loss term. **Thinking tokens**: replace $c$ by meaningless tokens of similar length.
+
+### Test-time compute
+
+::: {.key-equation data-name="Best-of-N with a perfect verifier"}
+$$
+P(\text{success with } N \text{ samples}) = 1 - (1 - p)^N
+$$ {#eq-bestofn}
+:::
+
+**In words.** If each sample independently succeeds with chance $p$, the search fails only if all $N$ fail.
+
+**Term by term.**
+
+- $p$: the chance that one sample is good, set by what the model knows about this problem.
+- $N$: samples drawn; the compute grows linearly in $N$.
+- $(1-p)^N$: the chance that every sample fails.
+
+**Why it holds.** Independent samples, and a verifier that recognizes any good one. **Numeric check.** The toy's typical medium problem has $p =$ `{python} f"{PTYP['medium', 'small']:.3f}"` for the small planner, so 16 samples succeed with chance `{python} f"{1 - (1 - PTYP['medium', 'small']) ** 16:.2f}"`; the typical hard problem has $p =$ `{python} f"{PTYP['hard', 'small']:.4f}"`, so 16 samples give only `{python} f"{1 - (1 - PTYP['hard', 'small']) ** 16:.3f}"`. For small $p$, $N$ must be about $1/p$ before search helps much: that is "amplifies what the model knows" as a formula.
+
+::: {.key-equation data-name="Best-of-N with a learned verifier"}
+$$
+\hat a = \arg\max_{i = 1..N} V(o, a_i), \qquad P(\text{success}) \to P(\text{the verifier's best is truly good}) \text{ as } N \to \infty
+$$ {#eq-verifier}
+:::
+
+**In words.** With an imperfect verifier, more samples bring you closer to what the *verifier* likes best, not to what is actually best.
+
+**Term by term.**
+
+- $a_i$: the $i$-th candidate; $V$: the verifier's score.
+- In the toy, $V$ prefers paths closest to where the verifier believes the gap is, a belief off by $\mathcal{N}(0, \sigma_V^2)$ with $\sigma_V =$ `{python} w.SIGMA_V`. With many samples the pick goes to that belief, which lies inside the gap of width $w =$ `{python} w.GAP_W` with chance $2\Phi\big(w / (2\sigma_V)\big) - 1 =$ `{python} f"{CAP:.3f}"`: the toy's ceiling.
+
+::: {.key-equation .famous data-name="Elo win probability"}
+$$
+P(\text{A beats B}) = \frac{1}{1 + 10^{-(E_A - E_B)/400}}
+$$ {#eq-elo}
+:::
+
+**In words.** A rating gap maps to a win chance through a logistic curve; 400 points is a factor of 10 in the odds.
+
+**Term by term.**
+
+- $E_A - E_B$: the rating gap $\Delta$.
+- $10^{-\Delta/400}$: the odds against A. At $\Delta = 100$, $P =$ `{python} f"{w.elo_win(100):.2f}"`, the 64% the guest quoted [▶ 07:18](https://youtu.be/oBEkY6NeE_o?t=438).
+
+Two rules of thumb sit on top: the lecture's "120 Elo per doubling of model size or of search" [▶ 28:40](https://youtu.be/CxhrjQuGEuE?t=1720) means a gap $\Delta$ is worth a factor $2^{\Delta/120}$ in either. (AlphaGo Zero's paper writes its logistic with base $e$ and the same constant 1/400, a slightly different scale, so treat converted win chances as rough.)
+
+::: {.key-equation data-name="Reasoning tokens as extra depth"}
+$$
+\text{sequential steps} \approx L \cdot (T + 1)
+$$ {#eq-depth}
+:::
+
+**In words.** A transformer with $L$ layers does about $L$ sequential steps per forward pass; each of $T$ generated tokens adds another pass on top of what came before.
+
+**Term by term.**
+
+- $L$: layers, fixed by the model.
+- $T$: reasoning tokens written before the answer; $T + 1$ passes in all.
+- Li et al.'s theorem is the precise form: with $T$ chain-of-thought steps, a constant-depth transformer solves any problem a boolean circuit of size $T$ solves; without them, constant depth limits it to a small class of parallel problems.
+
+### Learning to reason with RL
+
+::: {.key-equation data-name="Group-relative advantage"}
+$$
+\hat A_{i,t} = \tilde r_i = \frac{r_i - \operatorname{mean}(r_1, \dots, r_G)}{\operatorname{std}(r_1, \dots, r_G)}
+$$ {#eq-grpo-adv}
+:::
+
+**In words.** Each answer's advantage is how much better its reward is than its group's average, in units of the group's spread; every token of the answer gets the same advantage.
+
+**Term by term.**
+
+- $G$: the group size, answers sampled for one question; $r_i$: answer $i$'s reward, often 0 or 1.
+- The mean replaces a learned value function as the baseline; dividing by the standard deviation makes the scale the same for easy and hard questions.
+- $t$: token position; with an outcome reward, all tokens of answer $i$ share $\tilde r_i$.
+- If all rewards are equal the standard deviation is 0: no answer is preferred, and the advantages are set to 0.
+
+::: {.key-equation .famous data-name="GRPO objective"}
+$$
+\begin{aligned}
+J(\theta) = \mathbb{E}\Bigg[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}
+ \min\Big(\rho_{i,t} \hat A_{i,t},\ \operatorname{clip}(\rho_{i,t}, 1-\epsilon, 1+\epsilon)\, \hat A_{i,t}\Big)\Bigg]
+ - \beta\, D_{\mathrm{KL}}\big(\pi_\theta \,\|\, \pi_{\text{ref}}\big)
+\end{aligned}
+$$ {#eq-grpo}
+:::
+
+**In words.** PPO's clipped objective, applied to every token of every answer in the group, with group-relative advantages instead of a critic's, and a penalty for drifting from a reference model.
+
+**Term by term.**
+
+- $q$: a question; $o_1, \dots, o_G$: answers sampled from the policy before the update, $\pi_{\theta_{\text{old}}}$. (Here $o_i$ is an *output*, not an observation.)
+- $\rho_{i,t} = \pi_\theta(o_{i,t} \mid q, o_{i,<t}) / \pi_{\theta_{\text{old}}}(o_{i,t} \mid q, o_{i,<t})$: the probability ratio for token $t$ of answer $i$.
+- $\operatorname{clip}(\cdot, 1-\epsilon, 1+\epsilon)$ and the $\min$: PPO's guard against moving too far in one update (Week 5).
+- $\beta$, $\pi_{\text{ref}}$: the weight of a KL penalty to a frozen reference policy, added to the loss rather than to the reward.
+- The toy takes one gradient step per batch, so $\rho = 1$ and the clip never acts, and it sets $\beta = 0$: what remains is $\sum_i \tilde r_i \nabla \log \pi_\theta(o_i)$, REINFORCE with a group baseline.
+
+::: {.key-equation data-name="Chance of any learning signal"}
+$$
+P(\text{the group holds a success}) = 1 - (1 - p)^G
+$$ {#eq-signal}
+:::
+
+**In words.** A group only produces a gradient if at least one of its $G$ answers is right (for 0/1 rewards); with per-answer success $p$ this is @eq-bestofn again, with $G$ for $N$.
+
+**Term by term.** $p$: the current policy's chance of a right answer; $G$: group size. **Numeric check.** At the toy's stalled starting accuracy `{python} f"{P_LO:.4f}"`, a group of `{python} w.G` has a success `{python} f"{w.group_has_success(P_LO):.1%}"` of the time, and that rare signal was not enough in 300 steps.
+
+## Worked examples
+
+### Example 1: GRPO advantages for one group {#ex-grpo}
+
+A group of `{python} len(GROUP)` answers to one question; answers 1 and 4 are right.
+
+```{python}
+#| output: asis
+mu, sd = GROUP.mean(), GROUP.std()
+rows = "\n".join(f"| {i + 1} | {int(r)} | {a:+.3f} |" for i, (r, a) in enumerate(zip(GROUP, GADV)))
+print(f"Mean reward {mu:.3f}, standard deviation {sd:.3f} (over the group, dividing by $G$).\n")
+print("| Answer | Reward $r_i$ | Advantage $\\hat A_i$ |\n|:---:|:---:|:---:|\n" + rows)
+```
+
+The two right answers get $+$`{python} f"{GADV[0]:.3f}"` each and the six wrong ones `{python} f"{GADV[1]:.3f}"`: the advantages sum to zero, so the update moves probability from the wrong answers to the right ones without a value network. Had all 8 been right, or all wrong, every advantage would be 0: the question teaches nothing at the current policy. That is why GRPO training keeps feeding a model questions it gets right only sometimes.
+
+### Example 2: what AlphaGo Zero's search is worth {#ex-elo}
+
+```{python}
+#| output: asis
+print(f"| Quantity | Value |\n|:---|:---|\n"
+      f"| Raw network (no search) | {ELO_RAW:,} Elo |\n"
+      f"| With tree search | {ELO_SEARCH:,} Elo |\n"
+      f"| Gap $\\Delta$ | {ELO_GAP:,} |\n"
+      f"| Raw network's chance against the full system (@eq-elo) | {w.elo_win(-ELO_GAP):.1e} |\n"
+      f"| Doublings at 120 Elo each | {DOUBLINGS:.2f} |\n"
+      f"| Equivalent growth in model size, $2^{{\\Delta/120}}$ | {2 ** DOUBLINGS:,.0f}× |")
+```
+
+On the base-10 Elo scale, the raw network would beat the searching system about once in `{python} f"{1 / w.elo_win(-ELO_GAP):,.0f}"` games. By the rule of thumb, matching the search by size alone would take a network about `{python} f"{2 ** DOUBLINGS:,.0f}"` times larger; the lecturer said roughly 100,000×, and cautioned that self-play against its own earlier versions inflates such numbers. Either way it is the lecture's point: test-time search bought what no feasible model size could [▶ 29:43](https://youtu.be/CxhrjQuGEuE?t=1783).
+
+### Example 3: search or a bigger model, on one problem {#ex-search}
+
+The second toy's typical problem of each difficulty (the one whose small-planner success is closest to its bin's mean), with 16 small samples' worth of compute: the small planner draws 16, the 4× costlier big planner 4 (@eq-bestofn, perfect verifier).
+
+```{python}
+#| output: asis
+lines = ["| Problem | $p$ small | $p$ big | small, 16 samples | big, 4 samples |", "|:---|:---:|:---:|:---:|:---:|"]
+for b in w.BINS:
+    ps, pb = PTYP[b, "small"], PTYP[b, "big"]
+    lines.append(f"| {b} | {ps:.4f} | {pb:.4f} | {1 - (1 - ps) ** 16:.3f} | {1 - (1 - pb) ** 4:.3f} |")
+print("\n".join(lines))
+```
+
+On the easy problem the small planner's many tries win; on the medium and hard ones the big planner's better aim wins, decisively on the hard one, where the small planner's samples almost never land in the gap. Snell et al. made the same choice per question, by its estimated difficulty, and called it compute-optimal scaling.
+
+## Interactive
+
+### Edit the robot's reasoning {#edit-explorer}
+
+```{python}
+#| include: false
+NETS = EDITS[0][1]                                       # seed 0, 2,000 demos
+pick = np.arange(0, len(TEST[0]), len(TEST[0]) // 12)[:12]
+pos, tgt, grip = (x[pick] for x in TEST[3])
+cols_all = np.stack([np.argmax(TEST[0][pick][:, 2 * w.K + j * w.C: 2 * w.K + (j + 1) * w.C], axis=1)
+                     for j in range(w.K)], axis=1)        # colour index of each object, from the observation
+write_json({
+    "nets": {m: [{"W": W.tolist(), "b": b.tolist()} for W, b in NETS[m]] for m in ("ecot", "dropout")},
+    "scenes": [{"obs": TEST[0][i].tolist(), "pos": pos[j].tolist(), "cols": cols_all[j].tolist(),
+                "tgt": int(tgt[j]), "grip": grip[j].tolist()} for j, i in enumerate(pick)],
+    "colours": style.CATEGORICAL[:w.C], "names": COLOUR_NAMES, "reach": w.REACH,
+    "style": {"ink": style.INK, "muted": style.MUTED, "surface": style.SURFACE, "orange": ORANGE, "blue": BLUE},
+}, "data/w10-edit.json")
+```
+
+The two networks of @fig-edit (seed 0, 2,000 demos) on 12 held-out scenes. Choose what goes into the reasoning slot: the network's own reasoning, the other object's position, or any point you set. Your browser runs both networks.
+
+```{ojs}
+editData = FileAttachment("data/w10-edit.json").json()
+viewof editScene = Inputs.range([1, 12], {step: 1, value: 1, label: "scene"})
+viewof editSlot = Inputs.radio(["its own reasoning", "the other object", "a point I choose"],
+                               {value: "its own reasoning", label: "reasoning slot"})
+viewof editX = Inputs.range([-1, 1], {step: 0.05, value: 0, label: "chosen x"})
+viewof editY = Inputs.range([-1, 1], {step: 0.05, value: 0, label: "chosen y"})
+```
+
+```{ojs}
+mlp = (layers, x) => layers.reduce((h, L, k) => {
+  const z = L.b.map((b, j) => b + h.reduce((s, v, i) => s + v * L.W[i][j], 0));
+  return k === layers.length - 1 ? z : z.map(Math.tanh);
+}, x)
+editOut = {
+  const s = editData.scenes[editScene - 1];
+  const res = {};
+  for (const m of ["ecot", "dropout"]) {
+    const own = mlp(editData.nets[m], [...s.obs, 0, 0, 0]).slice(0, 2);
+    const other = s.pos[1 - s.tgt];
+    const slot = editSlot === "its own reasoning" ? own : editSlot === "the other object" ? other : [editX, editY];
+    const a = mlp(editData.nets[m], [...s.obs, ...slot, 1]).slice(2, 4);
+    res[m] = {slot, end: [s.grip[0] + a[0], s.grip[1] + a[1]]};
+  }
+  return res;
+}
+```
+
+```{ojs}
+//| label: fig-edit-explorer
+//| fig-cap: "One held-out scene: two coloured objects, the gripper (black square) and the instruction above. Hollow diamonds: what is in each network's reasoning slot. Arrows: where each network moves the gripper, ECoT in orange and reasoning dropout in blue. The dashed circle around an object is the success radius."
+//| fig-alt: "Interactive figure with a scene slider from 1 to 12, a radio choice for the reasoning slot (its own reasoning, the other object, a point I choose) and two sliders for the chosen point. A square plot from -1 to 1 shows two coloured dots with dashed circles, a black square for the gripper and two arrows from it, orange for ECoT and blue for reasoning dropout, plus hollow diamonds marking the slot contents. With its own reasoning both arrows end near the instructed object. With the other object in the slot, the orange arrow swings to the other object while the blue arrow still ends at the instructed one."
+{
+  const s = editData.scenes[editScene - 1], st = editData.style, out = editOut;
+  const w = Math.min(width, 440);
+  const circle = (p, r) => d3.range(41).map(i => ({x: p[0] + r * Math.cos(i * Math.PI / 20),
+                                                   y: p[1] + r * Math.sin(i * Math.PI / 20)}));
+  const marks = [];
+  s.pos.forEach((p, k) => {                         // one mark per object, so each keeps its own colour
+    marks.push(Plot.line(circle(p, editData.reach), {x: "x", y: "y", stroke: st.muted, strokeDasharray: "3,3"}));
+    marks.push(Plot.dot([{x: p[0], y: p[1]}], {x: "x", y: "y", r: 9, fill: editData.colours[s.cols[k]],
+                                               stroke: st.ink, strokeWidth: 0.6}));
+  });
+  for (const [m, c] of [["ecot", st.orange], ["dropout", st.blue]]) {
+    marks.push(Plot.dot([{x: out[m].slot[0], y: out[m].slot[1]}], {x: "x", y: "y", r: 7, symbol: "diamond",
+                                                                    stroke: c, strokeWidth: 2, fill: "none"}));
+    marks.push(Plot.arrow([{x1: s.grip[0], y1: s.grip[1], x2: out[m].end[0], y2: out[m].end[1]}],
+                          {x1: "x1", y1: "y1", x2: "x2", y2: "y2", stroke: c, strokeWidth: 2.2}));
+  }
+  marks.push(Plot.dot([{x: s.grip[0], y: s.grip[1]}], {x: "x", y: "y", symbol: "square", r: 6, fill: st.ink}));
+  const plot = Plot.plot({
+    width: w, height: w, style: {background: st.surface}, marginLeft: 36,
+    x: {domain: [-1.5, 1.5], label: null}, y: {domain: [-1.5, 1.5], label: null}, marks
+  });
+  return html`<div><div style="margin-bottom:4px">Instruction: <b>reach the ${editData.names[s.cols[s.tgt]]} object</b></div>${plot}</div>`;
+}
+```
+
+**What to try.** With its own reasoning, both arrows end near the instructed object in most scenes. Switch the slot to *the other object*: the orange ECoT arrow swings over to it, while the blue dropout arrow hardly moves. Then choose a point of your own and drag it around: ECoT chases it, as the robot in the lecture followed a person's corrected reasoning; the dropout network keeps going where the instruction says. Its reasoning is accurate, but it is not what drives its action.
+
+### Search through the gap {#search-explorer}
+
+```{python}
+#| include: false
+LAB = w.difficulty(Z)
+SAMPLE = []
+for b in w.BINS:
+    idx = np.nonzero(LAB == b)[0]
+    idx = idx[np.argsort(w.p_through(Z[idx], "small"))]
+    for i in idx[np.linspace(0, len(idx) - 1, 8).astype(int)]:
+        SAMPLE.append({"bin": b, "gap": float(GAP[i]), "z": float(Z[i]),
+                       "p": {pl: float(w.p_through(Z[[i]], pl)[0]) for pl in w.PLANNERS}})
+write_json({"problems": SAMPLE, "planners": w.PLANNERS, "width": w.GAP_W, "sigma_v": w.SIGMA_V,
+            "style": {"ink": style.INK, "muted": style.MUTED, "surface": style.SURFACE, "orange": ORANGE,
+                      "green": GREEN, "blue": BLUE}},
+           "data/w10-search.json")
+```
+
+Eight problems from each difficulty bin, ordered by how often one small-planner sample gets through. Pick a planner, a number of samples and a verifier; your browser draws the samples (with a fixed seed per setting), and the line below gives the exact chance that best-of-N with a perfect verifier succeeds (@eq-bestofn).
+
+```{ojs}
+searchData = FileAttachment("data/w10-search.json").json()
+viewof sBin = Inputs.radio(["easy", "medium", "hard"], {value: "hard", label: "difficulty"})
+viewof sIdx = Inputs.range([1, 8], {step: 1, value: 4, label: "problem"})
+viewof sPlanner = Inputs.radio(["small", "big"], {value: "small", label: "planner"})
+viewof sN = Inputs.select([1, 4, 16, 64], {value: 16, label: "samples N"})
+viewof sVer = Inputs.radio(["perfect", "learned"], {value: "perfect", label: "verifier"})
+```
+
+```{ojs}
+//| label: fig-search-explorer
+//| fig-cap: "One problem from the second toy. The wall (grey) has a gap; every sampled path runs from the start (left) through its crossing point on the wall to the goal (right). Green: gets through; orange: hits the wall. The thick path is the verifier's pick; with the learned verifier, the dotted mark shows where it believes the gap is."
+//| fig-alt: "Interactive figure with choices for difficulty, problem number 1 to 8, planner (small or big), number of samples (1, 4, 16, 64) and verifier (perfect or learned). A plot shows a vertical grey wall with a gap, a start dot on the left and a goal dot on the right, and the sampled paths as thin lines through the wall's plane, green if they pass the gap and orange if not; the picked path is drawn thick. For hard problems with the small planner the paths cluster above or below the gap and nearly all are orange; the big planner's paths cluster closer to the gap."
+{
+  const probs = searchData.problems.filter(p => p.bin === sBin), pr = probs[sIdx - 1];
+  const cfg = searchData.planners[sPlanner], st = searchData.style, half = searchData.width / 2;
+  const seed = 1000 * sIdx + 17 * sN + (sPlanner === "big" ? 7 : 0) + {easy: 0, medium: 100, hard: 200}[sBin];
+  const normal = d3.randomNormal.source(d3.randomLcg(seed / 10007));
+  const draw = normal(0, 1);
+  const cand = d3.range(sN).map(() => pr.gap + cfg.tau * pr.z + cfg.sigma * draw());
+  const ok = cand.map(y => Math.abs(y - pr.gap) < half);
+  const belief = pr.gap + searchData.sigma_v * normal(0, 1)();
+  const pick = sVer === "perfect" ? Math.max(0, ok.indexOf(true))
+                                  : d3.minIndex(cand, y => Math.abs(y - belief));
+  const path = (y, i) => [{i, x: -1, y: 0}, {i, x: 0, y}, {i, x: 1, y: 0}];
+  const through = cand.flatMap((y, i) => ok[i] ? path(y, i) : []);
+  const blocked = cand.flatMap((y, i) => ok[i] ? [] : path(y, i));
+  const wall = [{x: 0, y1: -1.6, y2: pr.gap - half}, {x: 0, y1: pr.gap + half, y2: 1.6}];
+  const w = Math.min(width, 520);
+  return Plot.plot({
+    width: w, height: Math.round(w * 0.75), style: {background: st.surface}, marginLeft: 36,
+    x: {domain: [-1.1, 1.1], label: null}, y: {domain: [-1.6, 1.6], label: null},
+    marks: [
+      Plot.ruleX(wall, {x: "x", y1: "y1", y2: "y2", stroke: st.muted, strokeWidth: 6}),
+      Plot.line(through, {x: "x", y: "y", z: "i", stroke: st.green, strokeOpacity: 0.55, strokeWidth: 1}),
+      Plot.line(blocked, {x: "x", y: "y", z: "i", stroke: st.orange, strokeOpacity: 0.55, strokeWidth: 1}),
+      Plot.line(path(cand[pick], pick), {x: "x", y: "y", stroke: ok[pick] ? st.green : st.orange, strokeWidth: 3.5}),
+      ...(sVer === "learned" ? [Plot.dot([{x: 0, y: belief}], {x: "x", y: "y", r: 6, stroke: st.ink,
+                                                                strokeDasharray: "2,2"})] : []),
+      Plot.dot([{x: -1, y: 0}, {x: 1, y: 0}], {x: "x", y: "y", r: 5, fill: st.ink})
+    ]
+  });
+}
+```
+
+```{ojs}
+{
+  const pr = searchData.problems.filter(p => p.bin === sBin)[sIdx - 1], p = pr.p[sPlanner];
+  const cost = searchData.planners[sPlanner].cost;
+  return md`One sample gets through with chance **${(100 * p).toFixed(2)}%**; best-of-${sN} with a perfect verifier succeeds with chance **${(100 * (1 - (1 - p) ** sN)).toFixed(1)}%** · compute: ${sN * cost} small-planner samples`;
+}
+```
+
+**What to try.** Start on a hard problem with the small planner and 16 samples: the paths cluster on one side of the gap, because the planner is wrong about where the gap is, and more samples only fill in the same wrong region. Switch to the big planner with 4 samples, the same compute: its paths aim closer to the gap. Then go to an easy problem, where the small planner's 16 tries almost always include a good one. Finally choose the learned verifier on an easy problem with 64 samples: whenever its belief (the dotted mark) falls outside the gap, it confidently picks a path that hits the wall.
+
+## Algorithm & code
+
+### Reasoning, dropout and the two passes
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w.with_slot, w.train_reasoner, w.reason, w.act)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import numpy as np
+import torch
+import torch.nn as nn
+
+from rlc.toys import w10_reasoning as w
+
+torch.manual_seed(0)
+O, R, A, _ = (torch.tensor(x, dtype=torch.float32) if not isinstance(x, tuple) else x
+              for x in w.demos(np.random.default_rng(0), 2000))
+d_obs = O.shape[1]
+
+# One network, two heads: [reasoning (2), action (2)]. The input ends with
+# the reasoning slot (2) and a flag (1) saying whether the slot is filled.
+policy = nn.Sequential(nn.Linear(d_obs + 3, 64), nn.Tanh(),
+                       nn.Linear(64, 64), nn.Tanh(), nn.Linear(64, 4))
+opt = torch.optim.Adam(policy.parameters(), lr=3e-3)
+
+
+def with_slot(o, slot, filled):
+    return torch.cat([o, slot, filled[:, None]], dim=1)      # (B, d_obs + 3)
+
+
+p_drop, losses = 0.5, []
+for step in range(1500):
+    idx = torch.randint(len(O), (128,))
+    o, r, a = O[idx], R[idx], A[idx]
+    empty, zero = torch.zeros_like(r), torch.zeros(len(idx))
+    # Pass 1: empty slot -> write the reasoning (labels are precise).
+    loss_r = ((policy(with_slot(o, empty, zero))[:, :2] - r) ** 2).sum(1).mean()
+    # Pass 2: reasoning in the slot, except for a random half (dropout),
+    # -> the action. Teacher forcing: the *labelled* reasoning goes in.
+    keep = (torch.rand(len(idx)) > p_drop).float()           # (B,)
+    slot = r * keep[:, None]
+    loss_a = ((policy(with_slot(o, slot, keep))[:, 2:] - a) ** 2).sum(1).mean()
+    loss = loss_r + loss_a
+    opt.zero_grad(); loss.backward(); opt.step()
+    losses.append(loss.item())
+assert np.mean(losses[-50:]) < 0.5 * np.mean(losses[:50])
+
+# Test time, fast: one pass with an empty slot. Slow: write, then read.
+with torch.no_grad():
+    o = O[:500]
+    empty = torch.zeros(len(o), 2)
+    fast = policy(with_slot(o, empty, torch.zeros(len(o))))[:, 2:]
+    thought = policy(with_slot(o, empty, torch.zeros(len(o))))[:, :2]
+    slow = policy(with_slot(o, thought, torch.ones(len(o))))[:, 2:]
+    r_err = (thought - R[:500]).norm(dim=1).mean()
+assert fast.shape == slow.shape == (500, 2) and r_err < 0.3, r_err
+```
+:::
+
+The NumPy version builds both passes into one batch and uses a mask to choose which outputs each row trains; the PyTorch sketch computes the two losses separately, which is the same thing. `torch.no_grad()` turns off gradient tracking for inference. In a real VLA the "slot" is simply the token sequence: the reasoning tokens sit between the observation and the action tokens, dropout deletes them from some training sequences, and the fast mode starts decoding the action right after the prompt.
+
+### GRPO
+
+::: {.panel-tabset group="impl"}
+## NumPy (runs on this page)
+```{python}
+#| output: asis
+show_source(w.grpo_advantages, w.grpo_train)
+```
+## PyTorch (sketch)
+```{.python .snippet}
+import torch
+
+torch.manual_seed(0)
+L_MAX, G, EPS, BETA = 10, 8, 0.2, 0.01
+need = torch.tensor([1, 4, 8])                       # steps each kind needs
+logits = torch.nn.Parameter(-0.3 * torch.arange(L_MAX + 1.0).repeat(3, 1))
+ref = logits.detach().clone()                        # frozen reference policy
+opt = torch.optim.Adam([logits], lr=0.05)
+
+
+def accuracy():
+    pi = torch.softmax(logits, dim=1)                # (3, L_MAX + 1)
+    enough = torch.arange(L_MAX + 1)[None, :] >= need[:, None]
+    return (0.9 * pi * enough).sum(1)
+
+
+start = accuracy().detach()
+for it in range(150):
+    kind = torch.randint(3, (16,))                   # 16 questions
+    with torch.no_grad():                            # sample from pi_old
+        old_logp_all = torch.log_softmax(logits[kind], dim=1)
+        L = torch.multinomial(old_logp_all.exp(), G, replacement=True)  # (16, G)
+        r = ((L >= need[kind, None]) & (torch.rand(16, G) < 0.9)).float()
+        sd = r.std(dim=1, unbiased=False, keepdim=True)
+        adv = torch.where(sd > 0, (r - r.mean(1, keepdim=True)) / sd.clamp_min(1e-8),
+                          torch.zeros_like(r))       # (16, G)
+        old_logp = old_logp_all.gather(1, L)
+    for _ in range(2):                               # mu = 2 updates per batch
+        logp_all = torch.log_softmax(logits[kind], dim=1)
+        logp = logp_all.gather(1, L)                 # (16, G)
+        ratio = (logp - old_logp).exp()
+        surr = torch.min(ratio * adv, ratio.clamp(1 - EPS, 1 + EPS) * adv)
+        # k3 estimator of KL(pi || ref), always >= 0, as in DeepSeekMath
+        ref_logp = torch.log_softmax(ref[kind], dim=1).gather(1, L)
+        kl = (ref_logp - logp).exp() - (ref_logp - logp) - 1
+        loss = -(surr - BETA * kl).mean()
+        opt.zero_grad(); loss.backward(); opt.step()
+end = accuracy().detach()
+assert (end > start).all() and end[2] > 0.5, (start, end)
+```
+:::
+
+The PyTorch sketch keeps what the NumPy toy leaves out: two updates per batch, so the ratio $\rho$ moves away from 1 and the clip can act, and the KL penalty to a frozen reference (@eq-grpo). For a language model, `L` would be a whole sampled answer and `logp` the sum of its tokens' log-probabilities (or, as in the paper, a per-token average); everything else is the same.
+
+## Papers
+
+```{python}
+#| output: asis
+print(paper_cards(10))
+```
+
+## Guest spotlight
+
+**Archit Sharma** (research scientist at Google DeepMind working on post-training and reasoning, a creator of DPO, and lead of the Gemini Deep Think model that reached gold-medal level on International Mathematical Olympiad problems) spoke about scaling test-time compute at the frontier. Until 2024, most of the progress of language models came from scaling pre-training: ever larger models trained to predict the next token [▶ 01:35](https://youtu.be/oBEkY6NeE_o?t=95). From late 2024, **reasoning models** added a second axis: instead of answering at once, they think first, and accuracy rises predictably with the time allowed. In the Gemini 2.5 report, performance on the AIME maths competition rose by more than 20 points with thinking time [▶ 03:40](https://youtu.be/oBEkY6NeE_o?t=220). A system with test-time compute is one that, instead of a single fixed forward pass, searches in some way before answering [▶ 05:13](https://youtu.be/oBEkY6NeE_o?t=313); AlphaGo, whose search capped at 5 seconds per move took the same network from about 3,000 to about 5,000 Elo, is the classic case [▶ 06:15](https://youtu.be/oBEkY6NeE_o?t=375).
+
+For language, chain-of-thought prompting showed the effect; RL with verifiable rewards made it a training method, and the length of the model's answers grows by itself over training [▶ 09:51](https://youtu.be/oBEkY6NeE_o?t=591). Longer chains are only one way to spend compute: sampling in parallel, revising previous answers, calling tools such as search or code, and verifying one's own answer are others, and agentic coding and research tools combine them in harnesses around a model [▶ 11:56](https://youtu.be/oBEkY6NeE_o?t=716). His example was Deep Think on olympiad proofs: with inference compute on a log scale, the share of proofs judged correct by experts rose from about 40% to about 90%, with the model working for hours [▶ 14:02](https://youtu.be/oBEkY6NeE_o?t=842). The gains extend to tasks without a verifier, such as generating a detailed 3-D scene in HTML [▶ 15:38](https://youtu.be/oBEkY6NeE_o?t=938).
+
+Open questions he named: using tokens and tools efficiently [▶ 18:46](https://youtu.be/oBEkY6NeE_o?t=1126); test-time scaling viewed as increasing the depth of computation, and whether tokens are the best way to add depth [▶ 19:19](https://youtu.be/oBEkY6NeE_o?t=1159); keeping agents productive and safe over days or weeks [▶ 19:49](https://youtu.be/oBEkY6NeE_o?t=1189); discovering which problems matter, not just solving well-posed ones [▶ 21:55](https://youtu.be/oBEkY6NeE_o?t=1315); and improving with experience instead of reasoning from first principles every time [▶ 22:58](https://youtu.be/oBEkY6NeE_o?t=1378). In the Q&A: reasoning in continuous latent space could be more efficient than in tokens but is harder to get working [▶ 24:32](https://youtu.be/oBEkY6NeE_o?t=1472); memories and skills are an early, still manual, form of learning from experience [▶ 26:36](https://youtu.be/oBEkY6NeE_o?t=1596); scaling RL needs very stable infrastructure, and verifiable problems run out quickly because easy ones stop carrying signal [▶ 28:12](https://youtu.be/oBEkY6NeE_o?t=1692) [▶ 29:15](https://youtu.be/oBEkY6NeE_o?t=1755); and long-running agents still get stuck on a wrong idea, partly from misunderstanding under-specified problems [▶ 30:46](https://youtu.be/oBEkY6NeE_o?t=1846).
+
+**How it connects to this week.** The talk is the language-model side of the lecture's second half: test-time compute as a scaling axis, RL that makes long reasoning emerge, and verification as the limiting factor. His point that easy problems stop carrying signal is the third toy's zero-advantage groups seen from the other end.
+
+## Solved problems {#problems}
+
+**1. How many samples?** One sample of a planner succeeds with probability 0.05. With a perfect verifier, how many samples give a 90% chance of success? What if $p = 0.005$?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Solve $1 - (1 - p)^N \ge 0.9$ (@eq-bestofn): $N \ge \ln 0.1 / \ln(1 - p)$. For $p = 0.05$: $N \ge 2.303 / 0.0513 = 44.9$, so 45 samples. For $p = 0.005$: $N \ge 2.303 / 0.00501 = 459.4$, so 460. Ten times rarer success costs ten times the compute: for small $p$, $N \approx 2.3/p$.
+:::
+
+**2. A group with one right answer.** A GRPO group of 8 has exactly one right answer. Compute the advantages. What happens to the update if the group size doubles to 16 with still exactly one right answer?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Mean $1/8 = 0.125$; population standard deviation $\sqrt{0.125 \cdot 0.875} = 0.331$. Right answer: $(1 - 0.125)/0.331 = 2.646$; wrong ones: $-0.125/0.331 = -0.378$ (@eq-grpo-adv). With 16: mean $0.0625$, sd $\sqrt{0.0625 \cdot 0.9375} = 0.242$, so $+3.873$ and $-0.258$. The rarer the success within its group, the larger its advantage: normalization by the standard deviation makes a single success count heavily, which is what lets GRPO learn from problems it rarely solves.
+:::
+
+**3. Elo and model size.** By the rule of thumb of 120 Elo per doubling, how much larger would a model need to be to gain 600 Elo? What is the weaker side's win chance across that gap?
+
+::: {.callout-tip collapse="true" title="Solution"}
+$600/120 = 5$ doublings: $2^5 = 32$ times larger. Win chance (@eq-elo): $1/(1 + 10^{600/400}) = 1/(1 + 31.6) = 3.1\%$.
+:::
+
+**4. Which recipe?** You have robot demonstrations and reasoning labels, the robot needs 10 Hz control, and you want operators to be able to correct the robot by editing its plan. ECoT, reasoning dropout or reasoning pre-training?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Pre-training cannot write reasoning at test time at all, so it offers nothing to edit. Full ECoT can be corrected but writes its reasoning at every step, which ran at about 1 Hz in the paper. Reasoning dropout is the natural fit: fast without reasoning, and able to switch it on. But check that its actions really depend on the reasoning when it is on: in this page's toy the dropout network ignored edits (@fig-edit). A practical compromise is to run fast without reasoning and reason only occasionally, or at a higher level, as in the two-level design (@fig-twolevel).
+:::
+
+**5. Rewarding the answer only.** A vision model answers a multiple-choice question about an image with 4 options. With grounded reasoning it is right 80% of the time; with hallucinated reasoning, which is cheaper to produce, it guesses from patterns and is right 60% of the time. The reward is 1 for a right answer. A second reward adds 0.5 when the objects mentioned in the reasoning are really in the image. What does each reward favour?
+
+::: {.callout-tip collapse="true" title="Solution"}
+Answer only: expected reward 0.8 against 0.6, so grounded reasoning is preferred, but the gap is only 0.2, and on questions where pattern matching does as well as reasoning there is no pressure at all to ground the reasoning. With the extra check: grounded $0.8 + 0.5 = 1.3$, hallucinated $0.6 + 0 = 0.6$: the gap more than triples and holds on every question, which is the argument for verifying the reasoning as well as the answer (the lecture's ARGOS).
+:::
+
+## Recap
+
+1. **A policy can reason before it acts.** ECoT writes plans, subtasks, motions and grounded features before its actions, with labels made by foundation models. *Why it matters:* it improved a VLA's generalization by 28 points without new robot data, and made it readable and correctable.
+2. **Most of the gain comes from learning to produce the reasoning.** Reasoning pre-training and dropout keep much of it with no reasoning at test time; meaningless thinking tokens do not. *Why it matters:* robots need fast control; in the toy, reasoning labels cut the demos needed for 75% success from about `{python} f"{N75['standard']:,.0f}"` to `{python} f"{N75['dropout']:,.0f}"`.
+3. **Reasoning that is not used cannot be edited.** *Why it matters:* interpretability and human correction require actions that actually depend on the reasoning; in the toy, the faster dropout network ignored edits.
+4. **Test-time compute is a scaling axis, bounded by the model and the verifier.** Search beats a bigger model on problems the model sometimes solves, and loses on those it almost never does; an imperfect verifier caps what search can reach. *Why it matters:* it decides where to spend compute, in training or at inference.
+5. **RL can make reasoning emerge, once the base model is good enough.** GRPO's group-relative advantages reward whatever works, including thinking longer; groups with no success teach nothing. *Why it matters:* it is how today's reasoning models are trained, and why they appeared only once base models were strong.
+6. **Verify the reasoning, not just the answer.** *Why it matters:* in vision and robotics, right answers from hallucinated reasoning are common, and outcome-only rewards reinforce them.
+
+## Cheat sheet & connections
+
+| Name | Formula | Where |
+|:---|:---|:---|
+| Embodied CoT | $-\log p(c \mid o, \ell) - \log p(a \mid o, \ell, c)$ | @eq-ecot |
+| Reasoning dropout | as ECoT, with $m \cdot c$, $m \sim$ Bernoulli$(1 - p_{\text{drop}})$ | @eq-dropout |
+| Best-of-N | $1 - (1 - p)^N$ | @eq-bestofn |
+| Learned verifier | $\arg\max_i V(o, a_i)$; capped by $V$'s own errors | @eq-verifier |
+| Elo ★ | $1/(1 + 10^{-\Delta/400})$; 120 Elo ≈ one doubling | @eq-elo |
+| Reasoning as depth | sequential steps $\approx L (T + 1)$ | @eq-depth |
+| Group advantage | $(r_i - \text{mean}\, r)/\text{std}\, r$ | @eq-grpo-adv |
+| GRPO ★ | clipped ratio × $\hat A$, minus $\beta$ KL to $\pi_{\text{ref}}$ | @eq-grpo |
+| Learning signal | $1 - (1 - p)^G$ | @eq-signal |
+
+**Common pitfalls.**
+
+- Writing reasoning at every control step and losing the control rate.
+- Assuming the reasoning explains the behaviour: check that actions change when the reasoning does.
+- Expecting meaningless extra tokens to substitute for meaningful reasoning labels.
+- Spending test-time compute on problems the model essentially never solves.
+- Trusting a learned verifier at large $N$: search finds its blind spots.
+- Starting RL from a base model with near-zero success, or on problems it always solves.
+- Rewarding only final answers when right answers can come from hallucinated reasoning.
+
+**Connections.** [Week 5](w05-reinforcement-learning-2.qmd)'s PPO is GRPO's parent; the critic is replaced by a group average. [Week 7](w07-sequence-modeling-transformers.qmd)'s transformers and tokens are why reasoning can simply be more tokens. [Week 8](w08-world-models.qmd)'s planning with learned models is test-time compute for control. [Week 9](w09-generalist-robot-policies.qmd)'s VLAs are what ECoT makes reason, and π0.5's subtask prediction is reasoning at the high level of @fig-twolevel. [Week 11](w11-frontiers.qmd) looks at what is still missing. In the ADM Companion: [Monte Carlo tree search]({{< var adm_url >}}/part2/ch09-online-planning.html#monte-carlo-tree-search), the search behind AlphaGo.
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(10))
+```
