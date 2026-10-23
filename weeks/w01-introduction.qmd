@@ -93,6 +93,8 @@ print(course_map_highlight(1))
 
 This is the start. The lecture sets out why robotics is hard in a way that language and vision are not, what "robot learning" means, and why the field now seems close to the kind of shift that large models brought to language [▶ 07:08](https://youtu.be/X0k14u6pSxw?t=428). The rest of the course splits in two: the fundamentals (Weeks 2–5), then scaling robot learning to large models and data (Weeks 6–11).
 
+**How the course runs.** Each Monday has a lecture of about 45 minutes, then student-led discussions of the week's papers, in which one group presents a paper and another plays the critical reviewer, and on most weeks a short talk by a guest researcher [▶ 08:21](https://youtu.be/X0k14u6pSxw?t=501) [▶ 10:26](https://youtu.be/X0k14u6pSxw?t=626). Thursdays are TA sessions on the homework. The first half has four individual homeworks; the second half is group projects on real robots, a fleet of SO-101 arms with a leader–follower ("puppeteering") setup for collecting demonstrations [▶ 13:01](https://youtu.be/X0k14u6pSxw?t=781) [▶ 18:51](https://youtu.be/X0k14u6pSxw?t=1131). This site follows the lectures, papers and guest talks; it does not cover the homework or the projects.
+
 **The question this week answers:** why can't we simply program robots to work in our homes, and what does learning from data change?
 
 ### The key ideas at a glance
@@ -285,6 +287,12 @@ How do you write a continuous action as a token? RT-2 cuts each action dimension
 ### Two families of algorithms {#families}
 
 Most of the course builds on two frameworks [▶ 54:45](https://youtu.be/X0k14u6pSxw?t=3285). **Imitation learning** is close to supervised learning: learn a function from observations to the expert's actions. **Reinforcement learning** learns a policy by trial and error to maximize a reward. In both, the robot's own actions change what it observes next, so its data are not independent samples (@eq-loop), which breaks a basic assumption of supervised learning [▶ 56:28](https://youtu.be/X0k14u6pSxw?t=3388). Week 3 shows what that costs.
+
+### One shift, three fields {#shift}
+
+The lecture ends by showing the same change in three places [▶ 59:59](https://youtu.be/X0k14u6pSxw?t=3599). Housework: from the teleoperated PR1 of 2007 to recent videos of robots doing similar tidying tasks autonomously. Driving: from the 2005 DARPA challenge, where vehicles with stacks of sensors and probabilistic models struggled across the desert, to cars that now drive themselves to their buyers [▶ 1:01:00](https://youtu.be/X0k14u6pSxw?t=3660). Humanoids: from the 2015 DARPA Robotics Challenge, where the best machines struggled to open a door or walk straight, to the smooth, dexterous humanoid demonstrations of today [▶ 1:01:30](https://youtu.be/X0k14u6pSxw?t=3690). In each case the move is from hand-coded behaviour to learned behaviour, and the course is about the machinery behind that move. (These are the lecturer's examples; the demos are companies' own videos, with the caveats about demos that [Week 11](w11-frontiers.qmd) spells out.)
+
+Why study it? The lecturer gave three reasons [▶ 1:03:03](https://youtu.be/X0k14u6pSxw?t=3783): the field spans the whole stack, from reasoning in foundation models down to the PID controllers that move the motors; its algorithms carry over across robots, from cars to humanoids to planetary rovers; and it may be close to its own "ChatGPT moment".
 
 ## Key concepts & formulae
 
