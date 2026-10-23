@@ -21,6 +21,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SECTIONS = ["Big picture", "Intuition", "Key concepts & formulae", "Worked examples",
             "Interactive", "Algorithm & code", "Papers", "Guest spotlight",
             "Solved problems", "Recap", "Cheat sheet & connections", "Resources"]
+# Week 12 has guest lectures only: CLAUDE.md §6.7 allows a shorter layout
+# with no toys, interactives, equations, problems or hero clip.
+SHORT_WEEKS = {12}
+SHORT_SECTIONS = ["Big picture", "Guest spotlight", "Connections", "Resources"]
 CELL = re.compile(r"^```\{(python|ojs|dot)\}\n(.*?)^```", re.M | re.S)
 PLOTLY = re.compile(r"\bgo\.|make_subplots")
 
@@ -67,7 +71,8 @@ def report(week: int) -> list[tuple[str, str, bool]]:
     text = (ROOT / "weeks" / f"{w['slug']}.qmd").read_text(encoding="utf-8")
     heads = re.findall(r"^## (.+?)\s*(?:\{#[^}]*\})?$", text, re.M)
     has_guest = bool(w["guest"] and w["guest"].get("youtube"))
-    wanted = [s for s in SECTIONS if has_guest or s != "Guest spotlight"]
+    short = week in SHORT_WEEKS
+    wanted = SHORT_SECTIONS if short else [s for s in SECTIONS if has_guest or s != "Guest spotlight"]
     missing = [s for s in wanted if s not in heads]
     fig = figures(text)
     boxes = text.count(".key-equation")
@@ -97,6 +102,10 @@ def report(week: int) -> list[tuple[str, str, bool]]:
          calls(text, "resources", week)),
         ("cross-links (>= 2)", str(cross), cross >= 2),
     ]
+    if short:                       # keep only what the short layout asks for
+        keep = {"sections", "course map", "other diagrams (>= 1)", "figures without fig-alt",
+                "boxed equations", "resources", "cross-links (>= 2)"}
+        rows = [r for r in rows if r[0] in keep or r[0].startswith("guest ▶")]
     return rows
 
 
