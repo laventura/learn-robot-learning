@@ -47,7 +47,9 @@ format:
       light: [cosmo, theme.scss]
       dark: [darkly, theme.scss]
     toc: true
-    include-after-body: _includes/reduced-motion.html   # pauses hero animations for reduced motion
+    include-after-body:
+      - _includes/reduced-motion.html   # pauses hero animations for reduced motion
+      - _includes/analytics.html        # GoatCounter page views (no cookies)
     code-copy: hover              # `true` also put copy buttons next to OJS controls
     syntax-highlighting: github   # Quarto picks github-light / github-dark to match the theme
     syntax-definitions:
