@@ -26,7 +26,7 @@ print(course_map_highlight(12))
 
 ### Where this week fits
 
-The last session of the course has no lecture. It belongs to guest speakers, and then the students show their projects on real robots at demo day, as the lecturer announced at the end of Week 11 [▶ 1:00:28](https://youtu.be/eL4lcy1KNzE?t=3628). The course page lists one confirmed speaker, Dieter Fox, without a talk title or recording. Until a recording is published, this page does what a last week can do on its own: it looks back over the course in one place, shows how the weeks fit together inside a modern robot policy, and draws out the threads that ran through all of them.
+The last session of the course has no lecture. It belongs to guest speakers, and then the students show their projects on real robots at demo day, as the lecturer announced at the end of Week 11 [▶ 1:00:28](https://youtu.be/eL4lcy1KNzE?t=3628). The course page lists one speaker, Dieter Fox, whose talk is not available online. So this page does what a last week can do on its own: it looks back over the course in one place, shows how the weeks fit together inside a modern robot policy, and draws out the threads that ran through all of them.
 
 **The question this week answers:** having seen the whole course, how do its pieces fit together, and which lessons kept coming back?
 
@@ -89,8 +89,8 @@ The robot's path is the course's middle: tokens and transformers (Week 7) carry 
 
 **Dieter Fox** is a professor in the Allen School of Computer Science & Engineering at the University of Washington, where he heads the Robotics and State Estimation Lab, and he also works at the Allen Institute for AI (Ai2). His research spans robotics, artificial intelligence and state estimation, with applications in 3-D mapping and tracking, human activity recognition, and robot manipulation; he is a fellow of AAAI, ACM and IEEE and a recipient of the IEEE RAS Pioneer Award (his [homepage](https://homes.cs.washington.edu/~fox/)). With Sebastian Thrun and Wolfram Burgard he wrote *Probabilistic Robotics* (MIT Press, 2005), the standard text on handling uncertainty in robot perception and control, whose filters and mapping methods underlie the classical mapping and localization stacks that mobile robots use today. [Week 11](w11-frontiers.qmd) asked whether a unified learned model should take over that role.
 
-::: {.callout-warning title="Talk summary pending"}
-TODO(video): the course page lists no title, slides or recording for this talk (checked 23 October 2026). This section will summarize the talk from its transcript, with ▶ timestamp links, once a recording is published. Nothing here describes the talk's content.
+::: {.callout-note title="No recording"}
+This talk is not available online: the course page lists no title, slides or recording for it. Every other guest spotlight on this site is written from the talk's transcript, so this one stops at the speaker's background and does not describe the talk's content.
 :::
 
 ## Connections

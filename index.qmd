@@ -72,7 +72,7 @@ digraph arc {
 | Week | The question it answers |
 |---|---|
 | [11 · Frontiers & Open Problems](weeks/w11-frontiers.qmd) | What is still unsolved, and which ideas point towards solutions? |
-| [12 · Guest Lectures](weeks/w12-guest-lectures.qmd) | How do the pieces fit together? (the course reviewed in one table; the guest talk is summarized once its recording is published) |
+| [12 · Guest Lectures](weeks/w12-guest-lectures.qmd) | How do the pieces fit together? (the course reviewed in one table; the guest talk is not available online) |
 
 :::
 
