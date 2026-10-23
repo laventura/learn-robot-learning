@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Week 12 · Guest Lectures – Learning Robot Learning</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../papers.html" rel="next">
+<link href="../weeks/w11-frontiers.html" rel="prev">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-de63f62b328812d8e578a4d74e282472.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-6b6957c917596b414ec0b78690761e87.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-de63f62b328812d8e578a4d74e282472.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-7a50dbb0797fdc4b73b34270bc5ae8cb.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-4f24e3ddeba9b3c5c0dfea1be3cc4bb3.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-7a50dbb0797fdc4b73b34270bc5ae8cb.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="nav-sidebar docked quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+    const toggleBodyColorMode = (bsSheetEl) => {
+      const mode = bsSheetEl.getAttribute("data-mode");
+      const bodyEl = window.document.querySelector("body");
+      if (mode === "dark") {
+        bodyEl.classList.add("quarto-dark");
+        bodyEl.classList.remove("quarto-light");
+      } else {
+        bodyEl.classList.add("quarto-light");
+        bodyEl.classList.remove("quarto-dark");
+      }
+    }
+    const toggleBodyColorPrimary = () => {
+      const bsSheetEl = window.document.querySelector("link#quarto-bootstrap:not([rel=disabled-stylesheet])");
+      if (bsSheetEl) {
+        toggleBodyColorMode(bsSheetEl);
+      }
+    }
+    const setColorSchemeToggle = (alternate) => {
+      const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+      for (let i=0; i < toggles.length; i++) {
+        const toggle = toggles[i];
+        if (toggle) {
+          if (alternate) {
+            toggle.classList.add("alternate");
+          } else {
+            toggle.classList.remove("alternate");
+          }
+        }
+      }
+    };
+    const toggleColorMode = (alternate) => {
+      // Switch the stylesheets
+      const primaryStylesheets = window.document.querySelectorAll('link.quarto-color-scheme:not(.quarto-color-alternate)');
+      const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+      manageTransitions('#quarto-margin-sidebar .nav-link', false);
+      if (alternate) {
+        // note: dark is layered on light, we don't disable primary!
+        enableStylesheet(alternateStylesheets);
+        for (const sheetNode of alternateStylesheets) {
+          if (sheetNode.id === "quarto-bootstrap") {
+            toggleBodyColorMode(sheetNode);
+          }
+        }
+      } else {
+        disableStylesheet(alternateStylesheets);
+        enableStylesheet(primaryStylesheets)
+        toggleBodyColorPrimary();
+      }
+      manageTransitions('#quarto-margin-sidebar .nav-link', true);
+      // Switch the toggles
+      setColorSchemeToggle(alternate)
+      // Hack to workaround the fact that safari doesn't
+      // properly recolor the scrollbar when toggling (#1455)
+      if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+        manageTransitions("body", false);
+        window.scrollTo(0, 1);
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          manageTransitions("body", true);
+        }, 40);
+      }
+    }
+    const disableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        stylesheet.rel = 'disabled-stylesheet';
+      }
+    }
+    const enableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        if(stylesheet.rel !== 'stylesheet') { // for Chrome, which will still FOUC without this check
+          stylesheet.rel = 'stylesheet';
+        }
+      }
+    }
+    const manageTransitions = (selector, allowTransitions) => {
+      const els = window.document.querySelectorAll(selector);
+      for (let i=0; i < els.length; i++) {
+        const el = els[i];
+        if (allowTransitions) {
+          el.classList.remove('notransition');
+        } else {
+          el.classList.add('notransition');
+        }
+      }
+    }
+    const isFileUrl = () => {
+      return window.location.protocol === 'file:';
+    }
+    const hasAlternateSentinel = () => {
+      let styleSentinel = getColorSchemeSentinel();
+      if (styleSentinel !== null) {
+        return styleSentinel === "alternate";
+      } else {
+        return false;
+      }
+    }
+    const setStyleSentinel = (alternate) => {
+      const value = alternate ? "alternate" : "default";
+      if (!isFileUrl()) {
+        window.localStorage.setItem("quarto-color-scheme", value);
+      } else {
+        localAlternateSentinel = value;
+      }
+    }
+    const getColorSchemeSentinel = () => {
+      if (!isFileUrl()) {
+        const storageValue = window.localStorage.getItem("quarto-color-scheme");
+        return storageValue != null ? storageValue : localAlternateSentinel;
+      } else {
+        return localAlternateSentinel;
+      }
+    }
+    const toggleGiscusIfUsed = (isAlternate, darkModeDefault) => {
+      const baseTheme = document.querySelector('#giscus-base-theme')?.value ?? 'light';
+      const alternateTheme = document.querySelector('#giscus-alt-theme')?.value ?? 'dark';
+      let newTheme = '';
+      if(authorPrefersDark) {
+        newTheme = isAlternate ? baseTheme : alternateTheme;
+      } else {
+        newTheme = isAlternate ? alternateTheme : baseTheme;
+      }
+      const changeGiscusTheme = () => {
+        // From: https://github.com/giscus/giscus/issues/336
+        const sendMessage = (message) => {
+          const iframe = document.querySelector('iframe.giscus-frame');
+          if (!iframe) return;
+          iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+        sendMessage({
+          setConfig: {
+            theme: newTheme
+          }
+        });
+      }
+      const isGiscussLoaded = window.document.querySelector('iframe.giscus-frame') !== null;
+      if (isGiscussLoaded) {
+        changeGiscusTheme();
+      }
+    };
+    const authorPrefersDark = false;
+    const darkModeDefault = authorPrefersDark;
+      document.querySelector('link#quarto-text-highlighting-styles.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+      document.querySelector('link#quarto-bootstrap.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+    let localAlternateSentinel = darkModeDefault ? 'alternate' : 'default';
+    // Dark / light mode switch
+    window.quartoToggleColorScheme = () => {
+      // Read the current dark / light value
+      let toAlternate = !hasAlternateSentinel();
+      toggleColorMode(toAlternate);
+      setStyleSentinel(toAlternate);
+      toggleGiscusIfUsed(toAlternate, darkModeDefault);
+      window.dispatchEvent(new Event('resize'));
+    };
+    // Switch to dark mode if need be
+    if (hasAlternateSentinel()) {
+      toggleColorMode(true);
+    } else {
+      toggleColorMode(false);
+    }
+  </script>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../weeks/w01-introduction.html">Weeks</a></li><li class="breadcrumb-item"><a href="../weeks/w12-guest-lectures.html">Week 12 · Guest Lectures</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="../">Learning Robot Learning</a> 
+        <div class="sidebar-tools-main">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Learning Robot Learning</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Weeks</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w01-introduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 1 · Introduction to Robot Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w02-robot-control-mdps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 2 · Robot Control &amp; MDPs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w03-imitation-learning.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 3 · Imitation Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w04-reinforcement-learning-1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 4 · Reinforcement Learning I</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w05-reinforcement-learning-2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 5 · Reinforcement Learning II</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w06-generative-models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 6 · Generative Models</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w07-sequence-modeling-transformers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 7 · Sequence Modeling and Transformers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w08-world-models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 8 · World Models</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w09-generalist-robot-policies.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 9 · Generalist Robot Policies</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w10-embodied-reasoning.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 10 · Embodied Reasoning and Test-time Scaling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w11-frontiers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 11 · Frontiers &amp; Open Problems</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../weeks/w12-guest-lectures.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Week 12 · Guest Lectures</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../papers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Papers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../glossary.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Glossary</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../cheatsheets.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cheat sheets</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#big-picture" id="toc-big-picture" class="nav-link active" data-scroll-target="#big-picture">Big picture</a>
+  <ul class="collapse">
+  <li><a href="#where-this-week-fits" id="toc-where-this-week-fits" class="nav-link" data-scroll-target="#where-this-week-fits">Where this week fits</a></li>
+  <li><a href="#the-course-in-one-table" id="toc-the-course-in-one-table" class="nav-link" data-scroll-target="#the-course-in-one-table">The course in one table</a></li>
+  <li><a href="#where-each-week-lives-in-a-modern-robot-policy" id="toc-where-each-week-lives-in-a-modern-robot-policy" class="nav-link" data-scroll-target="#where-each-week-lives-in-a-modern-robot-policy">Where each week lives in a modern robot policy</a></li>
+  </ul></li>
+  <li><a href="#guest-spotlight" id="toc-guest-spotlight" class="nav-link" data-scroll-target="#guest-spotlight">Guest spotlight</a></li>
+  <li><a href="#connections" id="toc-connections" class="nav-link" data-scroll-target="#connections">Connections</a></li>
+  <li><a href="#resources" id="toc-resources" class="nav-link" data-scroll-target="#resources">Resources</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../weeks/w01-introduction.html">Weeks</a></li><li class="breadcrumb-item"><a href="../weeks/w12-guest-lectures.html">Week 12 · Guest Lectures</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Week 12 · Guest Lectures</h1>
+<p class="subtitle lead">18 May 2026 · guest: Dieter Fox</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><strong>Course:</strong> ETH Robot Learning, Week 12 · <strong>Lecture:</strong> none; this session is guest lectures only · <strong>Go deeper:</strong> the <a href="https://laventura.github.io/adm-companion/">ADM Companion</a> for the decision-making foundations behind Weeks 2–5</p>
+</div>
+</div>
+</div>
+<section id="big-picture" class="level2">
+<h2 class="anchored" data-anchor-id="big-picture">Big picture</h2>
+<style>.course-map #w12 path, .course-map #w12 polygon { fill: #fbe1d6; stroke: #eb6834; } .course-map #w12 text { font-weight: bold; }</style>
+<!-- Generated by tools/make_course_map.py from data/weeks.yml. Do not edit. -->
+<div class="course-map">
+<div class="cell" data-fig-width="7" data-fig-height="4.09" data-layout-align="default">
+<div class="cell-output-display">
+<div id="fig-course-map" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-course-map-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div>
+<svg width="672" height="393" viewbox="0.00 0.00 835.75 488.00" xmlns="http://www.w3.org/2000/svg" xlink="http://www.w3.org/1999/xlink" style="; max-width: none; max-height: none">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(10.8 477.2)">
+<title>course</title>
+<polygon fill="#fcfcfb" stroke="transparent" points="-10.8,10.8 -10.8,-477.2 824.95,-477.2 824.95,10.8 -10.8,10.8"></polygon>
+<!-- w01 -->
+<g id="w01" class="node">
+<title>w01</title>
+<g id="a_w01"><a href="w01-introduction.html" title="<B>Week 1</B><BR/>Introduction to<BR/>Robot Learning" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M102.36,-466.4C102.36,-466.4 12.21,-466.4 12.21,-466.4 6.21,-466.4 0.21,-460.4 0.21,-454.4 0.21,-454.4 0.21,-427.4 0.21,-427.4 0.21,-421.4 6.21,-415.4 12.21,-415.4 12.21,-415.4 102.36,-415.4 102.36,-415.4 108.36,-415.4 114.36,-421.4 114.36,-427.4 114.36,-427.4 114.36,-454.4 114.36,-454.4 114.36,-460.4 108.36,-466.4 102.36,-466.4"></path>
+<text text-anchor="start" x="31.44" y="-450.9" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 1</text>
+<text text-anchor="start" x="9.76" y="-435.9" font-family="Helvetica,sans-Serif" font-size="15.00">Introduction to</text>
+<text text-anchor="start" x="6" y="-420.9" font-family="Helvetica,sans-Serif" font-size="15.00">Robot Learning</text>
+</a>
+</g>
+</g>
+<!-- w02 -->
+<g id="w02" class="node">
+<title>w02</title>
+<g id="a_w02"><a href="w02-robot-control-mdps.html" title="<B>Week 2</B><BR/>Robot Control<BR/>&amp;amp; MDPs" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M276.34,-466.4C276.34,-466.4 196.24,-466.4 196.24,-466.4 190.24,-466.4 184.24,-460.4 184.24,-454.4 184.24,-454.4 184.24,-427.4 184.24,-427.4 184.24,-421.4 190.24,-415.4 196.24,-415.4 196.24,-415.4 276.34,-415.4 276.34,-415.4 282.34,-415.4 288.34,-421.4 288.34,-427.4 288.34,-427.4 288.34,-454.4 288.34,-454.4 288.34,-460.4 282.34,-466.4 276.34,-466.4"></path>
+<text text-anchor="start" x="210.44" y="-450.9" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 2</text>
+<text text-anchor="start" x="190.01" y="-435.9" font-family="Helvetica,sans-Serif" font-size="15.00">Robot Control</text>
+<text text-anchor="start" x="208.79" y="-420.9" font-family="Helvetica,sans-Serif" font-size="15.00">&amp; MDPs</text>
+</a>
+</g>
+</g>
+<!-- w01&#45;&gt;w02 -->
+<g id="edge1" class="edge">
+<title>w01-&gt;w02</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M114.42,-440.9C134.37,-440.9 156.8,-440.9 176.93,-440.9"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="176.95,-443.35 183.95,-440.9 176.95,-438.45 176.95,-443.35"></polygon>
+<text text-anchor="middle" x="149.29" y="-447.8" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> formalize</text>
+</g>
+<!-- w03 -->
+<g id="w03" class="node">
+<title>w03</title>
+<g id="a_w03"><a href="w03-imitation-learning.html" title="<B>Week 3</B><BR/>Imitation<BR/>Learning" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M199.67,-373.8C199.67,-373.8 152.91,-373.8 152.91,-373.8 146.91,-373.8 140.91,-367.8 140.91,-361.8 140.91,-361.8 140.91,-334.8 140.91,-334.8 140.91,-328.8 146.91,-322.8 152.91,-322.8 152.91,-322.8 199.67,-322.8 199.67,-322.8 205.67,-322.8 211.67,-328.8 211.67,-334.8 211.67,-334.8 211.67,-361.8 211.67,-361.8 211.67,-367.8 205.67,-373.8 199.67,-373.8"></path>
+<text text-anchor="start" x="150.44" y="-358.3" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 3</text>
+<text text-anchor="start" x="147.94" y="-343.3" font-family="Helvetica,sans-Serif" font-size="15.00">Imitation</text>
+<text text-anchor="start" x="147.1" y="-328.3" font-family="Helvetica,sans-Serif" font-size="15.00">Learning</text>
+</a>
+</g>
+</g>
+<!-- w02&#45;&gt;w03 -->
+<g id="edge2" class="edge">
+<title>w02-&gt;w03</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M186.88,-415.29C182.79,-411.5 179.2,-407.22 176.53,-402.4 172.96,-395.99 171.59,-388.45 171.39,-381.08"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="173.85,-380.88 171.55,-373.83 168.95,-380.78 173.85,-380.88"></polygon>
+<text text-anchor="middle" x="229.67" y="-390.7" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> learn from demos</text>
+</g>
+<!-- w04 -->
+<g id="w04" class="node">
+<title>w04</title>
+<g id="a_w04"><a href="w04-reinforcement-learning-1.html" title="<B>Week 4</B><BR/>Reinforcement<BR/>Learning I" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M339.83,-373.8C339.83,-373.8 254.74,-373.8 254.74,-373.8 248.74,-373.8 242.74,-367.8 242.74,-361.8 242.74,-361.8 242.74,-334.8 242.74,-334.8 242.74,-328.8 248.74,-322.8 254.74,-322.8 254.74,-322.8 339.83,-322.8 339.83,-322.8 345.83,-322.8 351.83,-328.8 351.83,-334.8 351.83,-334.8 351.83,-361.8 351.83,-361.8 351.83,-367.8 345.83,-373.8 339.83,-373.8"></path>
+<text text-anchor="start" x="271.44" y="-358.3" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 4</text>
+<text text-anchor="start" x="248.52" y="-343.3" font-family="Helvetica,sans-Serif" font-size="15.00">Reinforcement</text>
+<text text-anchor="start" x="263.93" y="-328.3" font-family="Helvetica,sans-Serif" font-size="15.00">Learning I</text>
+</a>
+</g>
+</g>
+<!-- w02&#45;&gt;w04 -->
+<g id="edge3" class="edge">
+<title>w02-&gt;w04</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M269.63,-415.13C273.59,-411.19 277.28,-406.91 280.29,-402.4 284.64,-395.86 287.94,-388.13 290.42,-380.62"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="292.8,-381.24 292.47,-373.83 288.1,-379.82 292.8,-381.24"></polygon>
+<text text-anchor="middle" x="341.03" y="-390.7" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> learn from reward</text>
+</g>
+<!-- w06 -->
+<g id="w06" class="node">
+<title>w06</title>
+<g id="a_w06"><a href="w06-generative-models.html" title="<B>Week 6</B><BR/>Generative<BR/>Models" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M212.16,-273.7C212.16,-273.7 150.41,-273.7 150.41,-273.7 144.41,-273.7 138.41,-267.7 138.41,-261.7 138.41,-261.7 138.41,-234.7 138.41,-234.7 138.41,-228.7 144.41,-222.7 150.41,-222.7 150.41,-222.7 212.16,-222.7 212.16,-222.7 218.16,-222.7 224.16,-228.7 224.16,-234.7 224.16,-234.7 224.16,-261.7 224.16,-261.7 224.16,-267.7 218.16,-273.7 212.16,-273.7"></path>
+<text text-anchor="start" x="155.44" y="-258.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 6</text>
+<text text-anchor="start" x="144.6" y="-243.2" font-family="Helvetica,sans-Serif" font-size="15.00">Generative</text>
+<text text-anchor="start" x="157.11" y="-228.2" font-family="Helvetica,sans-Serif" font-size="15.00">Models</text>
+</a>
+</g>
+</g>
+<!-- w03&#45;&gt;w06 -->
+<g id="edge5" class="edge">
+<title>w03-&gt;w06</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M177.54,-322.8C178.18,-310.16 178.97,-294.58 179.67,-281.02"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="182.13,-280.85 180.04,-273.73 177.23,-280.6 182.13,-280.85"></polygon>
+<text text-anchor="middle" x="218.3" y="-298.1" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> many modes</text>
+</g>
+<!-- w05 -->
+<g id="w05" class="node">
+<title>w05</title>
+<g id="a_w05"><a href="w05-reinforcement-learning-2.html" title="<B>Week 5</B><BR/>Reinforcement<BR/>Learning II" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M514.83,-373.8C514.83,-373.8 429.74,-373.8 429.74,-373.8 423.74,-373.8 417.74,-367.8 417.74,-361.8 417.74,-361.8 417.74,-334.8 417.74,-334.8 417.74,-328.8 423.74,-322.8 429.74,-322.8 429.74,-322.8 514.83,-322.8 514.83,-322.8 520.83,-322.8 526.83,-328.8 526.83,-334.8 526.83,-334.8 526.83,-361.8 526.83,-361.8 526.83,-367.8 520.83,-373.8 514.83,-373.8"></path>
+<text text-anchor="start" x="446.44" y="-358.3" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 5</text>
+<text text-anchor="start" x="423.52" y="-343.3" font-family="Helvetica,sans-Serif" font-size="15.00">Reinforcement</text>
+<text text-anchor="start" x="436.85" y="-328.3" font-family="Helvetica,sans-Serif" font-size="15.00">Learning II</text>
+</a>
+</g>
+</g>
+<!-- w04&#45;&gt;w05 -->
+<g id="edge4" class="edge">
+<title>w04-&gt;w05</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M352.18,-348.3C370.67,-348.3 391.42,-348.3 410.41,-348.3"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="410.59,-350.75 417.59,-348.3 410.59,-345.85 410.59,-350.75"></polygon>
+<text text-anchor="middle" x="384.79" y="-355.2" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> scale up</text>
+</g>
+<!-- w08 -->
+<g id="w08" class="node">
+<title>w08</title>
+<g id="a_w08"><a href="w08-world-models.html" title="<B>Week 8</B><BR/>World Models" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M510.98,-266.2C510.98,-266.2 431.6,-266.2 431.6,-266.2 425.6,-266.2 419.6,-260.2 419.6,-254.2 419.6,-254.2 419.6,-242.2 419.6,-242.2 419.6,-236.2 425.6,-230.2 431.6,-230.2 431.6,-230.2 510.98,-230.2 510.98,-230.2 516.98,-230.2 522.98,-236.2 522.98,-242.2 522.98,-242.2 522.98,-254.2 522.98,-254.2 522.98,-260.2 516.98,-266.2 510.98,-266.2"></path>
+<text text-anchor="start" x="445.44" y="-250.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 8</text>
+<text text-anchor="start" x="425.44" y="-235.7" font-family="Helvetica,sans-Serif" font-size="15.00">World Models</text>
+</a>
+</g>
+</g>
+<!-- w05&#45;&gt;w08 -->
+<g id="edge7" class="edge">
+<title>w05-&gt;w08</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M472.04,-322.8C471.88,-307.68 471.69,-288.37 471.53,-273.32"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="473.98,-273.29 471.46,-266.31 469.08,-273.34 473.98,-273.29"></polygon>
+<text text-anchor="middle" x="512.48" y="-298.1" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> learn a model</text>
+</g>
+<!-- w07 -->
+<g id="w07" class="node">
+<title>w07</title>
+<g id="a_w07"><a href="w07-sequence-modeling-transformers.html" title="<B>Week 7</B><BR/>Sequence<BR/>Modeling and<BR/>Transformers" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M393.35,-281.2C393.35,-281.2 315.22,-281.2 315.22,-281.2 309.22,-281.2 303.22,-275.2 303.22,-269.2 303.22,-269.2 303.22,-227.2 303.22,-227.2 303.22,-221.2 309.22,-215.2 315.22,-215.2 315.22,-215.2 393.35,-215.2 393.35,-215.2 399.35,-215.2 405.35,-221.2 405.35,-227.2 405.35,-227.2 405.35,-269.2 405.35,-269.2 405.35,-275.2 399.35,-281.2 393.35,-281.2"></path>
+<text text-anchor="start" x="328.44" y="-265.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 7</text>
+<text text-anchor="start" x="320.51" y="-250.7" font-family="Helvetica,sans-Serif" font-size="15.00">Sequence</text>
+<text text-anchor="start" x="309.25" y="-235.7" font-family="Helvetica,sans-Serif" font-size="15.00">Modeling and</text>
+<text text-anchor="start" x="309.7" y="-220.7" font-family="Helvetica,sans-Serif" font-size="15.00">Transformers</text>
+</a>
+</g>
+</g>
+<!-- w06&#45;&gt;w07 -->
+<g id="edge6" class="edge">
+<title>w06-&gt;w07</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M224.05,-248.2C245.72,-248.2 272.37,-248.2 295.9,-248.2"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="296.09,-250.65 303.09,-248.2 296.09,-245.75 296.09,-250.65"></polygon>
+<text text-anchor="middle" x="263.61" y="-255.1" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> sequences</text>
+</g>
+<!-- w09 -->
+<g id="w09" class="node">
+<title>w09</title>
+<g id="a_w09"><a href="w09-generalist-robot-policies.html" title="<B>Week 9</B><BR/>Generalist Robot<BR/>Policies" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M462.35,-158.6C462.35,-158.6 362.23,-158.6 362.23,-158.6 356.23,-158.6 350.23,-152.6 350.23,-146.6 350.23,-146.6 350.23,-119.6 350.23,-119.6 350.23,-113.6 356.23,-107.6 362.23,-107.6 362.23,-107.6 462.35,-107.6 462.35,-107.6 468.35,-107.6 474.35,-113.6 474.35,-119.6 474.35,-119.6 474.35,-146.6 474.35,-146.6 474.35,-152.6 468.35,-158.6 462.35,-158.6"></path>
+<text text-anchor="start" x="386.44" y="-143.1" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 9</text>
+<text text-anchor="start" x="356.01" y="-128.1" font-family="Helvetica,sans-Serif" font-size="15.00">Generalist Robot</text>
+<text text-anchor="start" x="386.44" y="-113.1" font-family="Helvetica,sans-Serif" font-size="15.00">Policies</text>
+</a>
+</g>
+</g>
+<!-- w07&#45;&gt;w09 -->
+<g id="edge8" class="edge">
+<title>w07-&gt;w09</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M370.75,-215.09C378.78,-199.44 388.4,-180.68 396.36,-165.17"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="398.64,-166.08 399.66,-158.73 394.28,-163.84 398.64,-166.08"></polygon>
+<text text-anchor="middle" x="401.27" y="-190.5" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> scale</text>
+</g>
+<!-- w08&#45;&gt;w09 -->
+<g id="edge9" class="edge">
+<title>w08-&gt;w09</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M462.33,-230.02C453.39,-212.89 439.45,-186.17 428.56,-165.28"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="430.69,-164.08 425.28,-159.01 426.35,-166.35 430.69,-164.08"></polygon>
+<text text-anchor="middle" x="470.86" y="-190.5" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> imagine</text>
+</g>
+<!-- w10 -->
+<g id="w10" class="node">
+<title>w10</title>
+<g id="a_w10"><a href="w10-embodied-reasoning.html" title="<B>Week 10</B><BR/>Embodied<BR/>Reasoning and<BR/>Test-time<BR/>Scaling" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M631.7,-173.6C631.7,-173.6 542.87,-173.6 542.87,-173.6 536.87,-173.6 530.87,-167.6 530.87,-161.6 530.87,-161.6 530.87,-104.6 530.87,-104.6 530.87,-98.6 536.87,-92.6 542.87,-92.6 542.87,-92.6 631.7,-92.6 631.7,-92.6 637.7,-92.6 643.7,-98.6 643.7,-104.6 643.7,-104.6 643.7,-161.6 643.7,-161.6 643.7,-167.6 637.7,-173.6 631.7,-173.6"></path>
+<text text-anchor="start" x="557.27" y="-158.1" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 10</text>
+<text text-anchor="start" x="553.52" y="-143.1" font-family="Helvetica,sans-Serif" font-size="15.00">Embodied</text>
+<text text-anchor="start" x="536.83" y="-128.1" font-family="Helvetica,sans-Serif" font-size="15.00">Reasoning and</text>
+<text text-anchor="start" x="556.04" y="-113.1" font-family="Helvetica,sans-Serif" font-size="15.00">Test-time</text>
+<text text-anchor="start" x="562.69" y="-98.1" font-family="Helvetica,sans-Serif" font-size="15.00">Scaling</text>
+</a>
+</g>
+</g>
+<!-- w09&#45;&gt;w10 -->
+<g id="edge10" class="edge">
+<title>w09-&gt;w10</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M474.48,-133.1C490.41,-133.1 507.57,-133.1 523.57,-133.1"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="523.84,-135.55 530.84,-133.1 523.84,-130.65 523.84,-135.55"></polygon>
+<text text-anchor="middle" x="502.7" y="-140" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> reason</text>
+</g>
+<!-- w11 -->
+<g id="w11" class="node">
+<title>w11</title>
+<g id="a_w11"><a href="w11-frontiers.html" title="<B>Week 11</B><BR/>Frontiers &amp;amp;<BR/>Open Problems" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M633.5,-51C633.5,-51 541.07,-51 541.07,-51 535.07,-51 529.07,-45 529.07,-39 529.07,-39 529.07,-12 529.07,-12 529.07,-6 535.07,0 541.07,0 541.07,0 633.5,0 633.5,0 639.5,0 645.5,-6 645.5,-12 645.5,-12 645.5,-39 645.5,-39 645.5,-45 639.5,-51 633.5,-51"></path>
+<text text-anchor="start" x="557.27" y="-35.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 11</text>
+<text text-anchor="start" x="550.61" y="-20.5" font-family="Helvetica,sans-Serif" font-size="15.00">Frontiers &amp;</text>
+<text text-anchor="start" x="535.18" y="-5.5" font-family="Helvetica,sans-Serif" font-size="15.00">Open Problems</text>
+</a>
+</g>
+</g>
+<!-- w10&#45;&gt;w11 -->
+<g id="edge11" class="edge">
+<title>w10-&gt;w11</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M587.29,-92.48C587.29,-81.26 587.29,-69.19 587.29,-58.48"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="589.74,-58.31 587.29,-51.31 584.84,-58.31 589.74,-58.31"></polygon>
+<text text-anchor="middle" x="623.58" y="-67.9" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> what's open</text>
+</g>
+<!-- w12 -->
+<g id="w12" class="node">
+<title>w12</title>
+<g id="a_w12"><a href="w12-guest-lectures.html" title="<B>Week 12</B><BR/>Guest Lectures" target="_top">
+<path fill="#cde2fb" stroke="#2a78d6" d="M802.01,-43.5C802.01,-43.5 712.57,-43.5 712.57,-43.5 706.57,-43.5 700.57,-37.5 700.57,-31.5 700.57,-31.5 700.57,-19.5 700.57,-19.5 700.57,-13.5 706.57,-7.5 712.57,-7.5 712.57,-7.5 802.01,-7.5 802.01,-7.5 808.01,-7.5 814.01,-13.5 814.01,-19.5 814.01,-19.5 814.01,-31.5 814.01,-31.5 814.01,-37.5 808.01,-43.5 802.01,-43.5"></path>
+<text text-anchor="start" x="727.27" y="-28" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">Week 12</text>
+<text text-anchor="start" x="706.43" y="-13" font-family="Helvetica,sans-Serif" font-size="15.00">Guest Lectures</text>
+</a>
+</g>
+</g>
+<!-- w11&#45;&gt;w12 -->
+<g id="edge12" class="edge">
+<title>w11-&gt;w12</title>
+<path fill="none" stroke="#52514e" stroke-width="1.1" d="M645.79,-25.5C661.12,-25.5 677.72,-25.5 693.31,-25.5"></path>
+<polygon fill="#52514e" stroke="#52514e" stroke-width="1.1" points="693.4,-27.95 700.4,-25.5 693.4,-23.05 693.4,-27.95"></polygon>
+<text text-anchor="middle" x="672.91" y="-32.4" font-family="Helvetica,sans-Serif" font-size="13.00" fill="#52514e"> guests</text>
+</g>
+</g>
+</svg>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-course-map-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: The course at a glance. Each box is a week (click to open it); this page’s week is orange. Arrows show how one week builds on another.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<section id="where-this-week-fits" class="level3">
+<h3 class="anchored" data-anchor-id="where-this-week-fits">Where this week fits</h3>
+<p>The last session of the course has no lecture. It belongs to guest speakers, and then the students show their projects on real robots at demo day, as the lecturer announced at the end of Week 11 <a href="https://youtu.be/eL4lcy1KNzE?t=3628">▶ 1:00:28</a>. The course page lists one speaker, Dieter Fox, whose talk is not available online. So this page does what a last week can do on its own: it looks back over the course in one place, shows how the weeks fit together inside a modern robot policy, and draws out the threads that ran through all of them.</p>
+<p><strong>The question this week answers:</strong> having seen the whole course, how do its pieces fit together, and which lessons kept coming back?</p>
+</section>
+<section id="the-course-in-one-table" class="level3">
+<h3 class="anchored" data-anchor-id="the-course-in-one-table">The course in one table</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Week</th>
+<th style="text-align: left;">The question it answered</th>
+<th style="text-align: left;">The short answer</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><a href="../weeks/w01-introduction.html">1 · Introduction</a></td>
+<td style="text-align: left;">Why can’t we just program robots for our homes?</td>
+<td style="text-align: left;">Sense-plan-act breaks in unstructured worlds; learning from data and experience replaces hand-coding, and robotics becomes multimodal sequence modelling.</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><a href="../weeks/w02-robot-control-mdps.html">2 · Control &amp; MDPs</a></td>
+<td style="text-align: left;">How does a goal become motor commands, and how do we describe decisions above that?</td>
+<td style="text-align: left;">Kinematics, trajectories and PID turn targets into torques; the MDP and the policy <span class="math inline">\(\pi(a \mid o)\)</span> are the language for everything learned after.</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><a href="../weeks/w03-imitation-learning.html">3 · Imitation learning</a></td>
+<td style="text-align: left;">How do demonstrations become a policy, and why does copying break?</td>
+<td style="text-align: left;">Behavioral cloning is supervised learning, but its errors compound off the expert’s states; DAgger, history and goal-conditioning help, and averaging modes is a trap.</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><a href="../weeks/w04-reinforcement-learning-1.html">4 · RL I</a></td>
+<td style="text-align: left;">How can a robot learn from rewards alone?</td>
+<td style="text-align: left;">Values and the Bellman equation, from dynamic programming to Q-learning and DQN, and ways to handle continuous actions.</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><a href="../weeks/w05-reinforcement-learning-2.html">5 · RL II</a></td>
+<td style="text-align: left;">How do you follow the gradient of reward through a world you can’t differentiate?</td>
+<td style="text-align: left;">The policy gradient, made usable by baselines and advantages, then trust regions (TRPO, PPO) and off-policy actor-critics (SAC).</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><a href="../weeks/w06-generative-models.html">6 · Generative models</a></td>
+<td style="text-align: left;">How can a policy represent a complicated distribution over actions?</td>
+<td style="text-align: left;">Turn noise into actions: VAEs, diffusion and flow matching, as in Diffusion Policy and π0.</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><a href="../weeks/w07-sequence-modeling-transformers.html">7 · Sequences &amp; transformers</a></td>
+<td style="text-align: left;">How do observations, words and actions become one token sequence?</td>
+<td style="text-align: left;">Attention over tokens, scaling laws, and actions as bins, compressed chunks (FAST) or chunks predicted at once (ACT).</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><a href="../weeks/w08-world-models.html">8 · World models</a></td>
+<td style="text-align: left;">How do you learn what your actions will do, and use it?</td>
+<td style="text-align: left;">Predict consequences, plan or imagine with them, and beware compounding, exploited model errors; scale with video or predict embeddings (JEPA).</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><a href="../weeks/w09-generalist-robot-policies.html">9 · Generalist policies</a></td>
+<td style="text-align: left;">Where do generalist policies come from, and how do you know they work?</td>
+<td style="text-align: left;">Pool data across robots, tokenize everything, start from a VLM and protect its knowledge, and evaluate by rankings.</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><a href="../weeks/w10-embodied-reasoning.html">10 · Reasoning &amp; test-time scaling</a></td>
+<td style="text-align: left;">Can a robot that thinks harder act better?</td>
+<td style="text-align: left;">Embodied chain-of-thought helps mainly by teaching better features; test-time search pays only on problems the model sometimes solves; RL makes reasoning emerge.</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><a href="../weeks/w11-frontiers.html">11 · Frontiers</a></td>
+<td style="text-align: left;">What is still unsolved?</td>
+<td style="text-align: left;">Grounded generalization, dexterity beyond vision, knowing what you don’t know, going beyond imitation, and learning for a lifetime.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="where-each-week-lives-in-a-modern-robot-policy" class="level3">
+<h3 class="anchored" data-anchor-id="where-each-week-lives-in-a-modern-robot-policy">Where each week lives in a modern robot policy</h3>
+<p>Most of the course can be read as the parts of one system. <a href="#fig-anatomy" class="quarto-xref">Figure&nbsp;2</a> lays out a generalist vision-language-action policy of the kind Weeks 9 to 11 discussed, and marks which week supplied each part.</p>
+<div class="cell" data-fig-width="5.4" data-fig-height="6.4" data-layout-align="default">
+<div class="cell-output-display">
+<div id="fig-anatomy" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-anatomy-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div>
+<svg width="518" height="614" viewbox="0.00 0.00 479.35 468.80" xmlns="http://www.w3.org/2000/svg" xlink="http://www.w3.org/1999/xlink" style="; max-width: none; max-height: none">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 464.8)">
+<title>G</title>
+<polygon fill="#fcfcfb" stroke="transparent" points="-4,4 -4,-464.8 475.35,-464.8 475.35,4 -4,4"></polygon>
+<!-- cam -->
+<g id="node1" class="node">
+<title>cam</title>
+<path fill="#cde2fb" stroke="#2a78d6" d="M106.68,-460.8C106.68,-460.8 21.83,-460.8 21.83,-460.8 15.83,-460.8 9.83,-454.8 9.83,-448.8 9.83,-448.8 9.83,-436.8 9.83,-436.8 9.83,-430.8 15.83,-424.8 21.83,-424.8 21.83,-424.8 106.68,-424.8 106.68,-424.8 112.68,-424.8 118.68,-430.8 118.68,-436.8 118.68,-436.8 118.68,-448.8 118.68,-448.8 118.68,-454.8 112.68,-460.8 106.68,-460.8"></path>
+<text text-anchor="middle" x="64.25" y="-446.1" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">camera, instruction</text>
+<text text-anchor="middle" x="64.25" y="-432.9" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">(Week 1)</text>
+</g>
+<!-- tok -->
+<g id="node2" class="node">
+<title>tok</title>
+<path fill="#cde2fb" stroke="#2a78d6" d="M116.26,-390C116.26,-390 12.25,-390 12.25,-390 6.25,-390 0.25,-384 0.25,-378 0.25,-378 0.25,-366 0.25,-366 0.25,-360 6.25,-354 12.25,-354 12.25,-354 116.26,-354 116.26,-354 122.26,-354 128.26,-360 128.26,-366 128.26,-366 128.26,-378 128.26,-378 128.26,-384 122.26,-390 116.26,-390"></path>
+<text text-anchor="middle" x="64.25" y="-375.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">tokens: patches, words</text>
+<text text-anchor="middle" x="64.25" y="-362.1" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">(Week 7)</text>
+</g>
+<!-- cam&#45;&gt;tok -->
+<g id="edge1" class="edge">
+<title>cam-&gt;tok</title>
+<path fill="none" stroke="#52514e" d="M64.25,-424.79C64.25,-417.41 64.25,-408.57 64.25,-400.3"></path>
+<polygon fill="#52514e" stroke="#52514e" points="67.75,-400.29 64.25,-390.29 60.75,-400.29 67.75,-400.29"></polygon>
+<text text-anchor="middle" x="79.01" y="-404.7" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">encode</text>
+</g>
+<!-- vlm -->
+<g id="node3" class="node">
+<title>vlm</title>
+<path fill="#cde2fb" stroke="#2a78d6" d="M184.07,-319.2C184.07,-319.2 64.44,-319.2 64.44,-319.2 58.44,-319.2 52.44,-313.2 52.44,-307.2 52.44,-307.2 52.44,-295.2 52.44,-295.2 52.44,-289.2 58.44,-283.2 64.44,-283.2 64.44,-283.2 184.07,-283.2 184.07,-283.2 190.07,-283.2 196.07,-289.2 196.07,-295.2 196.07,-295.2 196.07,-307.2 196.07,-307.2 196.07,-313.2 190.07,-319.2 184.07,-319.2"></path>
+<text text-anchor="middle" x="124.25" y="-304.5" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">vision-language backbone</text>
+<text text-anchor="middle" x="124.25" y="-291.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">(Weeks 7, 9, 11)</text>
+</g>
+<!-- tok&#45;&gt;vlm -->
+<g id="edge2" class="edge">
+<title>tok-&gt;vlm</title>
+<path fill="none" stroke="#52514e" d="M79.08,-353.99C86.17,-345.87 94.79,-335.99 102.59,-327.04"></path>
+<polygon fill="#52514e" stroke="#52514e" points="105.24,-329.33 109.17,-319.49 99.96,-324.73 105.24,-329.33"></polygon>
+<text text-anchor="middle" x="107.26" y="-333.9" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">read</text>
+</g>
+<!-- rsn -->
+<g id="node4" class="node">
+<title>rsn</title>
+<path fill="#eb6834" stroke="#eb6834" d="M181.5,-248.4C181.5,-248.4 87,-248.4 87,-248.4 81,-248.4 75,-242.4 75,-236.4 75,-236.4 75,-224.4 75,-224.4 75,-218.4 81,-212.4 87,-212.4 87,-212.4 181.5,-212.4 181.5,-212.4 187.5,-212.4 193.5,-218.4 193.5,-224.4 193.5,-224.4 193.5,-236.4 193.5,-236.4 193.5,-242.4 187.5,-248.4 181.5,-248.4"></path>
+<text text-anchor="middle" x="134.25" y="-233.7" font-family="Helvetica,sans-Serif" font-size="11.00" fill="white">reason when needed</text>
+<text text-anchor="middle" x="134.25" y="-220.5" font-family="Helvetica,sans-Serif" font-size="11.00" fill="white">(Week 10)</text>
+</g>
+<!-- vlm&#45;&gt;rsn -->
+<g id="edge3" class="edge">
+<title>vlm-&gt;rsn</title>
+<path fill="none" stroke="#52514e" d="M126.72,-283.19C127.8,-275.81 129.08,-266.97 130.28,-258.7"></path>
+<polygon fill="#52514e" stroke="#52514e" points="133.76,-259.09 131.74,-248.69 126.84,-258.08 133.76,-259.09"></polygon>
+<text text-anchor="middle" x="147.51" y="-263.1" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">if unsure</text>
+</g>
+<!-- exp -->
+<g id="node5" class="node">
+<title>exp</title>
+<path fill="#cde2fb" stroke="#2a78d6" d="M287.68,-177.6C287.68,-177.6 180.83,-177.6 180.83,-177.6 174.83,-177.6 168.83,-171.6 168.83,-165.6 168.83,-165.6 168.83,-153.6 168.83,-153.6 168.83,-147.6 174.83,-141.6 180.83,-141.6 180.83,-141.6 287.68,-141.6 287.68,-141.6 293.68,-141.6 299.68,-147.6 299.68,-153.6 299.68,-153.6 299.68,-165.6 299.68,-165.6 299.68,-171.6 293.68,-177.6 287.68,-177.6"></path>
+<text text-anchor="middle" x="234.25" y="-162.9" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">action expert:</text>
+<text text-anchor="middle" x="234.25" y="-149.7" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">flow matching (Week 6)</text>
+</g>
+<!-- rsn&#45;&gt;exp -->
+<g id="edge4" class="edge">
+<title>rsn-&gt;exp</title>
+<path fill="none" stroke="#52514e" d="M151.81,-212.09C159.81,-204.69 169.62,-196.24 179.23,-189.6 182.67,-187.22 186.34,-184.89 190.08,-182.66"></path>
+<polygon fill="#52514e" stroke="#52514e" points="191.93,-185.63 198.87,-177.63 188.46,-179.55 191.93,-185.63"></polygon>
+<text text-anchor="middle" x="197.26" y="-192.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">condition</text>
+</g>
+<!-- chk -->
+<g id="node6" class="node">
+<title>chk</title>
+<path fill="#cde2fb" stroke="#2a78d6" d="M343.01,-106.8C343.01,-106.8 289.49,-106.8 289.49,-106.8 283.49,-106.8 277.49,-100.8 277.49,-94.8 277.49,-94.8 277.49,-82.8 277.49,-82.8 277.49,-76.8 283.49,-70.8 289.49,-70.8 289.49,-70.8 343.01,-70.8 343.01,-70.8 349.01,-70.8 355.01,-76.8 355.01,-82.8 355.01,-82.8 355.01,-94.8 355.01,-94.8 355.01,-100.8 349.01,-106.8 343.01,-106.8"></path>
+<text text-anchor="middle" x="316.25" y="-92.1" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">action chunk</text>
+<text text-anchor="middle" x="316.25" y="-78.9" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">(Week 7)</text>
+</g>
+<!-- exp&#45;&gt;chk -->
+<g id="edge5" class="edge">
+<title>exp-&gt;chk</title>
+<path fill="none" stroke="#52514e" d="M254.52,-141.59C264.67,-133.08 277.13,-122.63 288.18,-113.35"></path>
+<polygon fill="#52514e" stroke="#52514e" points="290.52,-115.96 295.93,-106.85 286.02,-110.6 290.52,-115.96"></polygon>
+<text text-anchor="middle" x="293.76" y="-121.5" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">sample</text>
+</g>
+<!-- ctl -->
+<g id="node7" class="node">
+<title>ctl</title>
+<path fill="#cde2fb" stroke="#2a78d6" d="M354.72,-36C354.72,-36 277.78,-36 277.78,-36 271.78,-36 265.78,-30 265.78,-24 265.78,-24 265.78,-12 265.78,-12 265.78,-6 271.78,0 277.78,0 277.78,0 354.72,0 354.72,0 360.72,0 366.72,-6 366.72,-12 366.72,-12 366.72,-24 366.72,-24 366.72,-30 360.72,-36 354.72,-36"></path>
+<text text-anchor="middle" x="316.25" y="-21.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">controller, motors</text>
+<text text-anchor="middle" x="316.25" y="-8.1" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">(Week 2)</text>
+</g>
+<!-- chk&#45;&gt;ctl -->
+<g id="edge6" class="edge">
+<title>chk-&gt;ctl</title>
+<path fill="none" stroke="#52514e" d="M316.25,-70.79C316.25,-63.41 316.25,-54.57 316.25,-46.3"></path>
+<polygon fill="#52514e" stroke="#52514e" points="319.75,-46.29 316.25,-36.29 312.75,-46.29 319.75,-46.29"></polygon>
+<text text-anchor="middle" x="326" y="-50.7" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">track</text>
+</g>
+<!-- bc -->
+<g id="node8" class="node">
+<title>bc</title>
+<path fill="#f0efec" stroke="#52514e" d="M302.77,-390C302.77,-390 165.74,-390 165.74,-390 159.74,-390 153.74,-384 153.74,-378 153.74,-378 153.74,-366 153.74,-366 153.74,-360 159.74,-354 165.74,-354 165.74,-354 302.77,-354 302.77,-354 308.77,-354 314.77,-360 314.77,-366 314.77,-366 314.77,-378 314.77,-378 314.77,-384 308.77,-390 302.77,-390"></path>
+<text text-anchor="middle" x="234.25" y="-375.3" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">pooled demonstrations,</text>
+<text text-anchor="middle" x="234.25" y="-362.1" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">behavior cloning (Weeks 3, 9)</text>
+</g>
+<!-- bc&#45;&gt;vlm -->
+<g id="edge7" class="edge">
+<title>bc-&gt;vlm</title>
+<path fill="none" stroke="#52514e" stroke-dasharray="5,2" d="M207.06,-353.99C192.91,-345.15 175.44,-334.21 160.19,-324.68"></path>
+<polygon fill="#52514e" stroke="#52514e" points="161.85,-321.58 151.51,-319.25 158.13,-327.52 161.85,-321.58"></polygon>
+<text text-anchor="middle" x="195.01" y="-333.9" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">train</text>
+</g>
+<!-- bc&#45;&gt;exp -->
+<g id="edge8" class="edge">
+<title>bc-&gt;exp</title>
+<path fill="none" stroke="#52514e" stroke-dasharray="5,2" d="M234.25,-353.78C234.25,-317.32 234.25,-232.06 234.25,-188.02"></path>
+<polygon fill="#52514e" stroke="#52514e" points="237.75,-187.76 234.25,-177.76 230.75,-187.76 237.75,-187.76"></polygon>
+<text text-anchor="middle" x="243.01" y="-263.1" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">train</text>
+</g>
+<!-- rl -->
+<g id="node9" class="node">
+<title>rl</title>
+<path fill="#f0efec" stroke="#52514e" d="M449.79,-248.4C449.79,-248.4 284.72,-248.4 284.72,-248.4 278.72,-248.4 272.72,-242.4 272.72,-236.4 272.72,-236.4 272.72,-224.4 272.72,-224.4 272.72,-218.4 278.72,-212.4 284.72,-212.4 284.72,-212.4 449.79,-212.4 449.79,-212.4 455.79,-212.4 461.79,-218.4 461.79,-224.4 461.79,-224.4 461.79,-236.4 461.79,-236.4 461.79,-242.4 455.79,-248.4 449.79,-248.4"></path>
+<text text-anchor="middle" x="367.25" y="-233.7" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">improve with reward:</text>
+<text text-anchor="middle" x="367.25" y="-220.5" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">RL, advantages (Weeks 4, 5, 9, 11)</text>
+</g>
+<!-- rl&#45;&gt;exp -->
+<g id="edge9" class="edge">
+<title>rl-&gt;exp</title>
+<path fill="none" stroke="#52514e" stroke-dasharray="5,2" d="M334.38,-212.39C316.79,-203.3 294.95,-192 276.16,-182.28"></path>
+<polygon fill="#52514e" stroke="#52514e" points="277.7,-179.14 267.21,-177.65 274.48,-185.35 277.7,-179.14"></polygon>
+<text text-anchor="middle" x="319.51" y="-192.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">refine</text>
+</g>
+<!-- ev -->
+<g id="node10" class="node">
+<title>ev</title>
+<path fill="#f0efec" stroke="#52514e" d="M459.46,-177.6C459.46,-177.6 337.05,-177.6 337.05,-177.6 331.05,-177.6 325.05,-171.6 325.05,-165.6 325.05,-165.6 325.05,-153.6 325.05,-153.6 325.05,-147.6 331.05,-141.6 337.05,-141.6 337.05,-141.6 459.46,-141.6 459.46,-141.6 465.46,-141.6 471.46,-147.6 471.46,-153.6 471.46,-153.6 471.46,-165.6 471.46,-165.6 471.46,-171.6 465.46,-177.6 459.46,-177.6"></path>
+<text text-anchor="middle" x="398.25" y="-162.9" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">evaluate: simulation,</text>
+<text text-anchor="middle" x="398.25" y="-149.7" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#0b0b0b">world models (Weeks 8, 9)</text>
+</g>
+<!-- ev&#45;&gt;chk -->
+<g id="edge10" class="edge">
+<title>ev-&gt;chk</title>
+<path fill="none" stroke="#52514e" stroke-dasharray="5,2" d="M377.98,-141.59C367.83,-133.08 355.38,-122.63 344.32,-113.35"></path>
+<polygon fill="#52514e" stroke="#52514e" points="346.48,-110.6 336.57,-106.85 341.98,-115.96 346.48,-110.6"></polygon>
+<text text-anchor="middle" x="372.26" y="-121.5" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#52514e">score</text>
+</g>
+</g>
+</svg>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-anatomy-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: A modern generalist robot policy, assembled from the course. Blue: what runs on the robot, from camera to motors. Grey: how it is trained, improved and evaluated. Each box names the week that covered it.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p>The robot’s path is the course’s middle: tokens and transformers (Week 7) carry camera images and instructions into a backbone pretrained on the web (Weeks 9 and 11), which may reason first (Week 10) before a generative action expert (Week 6) samples a chunk of actions (Week 7) that a classical controller tracks (Week 2). Training comes from the course’s two families: imitation of pooled demonstrations (Weeks 3 and 9), refined with reward (Weeks 4, 5, and π*0.6 in Week 9). Evaluation, in simulation or a learned model (Weeks 8 and 9), decides whether any of it worked.</p>
+</section>
+</section>
+<section id="guest-spotlight" class="level2">
+<h2 class="anchored" data-anchor-id="guest-spotlight">Guest spotlight</h2>
+<p><strong>Dieter Fox</strong> is a professor in the Allen School of Computer Science &amp; Engineering at the University of Washington, where he heads the Robotics and State Estimation Lab, and he also works at the Allen Institute for AI (Ai2). His research spans robotics, artificial intelligence and state estimation, with applications in 3-D mapping and tracking, human activity recognition, and robot manipulation; he is a fellow of AAAI, ACM and IEEE and a recipient of the IEEE RAS Pioneer Award (his <a href="https://homes.cs.washington.edu/~fox/">homepage</a>). With Sebastian Thrun and Wolfram Burgard he wrote <em>Probabilistic Robotics</em> (MIT Press, 2005), the standard text on handling uncertainty in robot perception and control, whose filters and mapping methods underlie the classical mapping and localization stacks that mobile robots use today. <a href="../weeks/w11-frontiers.html">Week 11</a> asked whether a unified learned model should take over that role.</p>
+<div class="callout callout-style-default callout-note callout-titled" title="No recording">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>No recording
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>This talk is not available online: the course page lists no title, slides or recording for it. Every other guest spotlight on this site is written from the talk’s transcript, so this one stops at the speaker’s background and does not describe the talk’s content.</p>
+</div>
+</div>
+</section>
+<section id="connections" class="level2">
+<h2 class="anchored" data-anchor-id="connections">Connections</h2>
+<p>Six threads ran through the course. Each came back in several weeks, usually in a new form.</p>
+<ol type="1">
+<li><strong>Distribution shift.</strong> A policy meets the states its own actions lead to, not the ones in its data. It was compounding error in <a href="../weeks/w03-imitation-learning.html">Week 3</a>, planners exploiting a world model’s mistakes in <a href="../weeks/w08-world-models.html">Week 8</a>, the gap between simulator and robot in <a href="../weeks/w09-generalist-robot-policies.html">Week 9</a>, and a moved obstacle that an ensemble could not see in <a href="../weeks/w11-frontiers.html">Week 11</a>.</li>
+<li><strong>Actions have many right answers.</strong> Averaging two good demonstrations drove into the tree in <a href="../weeks/w03-imitation-learning.html">Week 3</a>; generative models in <a href="../weeks/w06-generative-models.html">Week 6</a> and action tokens in <a href="../weeks/w07-sequence-modeling-transformers.html">Week 7</a> are the fix that today’s policies use.</li>
+<li><strong>Data and scale win, but not by volume alone.</strong> Pooling robots helped the data-poor one in <a href="../weeks/w09-generalist-robot-policies.html">Week 9</a>, and the guest in <a href="../weeks/w11-frontiers.html">Week 11</a> traced how scaling model, data and training together made vision work. Yet mixing a robot’s own rollouts naively into cloning made the <a href="../weeks/w11-frontiers.html">Week 11</a> flywheel go backwards: what you do with data matters as much as how much you have.</li>
+<li><strong>Imitation and reward complement each other.</strong> Imitation is fast and safe but bounded by its teachers; reward-driven learning (<a href="../weeks/w04-reinforcement-learning-1.html">Weeks 4</a> and <a href="../weeks/w05-reinforcement-learning-2.html">5</a>) can go beyond them, whether by stitching (<a href="../weeks/w11-frontiers.html">Week 11</a>), advantage conditioning (π*0.6, <a href="../weeks/w09-generalist-robot-policies.html">Week 9</a>) or GRPO (<a href="../weeks/w10-embodied-reasoning.html">Week 10</a>).</li>
+<li><strong>Fast and slow.</strong> Low-level controllers run fast (100 Hz in <a href="../weeks/w02-robot-control-mdps.html">Week 2</a>’s joint, which swung wildly at 20 Hz) while learned policies send targets a few times a second; action chunks buy smoothness at the cost of reaction (<a href="../weeks/w07-sequence-modeling-transformers.html">Week 7</a>); reasoning buys generalization at the cost of speed (<a href="../weeks/w10-embodied-reasoning.html">Week 10</a>); and <a href="../weeks/w11-frontiers.html">Week 11</a> asked when each is worth paying for.</li>
+<li><strong>Evaluation is the hard part.</strong> Twenty trials barely separate two policies (<a href="../weeks/w09-generalist-robot-policies.html">Week 9</a>’s binomial error), a demo filmed in the training room proves little, and a benchmark is only as good as what it measures (<a href="../weeks/w11-frontiers.html">Week 11</a>’s “look at the data”).</li>
+</ol>
+<p><strong>Going further.</strong> The <a href="../glossary.html">glossary</a> collects the notation of all weeks, the <a href="../papers.html">papers index</a> every paper card, and the <a href="../cheatsheets.html">cheat sheets</a> every week’s formulas in one place. For the decision-making theory underneath Weeks 2 to 5 (MDPs, planning, policy search, reinforcement and imitation learning), the <a href="https://laventura.github.io/adm-companion/">ADM Companion</a> goes deeper.</p>
+</section>
+<section id="resources" class="level2">
+<h2 class="anchored" data-anchor-id="resources">Resources</h2>
+<ul>
+<li><strong>Guest lecture:</strong> <a href="https://homes.cs.washington.edu/~fox/">Dieter Fox</a> (University of Washington &amp; AI2)</li>
+</ul>
+
+
+</section>
+
+</main> <!-- /main -->
+<script>
+// Hero animations autoplay (CLAUDE.md §6.3a). If the reader's system asks for
+// reduced motion, stop them and show the poster frame; the controls still work.
+(function () {
+  var query = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  function apply() {
+    if (!query || !query.matches) return;
+    document.querySelectorAll("video[autoplay]").forEach(function (v) {
+      v.removeAttribute("autoplay");
+      v.pause();
+      v.currentTime = 0;
+    });
+  }
+  document.addEventListener("DOMContentLoaded", apply);
+  if (query && query.addEventListener) query.addEventListener("change", apply);
+})();
+</script>
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    // Ensure there is a toggle, if there isn't float one in the top right
+    if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+      const a = window.document.createElement('a');
+      a.classList.add('top-right');
+      a.classList.add('quarto-color-scheme-toggle');
+      a.href = "";
+      a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+      const i = window.document.createElement("i");
+      i.classList.add('bi');
+      a.appendChild(i);
+      window.document.body.appendChild(a);
+    }
+    setColorSchemeToggle(hasAlternateSentinel())
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/laventura\.github\.io\/learn-robot-learning\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="../weeks/w11-frontiers.html" class="pagination-link" aria-label="Week 11 · Frontiers &amp; Open Problems">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">Week 11 · Frontiers &amp; Open Problems</span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+      <a href="../papers.html" class="pagination-link" aria-label="Papers">
+        <span class="nav-page-text">Papers</span> <i class="bi bi-arrow-right-short"></i>
+      </a>
+  </div>
+</nav>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">
+<p>An independent, unofficial companion to ETH Zürich’s <em>Robot Learning: From Fundamentals to Foundation Models</em> (Oier Mees, Spring 2026). See the <a href="https://cvg.ethz.ch/lectures/Robot-Learning/">course page</a>. Site and figures - Atul Acharya, <a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>; code <a href="https://opensource.org/license/mit">MIT</a>.</p>
+</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+</body></html>

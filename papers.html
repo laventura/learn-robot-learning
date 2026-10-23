@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Papers – Learning Robot Learning</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./glossary.html" rel="next">
+<link href="./weeks/w12-guest-lectures.html" rel="prev">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-de63f62b328812d8e578a4d74e282472.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-6b6957c917596b414ec0b78690761e87.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-de63f62b328812d8e578a4d74e282472.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-7a50dbb0797fdc4b73b34270bc5ae8cb.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-4f24e3ddeba9b3c5c0dfea1be3cc4bb3.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-7a50dbb0797fdc4b73b34270bc5ae8cb.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-sidebar docked quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+    const toggleBodyColorMode = (bsSheetEl) => {
+      const mode = bsSheetEl.getAttribute("data-mode");
+      const bodyEl = window.document.querySelector("body");
+      if (mode === "dark") {
+        bodyEl.classList.add("quarto-dark");
+        bodyEl.classList.remove("quarto-light");
+      } else {
+        bodyEl.classList.add("quarto-light");
+        bodyEl.classList.remove("quarto-dark");
+      }
+    }
+    const toggleBodyColorPrimary = () => {
+      const bsSheetEl = window.document.querySelector("link#quarto-bootstrap:not([rel=disabled-stylesheet])");
+      if (bsSheetEl) {
+        toggleBodyColorMode(bsSheetEl);
+      }
+    }
+    const setColorSchemeToggle = (alternate) => {
+      const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+      for (let i=0; i < toggles.length; i++) {
+        const toggle = toggles[i];
+        if (toggle) {
+          if (alternate) {
+            toggle.classList.add("alternate");
+          } else {
+            toggle.classList.remove("alternate");
+          }
+        }
+      }
+    };
+    const toggleColorMode = (alternate) => {
+      // Switch the stylesheets
+      const primaryStylesheets = window.document.querySelectorAll('link.quarto-color-scheme:not(.quarto-color-alternate)');
+      const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+      manageTransitions('#quarto-margin-sidebar .nav-link', false);
+      if (alternate) {
+        // note: dark is layered on light, we don't disable primary!
+        enableStylesheet(alternateStylesheets);
+        for (const sheetNode of alternateStylesheets) {
+          if (sheetNode.id === "quarto-bootstrap") {
+            toggleBodyColorMode(sheetNode);
+          }
+        }
+      } else {
+        disableStylesheet(alternateStylesheets);
+        enableStylesheet(primaryStylesheets)
+        toggleBodyColorPrimary();
+      }
+      manageTransitions('#quarto-margin-sidebar .nav-link', true);
+      // Switch the toggles
+      setColorSchemeToggle(alternate)
+      // Hack to workaround the fact that safari doesn't
+      // properly recolor the scrollbar when toggling (#1455)
+      if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+        manageTransitions("body", false);
+        window.scrollTo(0, 1);
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          manageTransitions("body", true);
+        }, 40);
+      }
+    }
+    const disableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        stylesheet.rel = 'disabled-stylesheet';
+      }
+    }
+    const enableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        if(stylesheet.rel !== 'stylesheet') { // for Chrome, which will still FOUC without this check
+          stylesheet.rel = 'stylesheet';
+        }
+      }
+    }
+    const manageTransitions = (selector, allowTransitions) => {
+      const els = window.document.querySelectorAll(selector);
+      for (let i=0; i < els.length; i++) {
+        const el = els[i];
+        if (allowTransitions) {
+          el.classList.remove('notransition');
+        } else {
+          el.classList.add('notransition');
+        }
+      }
+    }
+    const isFileUrl = () => {
+      return window.location.protocol === 'file:';
+    }
+    const hasAlternateSentinel = () => {
+      let styleSentinel = getColorSchemeSentinel();
+      if (styleSentinel !== null) {
+        return styleSentinel === "alternate";
+      } else {
+        return false;
+      }
+    }
+    const setStyleSentinel = (alternate) => {
+      const value = alternate ? "alternate" : "default";
+      if (!isFileUrl()) {
+        window.localStorage.setItem("quarto-color-scheme", value);
+      } else {
+        localAlternateSentinel = value;
+      }
+    }
+    const getColorSchemeSentinel = () => {
+      if (!isFileUrl()) {
+        const storageValue = window.localStorage.getItem("quarto-color-scheme");
+        return storageValue != null ? storageValue : localAlternateSentinel;
+      } else {
+        return localAlternateSentinel;
+      }
+    }
+    const toggleGiscusIfUsed = (isAlternate, darkModeDefault) => {
+      const baseTheme = document.querySelector('#giscus-base-theme')?.value ?? 'light';
+      const alternateTheme = document.querySelector('#giscus-alt-theme')?.value ?? 'dark';
+      let newTheme = '';
+      if(authorPrefersDark) {
+        newTheme = isAlternate ? baseTheme : alternateTheme;
+      } else {
+        newTheme = isAlternate ? alternateTheme : baseTheme;
+      }
+      const changeGiscusTheme = () => {
+        // From: https://github.com/giscus/giscus/issues/336
+        const sendMessage = (message) => {
+          const iframe = document.querySelector('iframe.giscus-frame');
+          if (!iframe) return;
+          iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+        sendMessage({
+          setConfig: {
+            theme: newTheme
+          }
+        });
+      }
+      const isGiscussLoaded = window.document.querySelector('iframe.giscus-frame') !== null;
+      if (isGiscussLoaded) {
+        changeGiscusTheme();
+      }
+    };
+    const authorPrefersDark = false;
+    const darkModeDefault = authorPrefersDark;
+      document.querySelector('link#quarto-text-highlighting-styles.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+      document.querySelector('link#quarto-bootstrap.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+    let localAlternateSentinel = darkModeDefault ? 'alternate' : 'default';
+    // Dark / light mode switch
+    window.quartoToggleColorScheme = () => {
+      // Read the current dark / light value
+      let toAlternate = !hasAlternateSentinel();
+      toggleColorMode(toAlternate);
+      setStyleSentinel(toAlternate);
+      toggleGiscusIfUsed(toAlternate, darkModeDefault);
+      window.dispatchEvent(new Event('resize'));
+    };
+    // Switch to dark mode if need be
+    if (hasAlternateSentinel()) {
+      toggleColorMode(true);
+    } else {
+      toggleColorMode(false);
+    }
+  </script>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./papers.html">Papers</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">Learning Robot Learning</a> 
+        <div class="sidebar-tools-main">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Learning Robot Learning</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="false">
+ <span class="menu-text">Weeks</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w01-introduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 1 · Introduction to Robot Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w02-robot-control-mdps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 2 · Robot Control &amp; MDPs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w03-imitation-learning.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 3 · Imitation Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w04-reinforcement-learning-1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 4 · Reinforcement Learning I</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w05-reinforcement-learning-2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 5 · Reinforcement Learning II</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w06-generative-models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 6 · Generative Models</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w07-sequence-modeling-transformers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 7 · Sequence Modeling and Transformers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w08-world-models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 8 · World Models</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w09-generalist-robot-policies.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 9 · Generalist Robot Policies</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w10-embodied-reasoning.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 10 · Embodied Reasoning and Test-time Scaling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w11-frontiers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 11 · Frontiers &amp; Open Problems</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w12-guest-lectures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 12 · Guest Lectures</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./papers.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Papers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./glossary.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Glossary</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cheatsheets.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cheat sheets</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#week-1-introduction-to-robot-learning" id="toc-week-1-introduction-to-robot-learning" class="nav-link active" data-scroll-target="#week-1-introduction-to-robot-learning">Week 1 · Introduction to Robot Learning</a></li>
+  <li><a href="#week-2-robot-control-mdps" id="toc-week-2-robot-control-mdps" class="nav-link" data-scroll-target="#week-2-robot-control-mdps">Week 2 · Robot Control &amp; MDPs</a></li>
+  <li><a href="#week-3-imitation-learning" id="toc-week-3-imitation-learning" class="nav-link" data-scroll-target="#week-3-imitation-learning">Week 3 · Imitation Learning</a></li>
+  <li><a href="#week-4-reinforcement-learning-i" id="toc-week-4-reinforcement-learning-i" class="nav-link" data-scroll-target="#week-4-reinforcement-learning-i">Week 4 · Reinforcement Learning I</a></li>
+  <li><a href="#week-5-reinforcement-learning-ii" id="toc-week-5-reinforcement-learning-ii" class="nav-link" data-scroll-target="#week-5-reinforcement-learning-ii">Week 5 · Reinforcement Learning II</a></li>
+  <li><a href="#week-6-generative-models" id="toc-week-6-generative-models" class="nav-link" data-scroll-target="#week-6-generative-models">Week 6 · Generative Models</a></li>
+  <li><a href="#week-7-sequence-modeling-and-transformers" id="toc-week-7-sequence-modeling-and-transformers" class="nav-link" data-scroll-target="#week-7-sequence-modeling-and-transformers">Week 7 · Sequence Modeling and Transformers</a></li>
+  <li><a href="#week-8-world-models" id="toc-week-8-world-models" class="nav-link" data-scroll-target="#week-8-world-models">Week 8 · World Models</a></li>
+  <li><a href="#week-9-generalist-robot-policies" id="toc-week-9-generalist-robot-policies" class="nav-link" data-scroll-target="#week-9-generalist-robot-policies">Week 9 · Generalist Robot Policies</a></li>
+  <li><a href="#week-10-embodied-reasoning-and-test-time-scaling" id="toc-week-10-embodied-reasoning-and-test-time-scaling" class="nav-link" data-scroll-target="#week-10-embodied-reasoning-and-test-time-scaling">Week 10 · Embodied Reasoning and Test-time Scaling</a></li>
+  <li><a href="#week-11-frontiers-open-problems" id="toc-week-11-frontiers-open-problems" class="nav-link" data-scroll-target="#week-11-frontiers-open-problems">Week 11 · Frontiers &amp; Open Problems</a></li>
+  <li><a href="#week-12-guest-lectures" id="toc-week-12-guest-lectures" class="nav-link" data-scroll-target="#week-12-guest-lectures">Week 12 · Guest Lectures</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Papers</h1>
+<p class="subtitle lead">Every paper discussed in the course, grouped by week</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>Each week’s student-led session discusses three papers. Papers marked <em>(from the lecture)</em> are ones the lecture itself relies on. Each week page has a card per paper with a short summary.</p>
+<section id="week-1-introduction-to-robot-learning" class="level2">
+<h2 class="anchored" data-anchor-id="week-1-introduction-to-robot-learning"><a href="./weeks/w01-introduction.html">Week 1 · Introduction to Robot Learning</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2310.08864">Open X-Embodiment: Robotic Learning Datasets and RT-X Models</a>. Open X-Embodiment Collaboration, <em>ICRA</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2307.15818">RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control</a>. Brohan et al., <em>CoRL</em> 2023. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-2-robot-control-mdps" class="level2">
+<h2 class="anchored" data-anchor-id="week-2-robot-control-mdps"><a href="./weeks/w02-robot-control-mdps.html">Week 2 · Robot Control &amp; MDPs</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/1803.07055">Simple random search provides a competitive approach to reinforcement learning</a>. Mania, Guy &amp; Recht, <em>NeurIPS</em> 2018.</li>
+<li><a href="https://www.alexirpan.com/2018/02/14/rl-hard.html">Deep Reinforcement Learning Doesn’t Work Yet</a>. Irpan, <em>blog post</em> 2018.</li>
+<li><a href="https://arxiv.org/abs/1705.05363">Curiosity-driven Exploration by Self-supervised Prediction</a>. Pathak, Agrawal, Efros &amp; Darrell, <em>ICML</em> 2017.</li>
+</ul>
+</section>
+<section id="week-3-imitation-learning" class="level2">
+<h2 class="anchored" data-anchor-id="week-3-imitation-learning"><a href="./weeks/w03-imitation-learning.html">Week 3 · Imitation Learning</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/1905.11979">Causal Confusion in Imitation Learning</a>. de Haan, Jayaraman &amp; Levine, <em>NeurIPS</em> 2019.</li>
+<li><a href="https://arxiv.org/abs/2112.01511">The Surprising Effectiveness of Representation Learning for Visual Imitation</a>. Pari, Shafiullah, Arunachalam &amp; Pinto, <em>RSS</em> 2022.</li>
+<li><a href="https://arxiv.org/abs/2010.14406">Transporter Networks: Rearranging the Visual World for Robotic Manipulation</a>. Zeng et al., <em>CoRL</em> 2020.</li>
+<li><a href="https://arxiv.org/abs/1011.0686">A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning</a>. Ross, Gordon &amp; Bagnell, <em>AISTATS</em> 2011. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1604.07316">End to End Learning for Self-Driving Cars</a>. Bojarski et al., <em>arXiv</em> 2016. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1903.01973">Learning Latent Plans from Play</a>. Lynch et al., <em>CoRL</em> 2019. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-4-reinforcement-learning-i" class="level2">
+<h2 class="anchored" data-anchor-id="week-4-reinforcement-learning-i"><a href="./weeks/w04-reinforcement-learning-1.html">Week 4 · Reinforcement Learning I</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/1703.03864">Evolution Strategies as a Scalable Alternative to Reinforcement Learning</a>. Salimans, Ho, Chen, Sidor &amp; Sutskever, <em>arXiv</em> 2017.</li>
+<li><a href="https://arxiv.org/abs/1803.09956">Learning Synergies between Pushing and Grasping with Self-supervised Deep Reinforcement Learning</a>. Zeng, Song, Welker, Lee, Rodriguez &amp; Funkhouser, <em>IROS</em> 2018.</li>
+<li><a href="https://arxiv.org/abs/2410.21845">Precise and Dexterous Robotic Manipulation via Human-in-the-Loop Reinforcement Learning</a>. Luo, Xu, Wu &amp; Levine, <em>Science Robotics</em> 2025.</li>
+<li><a href="https://www.nature.com/articles/nature14236">Human-level control through deep reinforcement learning</a>. Mnih et al., <em>Nature</em> 2015. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1509.06461">Deep Reinforcement Learning with Double Q-learning</a>. van Hasselt, Guez &amp; Silver, <em>AAAI</em> 2016. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1806.10293">QT-Opt: Scalable Deep Reinforcement Learning for Vision-Based Robotic Manipulation</a>. Kalashnikov et al., <em>CoRL</em> 2018. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1509.02971">Continuous control with deep reinforcement learning</a>. Lillicrap et al., <em>ICLR</em> 2016. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-5-reinforcement-learning-ii" class="level2">
+<h2 class="anchored" data-anchor-id="week-5-reinforcement-learning-ii"><a href="./weeks/w05-reinforcement-learning-2.html">Week 5 · Reinforcement Learning II</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/1504.00702">End-to-End Training of Deep Visuomotor Policies</a>. Levine, Finn, Darrell &amp; Abbeel, <em>JMLR</em> 2016.</li>
+<li><a href="https://arxiv.org/abs/2310.12931">Eureka: Human-Level Reward Design via Coding Large Language Models</a>. Ma et al., <em>ICLR</em> 2024.</li>
+<li><a href="https://arxiv.org/abs/2209.08959">Latent Plans for Task-Agnostic Offline Reinforcement Learning</a>. Rosete-Beas, Mees, Kalweit, Boedecker &amp; Burgard, <em>CoRL</em> 2022.</li>
+<li><a href="https://doi.org/10.1007/BF00992696">Simple statistical gradient-following algorithms for connectionist reinforcement learning</a>. Williams, <em>Machine Learning</em> 1992. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1502.05477">Trust Region Policy Optimization</a>. Schulman, Levine, Moritz, Jordan &amp; Abbeel, <em>ICML</em> 2015. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1707.06347">Proximal Policy Optimization Algorithms</a>. Schulman, Wolski, Dhariwal, Radford &amp; Klimov, <em>arXiv</em> 2017. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1801.01290">Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor</a>. Haarnoja, Zhou, Abbeel &amp; Levine, <em>ICML</em> 2018. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-6-generative-models" class="level2">
+<h2 class="anchored" data-anchor-id="week-6-generative-models"><a href="./weeks/w06-generative-models.html">Week 6 · Generative Models</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2205.09991">Planning with Diffusion for Flexible Behavior Synthesis</a>. Janner, Du, Tenenbaum &amp; Levine, <em>ICML</em> 2022.</li>
+<li><a href="https://arxiv.org/abs/2109.00137">Implicit Behavioral Cloning</a>. Florence et al., <em>CoRL</em> 2021.</li>
+<li><a href="https://arxiv.org/abs/2506.15799">Steering Your Diffusion Policy with Latent Space Reinforcement Learning</a>. Wagenmaker et al., <em>arXiv</em> 2025.</li>
+<li><a href="https://arxiv.org/abs/2006.11239">Denoising Diffusion Probabilistic Models</a>. Ho, Jain &amp; Abbeel, <em>NeurIPS</em> 2020. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2303.04137">Diffusion Policy: Visuomotor Policy Learning via Action Diffusion</a>. Chi et al., <em>RSS</em> 2023. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2210.02747">Flow Matching for Generative Modeling</a>. Lipman, Chen, Ben-Hamu, Nickel &amp; Le, <em>ICLR</em> 2023. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-7-sequence-modeling-and-transformers" class="level2">
+<h2 class="anchored" data-anchor-id="week-7-sequence-modeling-and-transformers"><a href="./weeks/w07-sequence-modeling-transformers.html">Week 7 · Sequence Modeling and Transformers</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2106.01345">Decision Transformer: Reinforcement Learning via Sequence Modeling</a>. Chen et al., <em>NeurIPS</em> 2021.</li>
+<li><a href="https://arxiv.org/abs/2304.13705">Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware</a>. Zhao, Kumar, Levine &amp; Finn, <em>RSS</em> 2023.</li>
+<li><a href="https://arxiv.org/abs/2402.19469">Humanoid Locomotion as Next Token Prediction</a>. Radosavovic et al., <em>NeurIPS</em> 2024.</li>
+<li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need</a>. Vaswani et al., <em>NeurIPS</em> 2017. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2010.11929">An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale</a>. Dosovitskiy, Beyer et al., <em>ICLR</em> 2021. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2203.15556">Training Compute-Optimal Large Language Models</a>. Hoffmann et al., <em>NeurIPS</em> 2022. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2501.09747">FAST: Efficient Action Tokenization for Vision-Language-Action Models</a>. Pertsch, Stachowicz et al., <em>RSS</em> 2025. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-8-world-models" class="level2">
+<h2 class="anchored" data-anchor-id="week-8-world-models"><a href="./weeks/w08-world-models.html">Week 8 · World Models</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2302.00111">Learning Universal Policies via Text-Guided Video Generation</a>. Du et al., <em>NeurIPS</em> 2023.</li>
+<li><a href="https://arxiv.org/abs/2509.24527">Training Agents Inside of Scalable World Models</a>. Hafner, Yan &amp; Lillicrap, <em>arXiv</em> 2025.</li>
+<li><a href="https://arxiv.org/abs/2602.15922">World Action Models are Zero-shot Policies</a>. Ye et al., <em>arXiv</em> 2026.</li>
+<li><a href="https://arxiv.org/abs/1610.00696">Deep Visual Foresight for Planning Robot Motion</a>. Finn &amp; Levine, <em>ICRA</em> 2017. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1803.10122">World Models</a>. Ha &amp; Schmidhuber, <em>NeurIPS</em> 2018. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1811.04551">Learning Latent Dynamics for Planning from Pixels</a>. Hafner et al., <em>ICML</em> 2019. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1912.01603">Dream to Control: Learning Behaviors by Latent Imagination</a>. Hafner, Lillicrap, Ba &amp; Norouzi, <em>ICLR</em> 2020. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2206.14176">DayDreamer: World Models for Physical Robot Learning</a>. Wu, Escontrela, Hafner, Abbeel &amp; Goldberg, <em>CoRL</em> 2022. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2512.15692">mimic-video: Video-Action Models for Generalizable Robot Control Beyond VLAs</a>. Pai, Achenbach et al., <em>arXiv</em> 2025. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-9-generalist-robot-policies" class="level2">
+<h2 class="anchored" data-anchor-id="week-9-generalist-robot-policies"><a href="./weeks/w09-generalist-robot-policies.html">Week 9 · Generalist Robot Policies</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2005.07648">Language Conditioned Imitation Learning over Unstructured Data</a>. Lynch &amp; Sermanet, <em>RSS</em> 2021.</li>
+<li><a href="https://arxiv.org/abs/2205.06175">A Generalist Agent</a>. Reed et al., <em>TMLR</em> 2022.</li>
+<li><a href="https://arxiv.org/abs/2511.14759">π*0.6: a VLA That Learns From Experience</a>. Physical Intelligence, <em>arXiv</em> 2025.</li>
+<li><a href="https://arxiv.org/abs/2310.08864">Open X-Embodiment: Robotic Learning Datasets and RT-X Models</a>. Open X-Embodiment Collaboration, <em>ICRA</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2405.12213">Octo: An Open-Source Generalist Robot Policy</a>. Octo Model Team (Ghosh, Walke, Pertsch, Black, Mees et al.), <em>RSS</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2408.11812">Scaling Cross-Embodied Learning: One Policy for Manipulation, Navigation, Locomotion and Aviation</a>. Doshi, Walke, Mees, Dasari &amp; Levine, <em>CoRL</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2507.05331">A Careful Examination of Large Behavior Models for Multitask Dexterous Manipulation</a>. TRI LBM Team, <em>arXiv</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2410.24164">π0: A Vision-Language-Action Flow Model for General Robot Control</a>. Black et al.&nbsp;(Physical Intelligence), <em>RSS</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2504.16054">π0.5: a Vision-Language-Action Model with Open-World Generalization</a>. Physical Intelligence (Black et al.), <em>CoRL</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2505.23705">Knowledge Insulating Vision-Language-Action Models: Train Fast, Run Fast, Generalize Better</a>. Driess et al., <em>NeurIPS</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2405.05941">Evaluating Real-World Robot Manipulation Policies in Simulation</a>. Li, Hsu, Gu, Pertsch, Mees et al., <em>CoRL</em> 2024. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-10-embodied-reasoning-and-test-time-scaling" class="level2">
+<h2 class="anchored" data-anchor-id="week-10-embodied-reasoning-and-test-time-scaling"><a href="./weeks/w10-embodied-reasoning.html">Week 10 · Embodied Reasoning and Test-time Scaling</a></h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2408.15980">In-Context Imitation Learning via Next-Token Prediction</a>. Fu et al., <em>ICRA</em> 2024.</li>
+<li><a href="https://arxiv.org/abs/2305.16291">Voyager: An Open-Ended Embodied Agent with Large Language Models</a>. Wang et al., <em>TMLR</em> 2023.</li>
+<li><a href="https://arxiv.org/abs/2505.08243">Training Strategies for Efficient Embodied Reasoning</a>. Chen et al., <em>CoRL</em> 2025.</li>
+<li><a href="https://arxiv.org/abs/2407.08693">Robotic Control via Embodied Chain-of-Thought Reasoning</a>. Zawalski, Chen, Pertsch, Mees, Finn &amp; Levine, <em>CoRL</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2201.11903">Chain-of-Thought Prompting Elicits Reasoning in Large Language Models</a>. Wei, Wang, Schuurmans, Bosma, Ichter, Xia, Chi, Le &amp; Zhou, <em>NeurIPS</em> 2022. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2402.12875">Chain of Thought Empowers Transformers to Solve Inherently Serial Problems</a>. Li, Liu, Zhou &amp; Ma, <em>ICLR</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2408.03314">Scaling LLM Test-Time Compute Optimally Can Be More Effective than Scaling Parameters for Reasoning</a>. Snell, Lee, Xu &amp; Kumar, <em>ICLR</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2402.03300">DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models</a>. Shao et al., <em>arXiv</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2501.12948">DeepSeek-R1 Incentivizes Reasoning in LLMs through Reinforcement Learning</a>. DeepSeek-AI (Guo et al.), <em>Nature</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://doi.org/10.1038/nature24270">Mastering the Game of Go without Human Knowledge</a>. Silver et al., <em>Nature</em> 2017. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-11-frontiers-open-problems" class="level2">
+<h2 class="anchored" data-anchor-id="week-11-frontiers-open-problems"><a href="./weeks/w11-frontiers.html">Week 11 · Frontiers &amp; Open Problems</a></h2>
+<ul>
+<li><a href="https://openreview.net/pdf?id=BZ5a1r-kVsf">A Path Towards Autonomous Machine Intelligence</a>. LeCun, <em>position paper, OpenReview</em> 2022.</li>
+<li><a href="http://www.incompleteideas.net/IncIdeas/BitterLesson.html">The Bitter Lesson</a>. Sutton, <em>essay</em> 2019.</li>
+<li><a href="https://people.csail.mit.edu/brooks/papers/representation.pdf">Intelligence without Representation</a>. Brooks, <em>Artificial Intelligence</em> 1991.</li>
+<li><a href="https://arxiv.org/abs/2501.04693">Beyond Sight: Finetuning Generalist Robot Policies with Heterogeneous Sensors via Language Grounding</a>. Jones, Mees, Sferrazza, Stachowicz, Abbeel &amp; Levine, <em>ICRA</em> 2025. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2210.05714">Visual Language Maps for Robot Navigation</a>. Huang, Mees, Zeng &amp; Burgard, <em>ICRA</em> 2023. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2410.03603">LeLaN: Learning a Language-Conditioned Navigation Policy from In-the-Wild Video</a>. Hirose, Glossop, Sridhar, Mees &amp; Levine, <em>CoRL</em> 2024. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2112.03227">CALVIN: A Benchmark for Language-Conditioned Policy Learning for Long-Horizon Robot Manipulation Tasks</a>. Mees, Hermann, Rosete-Beas &amp; Burgard, <em>RA-L</em> 2022. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/1912.11370">Big Transfer (BiT): General Visual Representation Learning</a>. Kolesnikov, Beyer, Zhai, Puigcerver, Yung, Gelly &amp; Houlsby, <em>ECCV</em> 2020. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2103.00020">Learning Transferable Visual Models From Natural Language Supervision</a>. Radford et al., <em>ICML</em> 2021. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2303.15343">Sigmoid Loss for Language Image Pre-Training</a>. Zhai, Mustafa, Kolesnikov &amp; Beyer, <em>ICCV</em> 2023. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2306.07915">Image Captioners Are Scalable Vision Learners Too</a>. Tschannen, Kumar, Steiner, Zhai, Houlsby &amp; Beyer, <em>NeurIPS</em> 2023. <em>(from the lecture)</em></li>
+<li><a href="https://arxiv.org/abs/2407.07726">PaliGemma: A Versatile 3B VLM for Transfer</a>. Beyer, Steiner, Pinto, Kolesnikov, Wang et al., <em>arXiv</em> 2024. <em>(from the lecture)</em></li>
+</ul>
+</section>
+<section id="week-12-guest-lectures" class="level2">
+<h2 class="anchored" data-anchor-id="week-12-guest-lectures"><a href="./weeks/w12-guest-lectures.html">Week 12 · Guest Lectures</a></h2>
+<p><em>No papers listed yet.</em></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script>
+// Hero animations autoplay (CLAUDE.md §6.3a). If the reader's system asks for
+// reduced motion, stop them and show the poster frame; the controls still work.
+(function () {
+  var query = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  function apply() {
+    if (!query || !query.matches) return;
+    document.querySelectorAll("video[autoplay]").forEach(function (v) {
+      v.removeAttribute("autoplay");
+      v.pause();
+      v.currentTime = 0;
+    });
+  }
+  document.addEventListener("DOMContentLoaded", apply);
+  if (query && query.addEventListener) query.addEventListener("change", apply);
+})();
+</script>
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    // Ensure there is a toggle, if there isn't float one in the top right
+    if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+      const a = window.document.createElement('a');
+      a.classList.add('top-right');
+      a.classList.add('quarto-color-scheme-toggle');
+      a.href = "";
+      a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+      const i = window.document.createElement("i");
+      i.classList.add('bi');
+      a.appendChild(i);
+      window.document.body.appendChild(a);
+    }
+    setColorSchemeToggle(hasAlternateSentinel())
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/laventura\.github\.io\/learn-robot-learning\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="./weeks/w12-guest-lectures.html" class="pagination-link" aria-label="Week 12 · Guest Lectures">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">Week 12 · Guest Lectures</span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+      <a href="./glossary.html" class="pagination-link" aria-label="Glossary">
+        <span class="nav-page-text">Glossary</span> <i class="bi bi-arrow-right-short"></i>
+      </a>
+  </div>
+</nav>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">
+<p>An independent, unofficial companion to ETH Zürich’s <em>Robot Learning: From Fundamentals to Foundation Models</em> (Oier Mees, Spring 2026). See the <a href="https://cvg.ethz.ch/lectures/Robot-Learning/">course page</a>. Site and figures - Atul Acharya, <a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>; code <a href="https://opensource.org/license/mit">MIT</a>.</p>
+</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+</body></html>

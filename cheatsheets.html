@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Cheat sheets – Learning Robot Learning</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./glossary.html" rel="prev">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-de63f62b328812d8e578a4d74e282472.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-6b6957c917596b414ec0b78690761e87.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-de63f62b328812d8e578a4d74e282472.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-7a50dbb0797fdc4b73b34270bc5ae8cb.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-4f24e3ddeba9b3c5c0dfea1be3cc4bb3.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-7a50dbb0797fdc4b73b34270bc5ae8cb.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="nav-sidebar docked quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+    const toggleBodyColorMode = (bsSheetEl) => {
+      const mode = bsSheetEl.getAttribute("data-mode");
+      const bodyEl = window.document.querySelector("body");
+      if (mode === "dark") {
+        bodyEl.classList.add("quarto-dark");
+        bodyEl.classList.remove("quarto-light");
+      } else {
+        bodyEl.classList.add("quarto-light");
+        bodyEl.classList.remove("quarto-dark");
+      }
+    }
+    const toggleBodyColorPrimary = () => {
+      const bsSheetEl = window.document.querySelector("link#quarto-bootstrap:not([rel=disabled-stylesheet])");
+      if (bsSheetEl) {
+        toggleBodyColorMode(bsSheetEl);
+      }
+    }
+    const setColorSchemeToggle = (alternate) => {
+      const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+      for (let i=0; i < toggles.length; i++) {
+        const toggle = toggles[i];
+        if (toggle) {
+          if (alternate) {
+            toggle.classList.add("alternate");
+          } else {
+            toggle.classList.remove("alternate");
+          }
+        }
+      }
+    };
+    const toggleColorMode = (alternate) => {
+      // Switch the stylesheets
+      const primaryStylesheets = window.document.querySelectorAll('link.quarto-color-scheme:not(.quarto-color-alternate)');
+      const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+      manageTransitions('#quarto-margin-sidebar .nav-link', false);
+      if (alternate) {
+        // note: dark is layered on light, we don't disable primary!
+        enableStylesheet(alternateStylesheets);
+        for (const sheetNode of alternateStylesheets) {
+          if (sheetNode.id === "quarto-bootstrap") {
+            toggleBodyColorMode(sheetNode);
+          }
+        }
+      } else {
+        disableStylesheet(alternateStylesheets);
+        enableStylesheet(primaryStylesheets)
+        toggleBodyColorPrimary();
+      }
+      manageTransitions('#quarto-margin-sidebar .nav-link', true);
+      // Switch the toggles
+      setColorSchemeToggle(alternate)
+      // Hack to workaround the fact that safari doesn't
+      // properly recolor the scrollbar when toggling (#1455)
+      if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+        manageTransitions("body", false);
+        window.scrollTo(0, 1);
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          manageTransitions("body", true);
+        }, 40);
+      }
+    }
+    const disableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        stylesheet.rel = 'disabled-stylesheet';
+      }
+    }
+    const enableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        if(stylesheet.rel !== 'stylesheet') { // for Chrome, which will still FOUC without this check
+          stylesheet.rel = 'stylesheet';
+        }
+      }
+    }
+    const manageTransitions = (selector, allowTransitions) => {
+      const els = window.document.querySelectorAll(selector);
+      for (let i=0; i < els.length; i++) {
+        const el = els[i];
+        if (allowTransitions) {
+          el.classList.remove('notransition');
+        } else {
+          el.classList.add('notransition');
+        }
+      }
+    }
+    const isFileUrl = () => {
+      return window.location.protocol === 'file:';
+    }
+    const hasAlternateSentinel = () => {
+      let styleSentinel = getColorSchemeSentinel();
+      if (styleSentinel !== null) {
+        return styleSentinel === "alternate";
+      } else {
+        return false;
+      }
+    }
+    const setStyleSentinel = (alternate) => {
+      const value = alternate ? "alternate" : "default";
+      if (!isFileUrl()) {
+        window.localStorage.setItem("quarto-color-scheme", value);
+      } else {
+        localAlternateSentinel = value;
+      }
+    }
+    const getColorSchemeSentinel = () => {
+      if (!isFileUrl()) {
+        const storageValue = window.localStorage.getItem("quarto-color-scheme");
+        return storageValue != null ? storageValue : localAlternateSentinel;
+      } else {
+        return localAlternateSentinel;
+      }
+    }
+    const toggleGiscusIfUsed = (isAlternate, darkModeDefault) => {
+      const baseTheme = document.querySelector('#giscus-base-theme')?.value ?? 'light';
+      const alternateTheme = document.querySelector('#giscus-alt-theme')?.value ?? 'dark';
+      let newTheme = '';
+      if(authorPrefersDark) {
+        newTheme = isAlternate ? baseTheme : alternateTheme;
+      } else {
+        newTheme = isAlternate ? alternateTheme : baseTheme;
+      }
+      const changeGiscusTheme = () => {
+        // From: https://github.com/giscus/giscus/issues/336
+        const sendMessage = (message) => {
+          const iframe = document.querySelector('iframe.giscus-frame');
+          if (!iframe) return;
+          iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+        sendMessage({
+          setConfig: {
+            theme: newTheme
+          }
+        });
+      }
+      const isGiscussLoaded = window.document.querySelector('iframe.giscus-frame') !== null;
+      if (isGiscussLoaded) {
+        changeGiscusTheme();
+      }
+    };
+    const authorPrefersDark = false;
+    const darkModeDefault = authorPrefersDark;
+      document.querySelector('link#quarto-text-highlighting-styles.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+      document.querySelector('link#quarto-bootstrap.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+    let localAlternateSentinel = darkModeDefault ? 'alternate' : 'default';
+    // Dark / light mode switch
+    window.quartoToggleColorScheme = () => {
+      // Read the current dark / light value
+      let toAlternate = !hasAlternateSentinel();
+      toggleColorMode(toAlternate);
+      setStyleSentinel(toAlternate);
+      toggleGiscusIfUsed(toAlternate, darkModeDefault);
+      window.dispatchEvent(new Event('resize'));
+    };
+    // Switch to dark mode if need be
+    if (hasAlternateSentinel()) {
+      toggleColorMode(true);
+    } else {
+      toggleColorMode(false);
+    }
+  </script>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./cheatsheets.html">Cheat sheets</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">Learning Robot Learning</a> 
+        <div class="sidebar-tools-main">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Learning Robot Learning</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="false">
+ <span class="menu-text">Weeks</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w01-introduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 1 · Introduction to Robot Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w02-robot-control-mdps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 2 · Robot Control &amp; MDPs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w03-imitation-learning.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 3 · Imitation Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w04-reinforcement-learning-1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 4 · Reinforcement Learning I</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w05-reinforcement-learning-2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 5 · Reinforcement Learning II</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w06-generative-models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 6 · Generative Models</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w07-sequence-modeling-transformers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 7 · Sequence Modeling and Transformers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w08-world-models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 8 · World Models</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w09-generalist-robot-policies.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 9 · Generalist Robot Policies</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w10-embodied-reasoning.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 10 · Embodied Reasoning and Test-time Scaling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w11-frontiers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 11 · Frontiers &amp; Open Problems</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./weeks/w12-guest-lectures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Week 12 · Guest Lectures</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./papers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Papers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./glossary.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Glossary</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cheatsheets.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Cheat sheets</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#week-1-introduction-to-robot-learning" id="toc-week-1-introduction-to-robot-learning" class="nav-link active" data-scroll-target="#week-1-introduction-to-robot-learning">Week 1 · Introduction to Robot Learning</a></li>
+  <li><a href="#week-2-robot-control-mdps" id="toc-week-2-robot-control-mdps" class="nav-link" data-scroll-target="#week-2-robot-control-mdps">Week 2 · Robot Control &amp; MDPs</a></li>
+  <li><a href="#week-3-imitation-learning" id="toc-week-3-imitation-learning" class="nav-link" data-scroll-target="#week-3-imitation-learning">Week 3 · Imitation Learning</a></li>
+  <li><a href="#week-4-reinforcement-learning-i" id="toc-week-4-reinforcement-learning-i" class="nav-link" data-scroll-target="#week-4-reinforcement-learning-i">Week 4 · Reinforcement Learning I</a></li>
+  <li><a href="#week-5-reinforcement-learning-ii" id="toc-week-5-reinforcement-learning-ii" class="nav-link" data-scroll-target="#week-5-reinforcement-learning-ii">Week 5 · Reinforcement Learning II</a></li>
+  <li><a href="#week-6-generative-models" id="toc-week-6-generative-models" class="nav-link" data-scroll-target="#week-6-generative-models">Week 6 · Generative Models</a></li>
+  <li><a href="#week-7-sequence-modeling-and-transformers" id="toc-week-7-sequence-modeling-and-transformers" class="nav-link" data-scroll-target="#week-7-sequence-modeling-and-transformers">Week 7 · Sequence Modeling and Transformers</a></li>
+  <li><a href="#week-8-world-models" id="toc-week-8-world-models" class="nav-link" data-scroll-target="#week-8-world-models">Week 8 · World Models</a></li>
+  <li><a href="#week-9-generalist-robot-policies" id="toc-week-9-generalist-robot-policies" class="nav-link" data-scroll-target="#week-9-generalist-robot-policies">Week 9 · Generalist Robot Policies</a></li>
+  <li><a href="#week-10-embodied-reasoning-and-test-time-scaling" id="toc-week-10-embodied-reasoning-and-test-time-scaling" class="nav-link" data-scroll-target="#week-10-embodied-reasoning-and-test-time-scaling">Week 10 · Embodied Reasoning and Test-time Scaling</a></li>
+  <li><a href="#week-11-frontiers-open-problems" id="toc-week-11-frontiers-open-problems" class="nav-link" data-scroll-target="#week-11-frontiers-open-problems">Week 11 · Frontiers &amp; Open Problems</a></li>
+  <li><a href="#week-12-guest-lectures" id="toc-week-12-guest-lectures" class="nav-link" data-scroll-target="#week-12-guest-lectures">Week 12 · Guest Lectures</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Cheat sheets</h1>
+<p class="subtitle lead">Every week’s key equations on one page</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="week-1-introduction-to-robot-learning" class="level2">
+<h2 class="anchored" data-anchor-id="week-1-introduction-to-robot-learning"><a href="./weeks/w01-introduction.html">Week 1 · Introduction to Robot Learning</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Supervised learning</td>
+<td style="text-align: left;"><span class="math inline">\(\min_\theta \frac{1}{N}\sum_i \ell(f_\theta(x_i), y_i)\)</span>, i.i.d. data</td>
+<td style="text-align: left;"><a href="./weeks/w01-introduction.html#eq-supervised">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Robot loop</td>
+<td style="text-align: left;"><span class="math inline">\(a_t \sim \pi(\cdot \mid o_t)\)</span>, <span class="math inline">\(s_{t+1} \sim p(\cdot \mid s_t, a_t)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w01-introduction.html#eq-loop">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Open vs closed loop</td>
+<td style="text-align: left;"><span class="math inline">\(\text{plan}_t(\hat{s}_0)\)</span> vs <span class="math inline">\(\pi(\hat{s}_t)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w01-introduction.html#eq-open-closed">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Tokenization</td>
+<td style="text-align: left;"><span class="math inline">\(k = \lfloor (a - a_{\min})/\Delta \rfloor\)</span>, <span class="math inline">\(\lvert a - \hat{a} \rvert \le \Delta/2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w01-introduction.html#eq-tokenize">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Sequence model</td>
+<td style="text-align: left;"><span class="math inline">\(\prod_j p(k_j \mid \text{image}, \text{text}, k_{&lt;j})\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w01-introduction.html#eq-sequence">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-2-robot-control-mdps" class="level2">
+<h2 class="anchored" data-anchor-id="week-2-robot-control-mdps"><a href="./weeks/w02-robot-control-mdps.html">Week 2 · Robot Control &amp; MDPs</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Homogeneous transform</td>
+<td style="text-align: left;"><span class="math inline">\(\mathbf{p}' = T\, \mathbf{p}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-homogeneous">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Grübler–Kutzbach</td>
+<td style="text-align: left;"><span class="math inline">\(m(N{-}1{-}J) + \sum f_i\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-grubler">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Kinematics</td>
+<td style="text-align: left;"><span class="math inline">\(x = f(q)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-kinematics">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Jacobian IK step</td>
+<td style="text-align: left;"><span class="math inline">\(q \mathrel{-}= \alpha J^\top e\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-ik-step">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Quintic scaling</td>
+<td style="text-align: left;"><span class="math inline">\(10s^3 - 15s^4 + 6s^5\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-quintic">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">PID ★</td>
+<td style="text-align: left;"><span class="math inline">\(K_p e + K_i \textstyle\sum e \Delta t + K_d \dot e\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-pid">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Markov property</td>
+<td style="text-align: left;"><span class="math inline">\(p(s_{t+1} \mid s_t, a_t)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-markov">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Trajectory probability</td>
+<td style="text-align: left;"><span class="math inline">\(p(s_0) \prod_t \pi P\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-traj-prob">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">RL objective ★</td>
+<td style="text-align: left;"><span class="math inline">\(\max_\pi \mathbb{E}[\sum_t \gamma^t r_t]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-objective">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Near vs far</td>
+<td style="text-align: left;"><span class="math inline">\((R_{\text{near}}/R_{\text{far}})^{1/\Delta d}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-flip">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Random search</td>
+<td style="text-align: left;"><span class="math inline">\(\theta \mathrel{+}= \frac{\alpha}{N} \sum_k \Delta r_k \delta_k\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w02-robot-control-mdps.html#eq-brs">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-3-imitation-learning" class="level2">
+<h2 class="anchored" data-anchor-id="week-3-imitation-learning"><a href="./weeks/w03-imitation-learning.html">Week 3 · Imitation Learning</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">BC loss</td>
+<td style="text-align: left;"><span class="math inline">\(\min_\theta \sum_{\mathcal{D}} \lVert \pi_\theta(s) - a^* \rVert^2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-bc-loss">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">MSE minimizer</td>
+<td style="text-align: left;"><span class="math inline">\(c^\star = \mathbb{E}[a^* \mid s]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-bc-loss">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">BC compounding error ★</td>
+<td style="text-align: left;"><span class="math inline">\(\mathbb{E}[\sum_t c] = O(\varepsilon T^2)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-bc-bound">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">DAgger data rule, cost <span class="math inline">\(O(\varepsilon T)\)</span></td>
+<td style="text-align: left;"><span class="math inline">\(\mathcal{D} \leftarrow \mathcal{D} \cup \{(s, \pi^*(s))\}\)</span>, <span class="math inline">\(s \sim p_{\pi_\theta}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-dagger">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Mixture of Gaussians</td>
+<td style="text-align: left;"><span class="math inline">\(\sum_k w_k \mathcal{N}(a; \mu_k, \Sigma_k)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-mixture">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Autoregressive actions</td>
+<td style="text-align: left;"><span class="math inline">\(\prod_d p(a_{t,d} \mid s_t, a_{t,&lt;d})\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-autoregressive">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">ELBO ★</td>
+<td style="text-align: left;"><span class="math inline">\(\mathbb{E}_q[\log p(\tau \mid z, c)] - \mathrm{KL}(q \Vert p)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w03-imitation-learning.html#eq-elbo">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-4-reinforcement-learning-i" class="level2">
+<h2 class="anchored" data-anchor-id="week-4-reinforcement-learning-i"><a href="./weeks/w04-reinforcement-learning-1.html">Week 4 · Reinforcement Learning I</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Smoothed reward</td>
+<td style="text-align: left;"><span class="math inline">\(2\Phi\big(\frac{c - \mu}{\sigma}\big) - 1\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-smooth">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Value</td>
+<td style="text-align: left;"><span class="math inline">\(V^\pi(s) = \mathbb{E}[\sum_t \gamma^t r_t \mid s]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-value">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Bellman ★</td>
+<td style="text-align: left;"><span class="math inline">\(V = r + \gamma P V\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-bellman">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Bellman optimality ★</td>
+<td style="text-align: left;"><span class="math inline">\(V^* = \max_a [r + \gamma P V^*]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-bellman-opt">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Value iteration</td>
+<td style="text-align: left;"><span class="math inline">\(V_{k+1} = \max_a [r + \gamma P V_k]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-vi">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Policy iteration</td>
+<td style="text-align: left;">evaluate, then greedy</td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-pi">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Optimal Q</td>
+<td style="text-align: left;"><span class="math inline">\(\pi^*(s) = \arg\max_a Q^*(s, a)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-q">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Q-learning ★</td>
+<td style="text-align: left;"><span class="math inline">\(Q \mathrel{+}= \alpha(r + \gamma \max Q' - Q)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-q-learning">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">SARSA</td>
+<td style="text-align: left;"><span class="math inline">\(Q \mathrel{+}= \alpha(r + \gamma Q(s', a') - Q)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-sarsa">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">DQN loss</td>
+<td style="text-align: left;"><span class="math inline">\((r + \gamma \max Q_{\theta^-} - Q_\theta)^2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-dqn">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Double target</td>
+<td style="text-align: left;"><span class="math inline">\(Q_{\theta^-}(s', \arg\max Q_\theta)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-double">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">DDPG actor</td>
+<td style="text-align: left;"><span class="math inline">\(\nabla_a Q \cdot \nabla_\phi \mu_\phi\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w04-reinforcement-learning-1.html#eq-dpg">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-5-reinforcement-learning-ii" class="level2">
+<h2 class="anchored" data-anchor-id="week-5-reinforcement-learning-ii"><a href="./weeks/w05-reinforcement-learning-2.html">Week 5 · Reinforcement Learning II</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Objective</td>
+<td style="text-align: left;"><span class="math inline">\(J(\theta) = \mathbb{E}_{\tau \sim p_\theta}[R(\tau)]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-objective">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Log-derivative trick</td>
+<td style="text-align: left;"><span class="math inline">\(\nabla p = p\, \nabla \log p\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-logtrick">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Policy gradient ★</td>
+<td style="text-align: left;"><span class="math inline">\(\mathbb{E}[\sum_t \nabla \log \pi\, R(\tau)]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-pg">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Reward-to-go, baseline</td>
+<td style="text-align: left;"><span class="math inline">\(\sum_{t' \ge t} r_{t'} - b\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-rtg">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Advantage</td>
+<td style="text-align: left;"><span class="math inline">\(A = Q - V\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-advantage">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Importance sampling</td>
+<td style="text-align: left;"><span class="math inline">\(\mathbb{E}_p[f] = \mathbb{E}_q[\frac{p}{q} f]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-is">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Off-policy gradient</td>
+<td style="text-align: left;">per-step ratio <span class="math inline">\(\times \nabla \log \pi \times A\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-offpolicy">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Entropy bonus</td>
+<td style="text-align: left;"><span class="math inline">\(L + \beta \mathcal{H}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-entropy">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">TRPO ★</td>
+<td style="text-align: left;">max <span class="math inline">\(\mathbb{E}[\rho A]\)</span> s.t. KL <span class="math inline">\(\le \delta\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-trpo">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">PPO clip ★</td>
+<td style="text-align: left;"><span class="math inline">\(\min(\rho A, \operatorname{clip}(\rho)A)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-ppo">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Full PPO</td>
+<td style="text-align: left;">clip − value loss + entropy</td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-ppo-full">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">SAC</td>
+<td style="text-align: left;"><span class="math inline">\(\alpha \log \pi - Q\)</span>; soft TD target</td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-sac">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Reparameterization</td>
+<td style="text-align: left;"><span class="math inline">\(a = \mu + \sigma \varepsilon\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w05-reinforcement-learning-2.html#eq-reparam">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-6-generative-models" class="level2">
+<h2 class="anchored" data-anchor-id="week-6-generative-models"><a href="./weeks/w06-generative-models.html">Week 6 · Generative Models</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">VAE bound ★</td>
+<td style="text-align: left;"><span class="math inline">\(\mathbb{E}_q \log p(x \mid z) - \mathrm{KL}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-elbo">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Reparam. trick</td>
+<td style="text-align: left;"><span class="math inline">\(z = \mu + \sigma \odot \varepsilon\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-reparam">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">VQ codes</td>
+<td style="text-align: left;"><span class="math inline">\(z_e + \mathrm{sg}[e_k - z_e]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-vq">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Forward step</td>
+<td style="text-align: left;"><span class="math inline">\(\sqrt{\alpha_i}\,x_{i-1} + \sqrt{\beta_i}\,\varepsilon\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-forward">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Jump to step <span class="math inline">\(i\)</span></td>
+<td style="text-align: left;"><span class="math inline">\(\sqrt{\bar\alpha_i}\,x_0 + \sqrt{1-\bar\alpha_i}\,\varepsilon\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-closed-form">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">DDPM loss ★</td>
+<td style="text-align: left;"><span class="math inline">\(\lVert \varepsilon - \varepsilon_\theta \rVert^2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-ddpm-loss">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">DDIM</td>
+<td style="text-align: left;">estimate <span class="math inline">\(\hat x_0\)</span>, re-noise to <span class="math inline">\(i'\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-ddim">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Guidance</td>
+<td style="text-align: left;"><span class="math inline">\(\varepsilon_\varnothing + w\,\Delta\varepsilon\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-cfg">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Flow matching</td>
+<td style="text-align: left;"><span class="math inline">\(\lVert v_\theta - (x_0 - \varepsilon) \rVert^2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w06-generative-models.html#eq-flow">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-7-sequence-modeling-and-transformers" class="level2">
+<h2 class="anchored" data-anchor-id="week-7-sequence-modeling-and-transformers"><a href="./weeks/w07-sequence-modeling-transformers.html">Week 7 · Sequence Modeling and Transformers</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Chain rule ★</td>
+<td style="text-align: left;"><span class="math inline">\(p(x_{1:T}) = \prod_i p(x_i \mid x_{1:i-1})\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-chain">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">RNN</td>
+<td style="text-align: left;"><span class="math inline">\(h_t = f(h_{t-1}, x_t)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-rnn">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Attention ★</td>
+<td style="text-align: left;"><span class="math inline">\(\operatorname{softmax}(QK^\top/\sqrt{d})\,V\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-attention">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Causal mask</td>
+<td style="text-align: left;"><span class="math inline">\(s_{ij} = -\infty\)</span> for <span class="math inline">\(j &gt; i\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-causal">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Positional encodings</td>
+<td style="text-align: left;"><span class="math inline">\(e_i + \mathrm{PE}(i)\)</span>; <span class="math inline">\(s_{ij} + b(i - j)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-position">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">RoPE</td>
+<td style="text-align: left;"><span class="math inline">\((R_i q)^\top (R_j k) = q^\top R_{j-i} k\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-rope">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Teacher forcing</td>
+<td style="text-align: left;"><span class="math inline">\(-\frac{1}{T}\sum_t \log p(x_t \mid x_{&lt;t})\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-teacher">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Chinchilla ★</td>
+<td style="text-align: left;"><span class="math inline">\(C \approx 6ND\)</span>, <span class="math inline">\(D^* \approx 20 N^*\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-scaling">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">CLIP</td>
+<td style="text-align: left;">symmetric softmax over <span class="math inline">\(s_{ij}/\tau\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-clip">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Flamingo gate</td>
+<td style="text-align: left;"><span class="math inline">\(x + \tanh(\alpha)\,\text{CrossAttn}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-flamingo">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Action bins</td>
+<td style="text-align: left;">quantile-normalize, 256 bins</td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-bins">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Chunk, ensemble</td>
+<td style="text-align: left;"><span class="math inline">\(\pi(a_{t:t+k} \mid o_t)\)</span>, <span class="math inline">\(w_i = e^{-mi}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-ensemble">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">DCT (FAST)</td>
+<td style="text-align: left;"><span class="math inline">\(c_j = \nu_j \sum_n u_n \cos(\cdot)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w07-sequence-modeling-transformers.html#eq-dct">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-8-world-models" class="level2">
+<h2 class="anchored" data-anchor-id="week-8-world-models"><a href="./weeks/w08-world-models.html">Week 8 · World Models</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Policy vs world model</td>
+<td style="text-align: left;"><span class="math inline">\(\pi(a \mid s, g)\)</span> vs <span class="math inline">\(p(s' \mid s, a)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-policy-vs-wm">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">World model ★</td>
+<td style="text-align: left;"><span class="math inline">\(p(s_{t+1} \mid s_t, a_t, h_t)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-world-model">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">MPC</td>
+<td style="text-align: left;">argmin of imagined cost, execute first step, replan</td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-mpc">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Compounding bound</td>
+<td style="text-align: left;"><span class="math inline">\(e_H \le \varepsilon (L^H - 1)/(L - 1)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-compound">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">World Models (V-M-C)</td>
+<td style="text-align: left;">VAE, MDN-RNN, linear controller</td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-vmc">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">RSSM</td>
+<td style="text-align: left;"><span class="math inline">\(h_t\)</span> deterministic; <span class="math inline">\(q(z \mid h, o)\)</span>, <span class="math inline">\(p(z \mid h)\)</span>, KL</td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-rssm">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Dreamer</td>
+<td style="text-align: left;">maximize imagined return + critic</td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-dreamer">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Video tokens</td>
+<td style="text-align: left;"><span class="math inline">\(\frac{HW}{p^2} f T / (c_s^2 c_t)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-tokens">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">WAM, VAM</td>
+<td style="text-align: left;">joint <span class="math inline">\(p(o, a)\)</span>; or <span class="math inline">\(\hat o\)</span> then IDM</td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-wam-vam">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">JEPA</td>
+<td style="text-align: left;"><span class="math inline">\(\|\mathrm{pred}(z_t, a_t) - \mathrm{sg}[z_{t+1}]\|^2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w08-world-models.html#eq-jepa">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-9-generalist-robot-policies" class="level2">
+<h2 class="anchored" data-anchor-id="week-9-generalist-robot-policies"><a href="./weeks/w09-generalist-robot-policies.html">Week 9 · Generalist Robot Policies</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Goal-conditioned BC</td>
+<td style="text-align: left;"><span class="math inline">\(-\log \pi(a_{t:t+H-1} \mid o_{t-h:t}, g)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-gcbc">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Multicontext imitation</td>
+<td style="text-align: left;">one policy, encoder <span class="math inline">\(f_k\)</span> per kind of task description</td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-mcil">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Masked multi-robot loss</td>
+<td style="text-align: left;"><span class="math inline">\(\sum_j m_{ij} (\hat a_{ij} - a_{ij})^2\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-masked">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Gato’s loss</td>
+<td style="text-align: left;">next-token loss on text and action tokens only</td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-gato">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Mu-law ★</td>
+<td style="text-align: left;"><span class="math inline">\(\operatorname{sgn}(x) \log(1 + \mu|x|) / \log(1 + M\mu)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-mulaw">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Padding waste</td>
+<td style="text-align: left;"><span class="math inline">\(1 - \sum L_i / (B \max L_i)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-padding">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Packing</td>
+<td style="text-align: left;">cu_seqlens, block-diagonal mask, positions reset</td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-packing">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">VLA recipe</td>
+<td style="text-align: left;">next-token loss + flow loss through <span class="math inline">\(\mathrm{sg}[h_\theta]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-ki">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Advantage conditioning</td>
+<td style="text-align: left;"><span class="math inline">\(I_t = \mathbb{1}[A &gt; \epsilon_\ell]\)</span>; clone with and without <span class="math inline">\(I\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-advcond">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">MMRV</td>
+<td style="text-align: left;">mean worst misordered real gap</td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-mmrv">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">SysID</td>
+<td style="text-align: left;">least-squares gain, residual noise</td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-sysid">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Success-rate SE</td>
+<td style="text-align: left;"><span class="math inline">\(\sqrt{\hat p (1 - \hat p) / n}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w09-generalist-robot-policies.html#eq-se">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-10-embodied-reasoning-and-test-time-scaling" class="level2">
+<h2 class="anchored" data-anchor-id="week-10-embodied-reasoning-and-test-time-scaling"><a href="./weeks/w10-embodied-reasoning.html">Week 10 · Embodied Reasoning and Test-time Scaling</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Embodied CoT</td>
+<td style="text-align: left;"><span class="math inline">\(-\log p(c \mid o, \ell) - \log p(a \mid o, \ell, c)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-ecot">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Reasoning dropout</td>
+<td style="text-align: left;">as ECoT, with <span class="math inline">\(m \cdot c\)</span>, <span class="math inline">\(m \sim\)</span> Bernoulli<span class="math inline">\((1 - p_{\text{drop}})\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-dropout">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Best-of-N</td>
+<td style="text-align: left;"><span class="math inline">\(1 - (1 - p)^N\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-bestofn">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Learned verifier</td>
+<td style="text-align: left;"><span class="math inline">\(\arg\max_i V(o, a_i)\)</span>; capped by <span class="math inline">\(V\)</span>’s own errors</td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-verifier">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Elo ★</td>
+<td style="text-align: left;"><span class="math inline">\(1/(1 + 10^{-\Delta/400})\)</span>; 120 Elo ≈ one doubling</td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-elo">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Reasoning as depth</td>
+<td style="text-align: left;">sequential steps <span class="math inline">\(\approx L (T + 1)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-depth">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Group advantage</td>
+<td style="text-align: left;"><span class="math inline">\((r_i - \text{mean}\, r)/\text{std}\, r\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-grpo-adv">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">GRPO ★</td>
+<td style="text-align: left;">clipped ratio × <span class="math inline">\(\hat A\)</span>, minus <span class="math inline">\(\beta\)</span> KL to <span class="math inline">\(\pi_{\text{ref}}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-grpo">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Learning signal</td>
+<td style="text-align: left;"><span class="math inline">\(1 - (1 - p)^G\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w10-embodied-reasoning.html#eq-signal">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-11-frontiers-open-problems" class="level2">
+<h2 class="anchored" data-anchor-id="week-11-frontiers-open-problems"><a href="./weeks/w11-frontiers.html">Week 11 · Frontiers &amp; Open Problems</a></h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Formula</th>
+<th style="text-align: left;">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Tabular cloning</td>
+<td style="text-align: left;"><span class="math inline">\(N(s, a) / \sum_{a'} N(s, a')\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-bc-counts">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Hindsight relabelling</td>
+<td style="text-align: left;"><span class="math inline">\(-\sum \log \pi(a_t \mid s_t, g = s_{t'})\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-relabel">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Bellman on the data ★</td>
+<td style="text-align: left;"><span class="math inline">\(V(s) = \min_{(s,a,s') \in \mathcal{D}} [1 + V(s')]\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-bellman-data">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Expert share</td>
+<td style="text-align: left;"><span class="math inline">\(N_e / (N_e + k M)\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-share">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Ensemble disagreement</td>
+<td style="text-align: left;"><span class="math inline">\(\sum_j \operatorname{std}_m \pi_m(o)_j\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-disagreement">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Acting selectively</td>
+<td style="text-align: left;">act if <span class="math inline">\(u \le \tau\)</span>; coverage, selective success</td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-selective">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">CLIP loss ★</td>
+<td style="text-align: left;">softmax over rows and columns of <span class="math inline">\(t\, X Y^\top\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-clip">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">SigLIP loss</td>
+<td style="text-align: left;"><span class="math inline">\(-\sum \log \sigma(z_{ij}(t\, x_i \cdot y_j + b)) / n\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-siglip">eq.</a></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Hard negative</td>
+<td style="text-align: left;"><span class="math inline">\(1 - (1 - f)^{n - 1}\)</span></td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-hardneg">eq.</a></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Video memory</td>
+<td style="text-align: left;">seconds × fps × tokens per frame</td>
+<td style="text-align: left;"><a href="./weeks/w11-frontiers.html#eq-memory">eq.</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="week-12-guest-lectures" class="level2">
+<h2 class="anchored" data-anchor-id="week-12-guest-lectures"><a href="./weeks/w12-guest-lectures.html">Week 12 · Guest Lectures</a></h2>
+<p><em>No cheat sheet yet.</em></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script>
+// Hero animations autoplay (CLAUDE.md §6.3a). If the reader's system asks for
+// reduced motion, stop them and show the poster frame; the controls still work.
+(function () {
+  var query = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  function apply() {
+    if (!query || !query.matches) return;
+    document.querySelectorAll("video[autoplay]").forEach(function (v) {
+      v.removeAttribute("autoplay");
+      v.pause();
+      v.currentTime = 0;
+    });
+  }
+  document.addEventListener("DOMContentLoaded", apply);
+  if (query && query.addEventListener) query.addEventListener("change", apply);
+})();
+</script>
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    // Ensure there is a toggle, if there isn't float one in the top right
+    if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+      const a = window.document.createElement('a');
+      a.classList.add('top-right');
+      a.classList.add('quarto-color-scheme-toggle');
+      a.href = "";
+      a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+      const i = window.document.createElement("i");
+      i.classList.add('bi');
+      a.appendChild(i);
+      window.document.body.appendChild(a);
+    }
+    setColorSchemeToggle(hasAlternateSentinel())
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/laventura\.github\.io\/learn-robot-learning\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="./glossary.html" class="pagination-link" aria-label="Glossary">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">Glossary</span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+  </div>
+</nav>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">
+<p>An independent, unofficial companion to ETH Zürich’s <em>Robot Learning: From Fundamentals to Foundation Models</em> (Oier Mees, Spring 2026). See the <a href="https://cvg.ethz.ch/lectures/Robot-Learning/">course page</a>. Site and figures - Atul Acharya, <a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>; code <a href="https://opensource.org/license/mit">MIT</a>.</p>
+</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+</body></html>
