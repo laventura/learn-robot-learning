@@ -5,10 +5,112 @@ subtitle: "Concepts, pictures, and code for ETH Zürich's *Robot Learning* cours
 
 This site is an independent, unofficial companion to ETH Zürich's *Robot Learning: From Fundamentals to Foundation Models*, taught by Oier Mees in Spring 2026. The [course page]({{< var course_url >}}) has the lecture recordings, slides, and homework.
 
-Each course week gets one page: the big picture, intuitions, the key equations explained term by term, worked NumPy examples, interactive figures, a PyTorch sketch of the core algorithm, and summaries of the papers and the guest talk.
+Each course week has a page with the big picture, intuitions, the key equations explained term by term, worked NumPy examples, interactive figures, a short animation of the week's key idea, a PyTorch sketch of the core algorithm, and summaries of the papers and the guest talk.
 
-*The site is under construction. The week pages are stubs for now.*
+## The course in one picture
 
-- [Papers](papers.qmd)
-- [Glossary](glossary.qmd)
-- [Cheat sheets](cheatsheets.qmd)
+The course moves from the robot itself to the models that are starting to control it (@fig-course-arc). The first weeks set up the robot and the language for its decisions, then the two ways a robot can learn behaviour: by copying demonstrations and by trial and error. The middle of the course is the architectures of the foundation-model era: generative models, transformers and world models. The last weeks put them together into generalist, reasoning policies, and ask what is still missing.
+
+```{dot}
+//| label: fig-course-arc
+//| fig-width: 5.6
+//| fig-height: 5.0
+//| fig-cap: "How the parts of the course build on each other. Each arrow says what the next part adds."
+//| fig-alt: "Diagram, top to bottom. 'Foundations, Weeks 1 and 2: the robot, control, MDPs' points to 'Learning behaviour, Weeks 3 to 5: from demonstrations and from reward', labelled 'learn instead of program'. That points to 'Modern architectures, Weeks 6 to 8: generative models, transformers, world models', labelled 'more expressive policies'. That points to 'Putting it together, Weeks 9 and 10: generalist policies, reasoning', labelled 'scale and combine'. That points to an orange box 'Looking ahead, Weeks 11 and 12: open problems, guest talks', labelled 'what is missing'."
+digraph arc {
+  rankdir=TB; bgcolor="#fcfcfb"; pad=0.2; nodesep=0.35; ranksep=0.45;
+  node [shape=box, style="rounded,filled", fillcolor="#cde2fb", color="#2a78d6", fontname="Helvetica", fontsize=11, width=3.2];
+  edge [color="#52514e", penwidth=1.2, arrowsize=0.7, fontname="Helvetica", fontsize=10, fontcolor="#52514e"];
+  f [label=<<B>Foundations</B>&nbsp;· Weeks 1–2<BR/>the robot, control, MDPs>, fillcolor="#f0efec", color="#52514e"];
+  l [label=<<B>Learning behaviour</B>&nbsp;· Weeks 3–5<BR/>from demonstrations and from reward>];
+  a [label=<<B>Modern architectures</B>&nbsp;· Weeks 6–8<BR/>generative models, transformers,<BR/>world models>];
+  p [label=<<B>Putting it together</B>&nbsp;· Weeks 9–10<BR/>generalist policies, reasoning>];
+  o [label=<<B>Looking ahead</B>&nbsp;· Weeks 11–12<BR/>open problems, guest talks>, fillcolor="#fbe1d6", color="#eb6834"];
+  f -> l [label=" learn instead of program"];
+  l -> a [label=" more expressive policies"];
+  a -> p [label=" scale and combine"];
+  p -> o [label=" what is missing"];
+}
+```
+
+## Weeks
+
+::: {.panel-tabset}
+
+## Foundations
+
+| Week | The question it answers |
+|---|---|
+| [1 · Introduction to Robot Learning](weeks/w01-introduction.qmd) | Why can't we simply program robots for our homes, and what does learning from data change? |
+| [2 · Robot Control & MDPs](weeks/w02-robot-control-mdps.qmd) | How does a goal become motor commands, and how do we describe the decisions above that? |
+
+## Learning behaviour
+
+| Week | The question it answers |
+|---|---|
+| [3 · Imitation Learning](weeks/w03-imitation-learning.qmd) | How do demonstrations become a policy, and why does copying break down? |
+| [4 · Reinforcement Learning I](weeks/w04-reinforcement-learning-1.qmd) | How can a robot learn from rewards alone, with and without a model? (values, Q-learning, DQN) |
+| [5 · Reinforcement Learning II](weeks/w05-reinforcement-learning-2.qmd) | How do you follow the gradient of reward through a world you can't differentiate? (policy gradients, PPO, SAC) |
+
+## Modern architectures
+
+| Week | The question it answers |
+|---|---|
+| [6 · Generative Models](weeks/w06-generative-models.qmd) | How can a policy represent a complicated distribution over actions? (diffusion, flow matching) |
+| [7 · Sequence Modeling and Transformers](weeks/w07-sequence-modeling-transformers.qmd) | How do observations, words and actions become one sequence a transformer learns from? |
+| [8 · World Models](weeks/w08-world-models.qmd) | How do you learn what your actions will do, and use it? |
+
+## Putting it together
+
+| Week | The question it answers |
+|---|---|
+| [9 · Generalist Robot Policies](weeks/w09-generalist-robot-policies.qmd) | How do you train one policy for many robots, and tell whether it works? |
+| [10 · Embodied Reasoning and Test-time Scaling](weeks/w10-embodied-reasoning.qmd) | Can a robot that thinks harder act better, and when is thinking worth its cost? |
+
+## Looking ahead
+
+| Week | The question it answers |
+|---|---|
+| [11 · Frontiers & Open Problems](weeks/w11-frontiers.qmd) | What is still unsolved, and which ideas point towards solutions? |
+| [12 · Guest Lectures](weeks/w12-guest-lectures.qmd) | How do the pieces fit together? (the course reviewed in one table; the guest talk is summarized once its recording is published) |
+
+:::
+
+## Reading paths
+
+You don't have to read in order. Some routes through the site, each a chain of weeks that build on one another:
+
+| If you want | Read |
+|---|---|
+| A quick tour | the Big picture and Intuition of every week, then [12](weeks/w12-guest-lectures.qmd) |
+| Learning from demonstrations | [3](weeks/w03-imitation-learning.qmd) → [6](weeks/w06-generative-models.qmd) → [7](weeks/w07-sequence-modeling-transformers.qmd) → [9](weeks/w09-generalist-robot-policies.qmd) |
+| Reinforcement learning | [2](weeks/w02-robot-control-mdps.qmd) → [4](weeks/w04-reinforcement-learning-1.qmd) → [5](weeks/w05-reinforcement-learning-2.qmd) → [11](weeks/w11-frontiers.qmd) |
+| Foundation models for robots | [7](weeks/w07-sequence-modeling-transformers.qmd) → [9](weeks/w09-generalist-robot-policies.qmd) → [10](weeks/w10-embodied-reasoning.qmd) → [11](weeks/w11-frontiers.qmd) |
+| Models of the world | [2](weeks/w02-robot-control-mdps.qmd) → [4](weeks/w04-reinforcement-learning-1.qmd) → [8](weeks/w08-world-models.qmd) |
+
+: Suggested orders for common goals. {#tbl-paths}
+
+## How to use this site
+
+Each week's page is laid out the same way:
+
+1. **Big picture:** where the week fits, its key ideas and its vocabulary.
+2. **Intuition:** a concrete story and pictures before any math, with ▶ links to the moment in the lecture video where each idea is taught.
+3. **Key concepts & formulae:** the equations, in the course's notation, each explained in words and term by term.
+4. **Worked examples:** the ideas applied to real numbers.
+5. **Interactive:** figures you can change.
+6. **Algorithm & code:** the NumPy code that produced the page's figures, beside a PyTorch sketch of how you would write it at scale.
+7. **Papers** and **Guest spotlight:** original summaries of the papers discussed in class and of the guest talk.
+8. **Solved problems**, **Recap** and **Cheat sheet:** try each problem before opening its solution.
+
+Big picture and Intuition are written to stand alone: reading just those two sections of every week gives a tour of the whole course. Week 12 is shorter, since it has no lecture.
+
+The pages never reproduce the course's slides or homework solutions; the [course page]({{< var course_url >}}) is the place for those.
+
+Three reference pages collect material from across the site:
+
+- [Papers](papers.qmd): every paper card, grouped by week.
+- [Glossary](glossary.qmd): every symbol and term, grouped by week, with a table of symbols that change meaning.
+- [Cheat sheets](cheatsheets.qmd): every week's key equations in one place.
+
+For the decision-making theory underneath Weeks 2 to 5, the sibling [ADM Companion]({{< var adm_url >}}/) goes deeper.
