@@ -1,6 +1,114 @@
 ---
 title: "Week 12 · Guest Lectures"
 subtitle: "18 May 2026 · guest: Dieter Fox"
+jupyter: python3
+execute:
+  echo: false
 ---
 
-*This page is a stub.*
+```{python}
+#| include: false
+from rlc.page import course_map_highlight, resources
+```
+
+::: {.callout-note appearance="minimal"}
+**Course:** ETH Robot Learning, Week 12 · **Lecture:** none; this session is guest lectures only · **Go deeper:** the [ADM Companion]({{< var adm_url >}}/) for the decision-making foundations behind Weeks 2–5
+:::
+
+## Big picture
+
+```{python}
+#| output: asis
+print(course_map_highlight(12))
+```
+
+{{< include /_includes/course-map.qmd >}}
+
+### Where this week fits
+
+The last session of the course has no lecture. It belongs to guest speakers, and then the students show their projects on real robots at demo day, as the lecturer announced at the end of Week 11 [▶ 1:00:28](https://youtu.be/eL4lcy1KNzE?t=3628). The course page lists one confirmed speaker, Dieter Fox, without a talk title or recording. Until a recording is published, this page does what a last week can do on its own: it looks back over the course in one place, shows how the weeks fit together inside a modern robot policy, and draws out the threads that ran through all of them.
+
+**The question this week answers:** having seen the whole course, how do its pieces fit together, and which lessons kept coming back?
+
+### The course in one table
+
+| Week | The question it answered | The short answer |
+|:---|:---|:---|
+| [1 · Introduction](w01-introduction.qmd) | Why can't we just program robots for our homes? | Sense-plan-act breaks in unstructured worlds; learning from data and experience replaces hand-coding, and robotics becomes multimodal sequence modelling. |
+| [2 · Control & MDPs](w02-robot-control-mdps.qmd) | How does a goal become motor commands, and how do we describe decisions above that? | Kinematics, trajectories and PID turn targets into torques; the MDP and the policy $\pi(a \mid o)$ are the language for everything learned after. |
+| [3 · Imitation learning](w03-imitation-learning.qmd) | How do demonstrations become a policy, and why does copying break? | Behavioral cloning is supervised learning, but its errors compound off the expert's states; DAgger, history and goal-conditioning help, and averaging modes is a trap. |
+| [4 · RL I](w04-reinforcement-learning-1.qmd) | How can a robot learn from rewards alone? | Values and the Bellman equation, from dynamic programming to Q-learning and DQN, and ways to handle continuous actions. |
+| [5 · RL II](w05-reinforcement-learning-2.qmd) | How do you follow the gradient of reward through a world you can't differentiate? | The policy gradient, made usable by baselines and advantages, then trust regions (TRPO, PPO) and off-policy actor-critics (SAC). |
+| [6 · Generative models](w06-generative-models.qmd) | How can a policy represent a complicated distribution over actions? | Turn noise into actions: VAEs, diffusion and flow matching, as in Diffusion Policy and π0. |
+| [7 · Sequences & transformers](w07-sequence-modeling-transformers.qmd) | How do observations, words and actions become one token sequence? | Attention over tokens, scaling laws, and actions as bins, compressed chunks (FAST) or chunks predicted at once (ACT). |
+| [8 · World models](w08-world-models.qmd) | How do you learn what your actions will do, and use it? | Predict consequences, plan or imagine with them, and beware compounding, exploited model errors; scale with video or predict embeddings (JEPA). |
+| [9 · Generalist policies](w09-generalist-robot-policies.qmd) | Where do generalist policies come from, and how do you know they work? | Pool data across robots, tokenize everything, start from a VLM and protect its knowledge, and evaluate by rankings. |
+| [10 · Reasoning & test-time scaling](w10-embodied-reasoning.qmd) | Can a robot that thinks harder act better? | Embodied chain-of-thought helps mainly by teaching better features; test-time search pays only on problems the model sometimes solves; RL makes reasoning emerge. |
+| [11 · Frontiers](w11-frontiers.qmd) | What is still unsolved? | Grounded generalization, dexterity beyond vision, knowing what you don't know, going beyond imitation, and learning for a lifetime. |
+
+### Where each week lives in a modern robot policy
+
+Most of the course can be read as the parts of one system. @fig-anatomy lays out a generalist vision-language-action policy of the kind Weeks 9 to 11 discussed, and marks which week supplied each part.
+
+```{dot}
+//| label: fig-anatomy
+//| fig-width: 5.4
+//| fig-height: 6.4
+//| fig-cap: "A modern generalist robot policy, assembled from the course. Blue: what runs on the robot, from camera to motors. Grey: how it is trained, improved and evaluated. Each box names the week that covered it."
+//| fig-alt: "Diagram, top to bottom. On the left, the robot's path in blue: 'camera, instruction (Week 1)' to 'tokens: patches, words (Week 7)' to 'vision-language backbone (Weeks 7, 9, 11)' to an orange box 'reason when needed (Week 10)' to 'action expert: flow matching (Week 6)' to 'action chunk (Week 7)' to 'controller, motors (Week 2)'. On the right, grey boxes feed the backbone and the action expert: 'pooled demonstrations, behavior cloning (Weeks 3, 9)', 'improve with reward: RL, advantages (Weeks 4, 5, 9, 11)', and 'evaluate: simulation, world models (Weeks 8, 9)'."
+digraph G {
+  graph [bgcolor="#fcfcfb", rankdir=TB, fontname="Helvetica", nodesep=0.35, ranksep=0.32];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#2a78d6", fillcolor="#cde2fb", fontcolor="#0b0b0b"];
+  edge [fontname="Helvetica", fontsize=9, color="#52514e", fontcolor="#52514e"];
+  cam [label="camera, instruction\n(Week 1)"];
+  tok [label="tokens: patches, words\n(Week 7)"];
+  vlm [label="vision-language backbone\n(Weeks 7, 9, 11)"];
+  rsn [label="reason when needed\n(Week 10)", fillcolor="#eb6834", color="#eb6834", fontcolor="white"];
+  exp [label="action expert:\nflow matching (Week 6)"];
+  chk [label="action chunk\n(Week 7)"];
+  ctl [label="controller, motors\n(Week 2)"];
+  bc [label="pooled demonstrations,\nbehavior cloning (Weeks 3, 9)", fillcolor="#f0efec", color="#52514e"];
+  rl [label="improve with reward:\nRL, advantages (Weeks 4, 5, 9, 11)", fillcolor="#f0efec", color="#52514e"];
+  ev [label="evaluate: simulation,\nworld models (Weeks 8, 9)", fillcolor="#f0efec", color="#52514e"];
+  cam -> tok [label="encode"];
+  tok -> vlm [label="read"];
+  vlm -> rsn [label="if unsure"];
+  rsn -> exp [label="condition"];
+  exp -> chk [label="sample"];
+  chk -> ctl [label="track"];
+  bc -> vlm [style=dashed, label="train"];
+  bc -> exp [style=dashed, label="train"];
+  rl -> exp [style=dashed, label="refine"];
+  ev -> chk [style=dashed, label="score"];
+}
+```
+
+The robot's path is the course's middle: tokens and transformers (Week 7) carry camera images and instructions into a backbone pretrained on the web (Weeks 9 and 11), which may reason first (Week 10) before a generative action expert (Week 6) samples a chunk of actions (Week 7) that a classical controller tracks (Week 2). Training comes from the course's two families: imitation of pooled demonstrations (Weeks 3 and 9), refined with reward (Weeks 4, 5, and π\*0.6 in Week 9). Evaluation, in simulation or a learned model (Weeks 8 and 9), decides whether any of it worked.
+
+## Guest spotlight
+
+**Dieter Fox** is a professor in the Allen School of Computer Science & Engineering at the University of Washington, where he heads the Robotics and State Estimation Lab, and he also works at the Allen Institute for AI (Ai2). His research spans robotics, artificial intelligence and state estimation, with applications in 3-D mapping and tracking, human activity recognition, and robot manipulation; he is a fellow of AAAI, ACM and IEEE and a recipient of the IEEE RAS Pioneer Award (his [homepage](https://homes.cs.washington.edu/~fox/)). With Sebastian Thrun and Wolfram Burgard he wrote *Probabilistic Robotics* (MIT Press, 2005), the standard text on handling uncertainty in robot perception and control, whose filters and mapping methods underlie the classical mapping and localization stacks that mobile robots use today. [Week 11](w11-frontiers.qmd) asked whether a unified learned model should take over that role.
+
+::: {.callout-warning title="Talk summary pending"}
+TODO(video): the course page lists no title, slides or recording for this talk (checked 23 October 2026). This section will summarize the talk from its transcript, with ▶ timestamp links, once a recording is published. Nothing here describes the talk's content.
+:::
+
+## Connections
+
+Six threads ran through the course. Each came back in several weeks, usually in a new form.
+
+1. **Distribution shift.** A policy meets the states its own actions lead to, not the ones in its data. It was compounding error in [Week 3](w03-imitation-learning.qmd), planners exploiting a world model's mistakes in [Week 8](w08-world-models.qmd), the gap between simulator and robot in [Week 9](w09-generalist-robot-policies.qmd), and a moved obstacle that an ensemble could not see in [Week 11](w11-frontiers.qmd).
+2. **Actions have many right answers.** Averaging two good demonstrations drove into the tree in [Week 3](w03-imitation-learning.qmd); generative models in [Week 6](w06-generative-models.qmd) and action tokens in [Week 7](w07-sequence-modeling-transformers.qmd) are the fix that today's policies use.
+3. **Data and scale win, but not by volume alone.** Pooling robots helped the data-poor one in [Week 9](w09-generalist-robot-policies.qmd), and the guest in [Week 11](w11-frontiers.qmd) traced how scaling model, data and training together made vision work. Yet mixing a robot's own rollouts naively into cloning made the [Week 11](w11-frontiers.qmd) flywheel go backwards: what you do with data matters as much as how much you have.
+4. **Imitation and reward complement each other.** Imitation is fast and safe but bounded by its teachers; reward-driven learning ([Weeks 4](w04-reinforcement-learning-1.qmd) and [5](w05-reinforcement-learning-2.qmd)) can go beyond them, whether by stitching ([Week 11](w11-frontiers.qmd)), advantage conditioning (π\*0.6, [Week 9](w09-generalist-robot-policies.qmd)) or GRPO ([Week 10](w10-embodied-reasoning.qmd)).
+5. **Fast and slow.** Low-level controllers run fast (100 Hz in [Week 2](w02-robot-control-mdps.qmd)'s joint, which swung wildly at 20 Hz) while learned policies send targets a few times a second; action chunks buy smoothness at the cost of reaction ([Week 7](w07-sequence-modeling-transformers.qmd)); reasoning buys generalization at the cost of speed ([Week 10](w10-embodied-reasoning.qmd)); and [Week 11](w11-frontiers.qmd) asked when each is worth paying for.
+6. **Evaluation is the hard part.** Twenty trials barely separate two policies ([Week 9](w09-generalist-robot-policies.qmd)'s binomial error), a demo filmed in the training room proves little, and a benchmark is only as good as what it measures ([Week 11](w11-frontiers.qmd)'s "look at the data").
+
+**Going further.** The [glossary](../glossary.qmd) collects the notation of all weeks, the [papers index](../papers.qmd) every paper card, and the [cheat sheets](../cheatsheets.qmd) every week's formulas in one place. For the decision-making theory underneath Weeks 2 to 5 (MDPs, planning, policy search, reinforcement and imitation learning), the [ADM Companion]({{< var adm_url >}}/) goes deeper.
+
+## Resources
+
+```{python}
+#| output: asis
+print(resources(12))
+```
