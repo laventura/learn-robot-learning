@@ -133,16 +133,16 @@ This is the start. The lecture sets out why robotics is hard in a way that langu
 | Week | Lecture | In one line |
 |:---|:---|:---|
 | 1 | Introduction | Why robot learning, and why now (this page) |
-| 2 | Robot Control & MDPs | The mathematical language of robot–environment interaction |
+| 2 | [Robot Control & MDPs](w02-robot-control-mdps.qmd) | The mathematical language of robot–environment interaction |
 | 3 | [Imitation Learning](w03-imitation-learning.qmd) | Learning a policy from expert demonstrations, and why copying drifts |
-| 4–5 | Reinforcement Learning I and II | Learning from reward by trial and error, online and offline |
-| 6 | Generative Models | Policies that output whole distributions of actions |
-| 7 | Sequence Modeling and Transformers | The architectures behind language models, applied to actions |
-| 8 | World Models | Models that predict how the world will respond |
-| 9 | Generalist Robot Policies | One policy for many tasks and robots |
-| 10 | Embodied Reasoning and Test-time Scaling | High-level reasoning for robots |
-| 11 | Frontiers & Open Problems | What is still unsolved |
-| 12 | Guest Lectures | Talks from the field |
+| 4–5 | [Reinforcement Learning I](w04-reinforcement-learning-1.qmd) and [II](w05-reinforcement-learning-2.qmd) | Learning from reward by trial and error, online and offline |
+| 6 | [Generative Models](w06-generative-models.qmd) | Policies that output whole distributions of actions |
+| 7 | [Sequence Modeling and Transformers](w07-sequence-modeling-transformers.qmd) | The architectures behind language models, applied to actions |
+| 8 | [World Models](w08-world-models.qmd) | Models that predict how the world will respond |
+| 9 | [Generalist Robot Policies](w09-generalist-robot-policies.qmd) | One policy for many tasks and robots |
+| 10 | [Embodied Reasoning and Test-time Scaling](w10-embodied-reasoning.qmd) | High-level reasoning for robots |
+| 11 | [Frontiers & Open Problems](w11-frontiers.qmd) | What is still unsolved |
+| 12 | [Guest Lectures](w12-guest-lectures.qmd) | Talks from the field, and the course reviewed in one table |
 
 The lecturer describes the second half as the architectures of the foundation-model era: generative models, sequence models and transformers, world models and high-level reasoning [▶ 58:24](https://youtu.be/X0k14u6pSxw?t=3504).
 
@@ -711,7 +711,7 @@ Not independent: consecutive images are nearly identical, and each action determ
 - Assuming tokenized actions are exact. They are rounded to the bin centre; count the bins against the precision the task needs.
 - Judging a robot demo without asking whether it was teleoperated.
 
-**Connections.** Next week formalizes the robot loop as a Markov decision process. [Week 3](w03-imitation-learning.qmd) is the first family of algorithms, imitation learning, and shows what the non-i.i.d. data cost. In the ADM Companion, [Chapter 1]({{< var adm_url >}}/intro/ch01-introduction.html) introduces decision making under uncertainty, the broader setting of the robot loop.
+**Connections.** Next week formalizes the robot loop as a Markov decision process. [Week 3](w03-imitation-learning.qmd) is the first family of algorithms, imitation learning, and shows what the non-i.i.d. data cost; [Weeks 4](w04-reinforcement-learning-1.qmd) and [5](w05-reinforcement-learning-2.qmd) are the second, reinforcement learning. The action tokens on this page return in [Week 7](w07-sequence-modeling-transformers.qmd), with RT-2's bins and their compressed successor FAST, and the vision-language-action models built on them in [Week 9](w09-generalist-robot-policies.qmd). [Week 12](w12-guest-lectures.qmd) reviews the whole course in one table. In the ADM Companion, [Chapter 1]({{< var adm_url >}}/intro/ch01-introduction.html) introduces decision making under uncertainty, the broader setting of the robot loop.
 
 ## Resources
 
